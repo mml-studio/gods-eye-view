@@ -19,17 +19,25 @@ import {
   EARTHQUAKE_MAG_PX_PER_UNIT,
   EARTHQUAKE_OVERLAY_COHORT_LIMIT,
   EARTHQUAKE_OVERLAY_COLLISION_CAPACITY,
+  EARTHQUAKE_LEGEND_NOTE,
+  EARTHQUAKE_SELECTED_COLOR,
+  EARTHQUAKE_SELECTED_OVERLAY_SOURCE_ID,
   ageBandFor,
+  buildEarthquakeCard,
   buildEarthquakeLegend,
+  buildEarthquakeNote,
   createEarthquakeOverlayEntry,
+  createEarthquakeSelectedOverlayEntry,
   createEarthquakesLayer,
   depthRulerMetres,
   emptyEarthquakeTally,
+  formatEarthquakeInstant,
   magnitudePixelSize,
   mapAnalystRecord,
   selectEarthquakeOverlayCohort,
 } from './earthquakes.js';
 import { DataLayerManager } from './manager.js';
+import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import {
   getRenderGovernorDiagnostics,
   installRenderGovernor,
@@ -204,7 +212,7 @@ test('an unusable timestamp is off the ramp, not a fifth age', () => {
 });
 
 // ── D1 · the legend states BOTH value channels, and counts every fallback ───
-test('the legend keys magnitude, depth and age, and declares what is not published', () => {
+test('the key states the colour and the two domains, and stays short', () => {
   const tally = emptyEarthquakeTally();
   tally.drawn = 140;
   tally.labelled = EARTHQUAKE_OVERLAY_COHORT_LIMIT;
@@ -215,31 +223,41 @@ test('the legend keys magnitude, depth and age, and declares what is not publish
   tally.depthFloor = 6;
   const legend = buildEarthquakeLegend(tally);
   const labels = legend.map((entry) => entry.label);
-  const text = JSON.stringify(legend);
 
-  // Both channels that carry a value are keyed, with numbered ticks.
-  assert.ok(labels.some((l) => /Taille du point/.test(l)), 'the size ruler is missing');
-  assert.ok(labels.includes('M5') && labels.includes('M9'), 'the magnitude ticks are missing');
-  assert.ok(labels.some((l) => /Tige verticale/.test(l)), 'the depth ruler is missing');
-  assert.ok(labels.includes('70 km') && labels.includes('700 km'), 'the depth ticks are missing');
-  assert.ok(labels.some((l) => /âge dans la fenêtre/.test(l)), 'the age ramp is missing');
+  // D2 — the two shape channels are one row each, and each publishes its
+  // FROZEN DOMAIN. A row per tick was the mark reprinted, not a key.
+  const size = legend.find((entry) => /^Point —/.test(entry.label));
+  assert.ok(size, 'the magnitude row is missing');
+  assert.match(size.label, /M2,5 à M9,5/);
+  const depth = legend.find((entry) => /^Tige —/.test(entry.label));
+  assert.ok(depth, 'the depth row is missing');
+  assert.match(depth.label, /0 à 700 km/);
+  assert.ok(!labels.includes('M5') && !labels.includes('M9'), 'magnitude ticks came back');
+  assert.ok(!labels.includes('70 km') && !labels.includes('700 km'), 'depth ticks came back');
+  assert.ok(legend.every((entry) => entry.glyph === undefined), 'a shape row came back');
+
+  // The ruler must still say it is a reading device, never a position, and the
+  // point must still refuse the footprint reading the old radius invited.
+  assert.match(depth.blurb, /la tige monte, le foyer descend/);
+  assert.match(size.blurb, /Ni énergie, ni emprise/);
+
+  // The colour channel keeps every class, with its count (D1).
   for (const band of EARTHQUAKE_AGE_BANDS) assert.ok(labels.includes(band.label), band.label);
-
-  // The ruler must say it is a reading device, never a position.
-  assert.match(text, /ÉCHELLE DE LECTURE, PAS LA POSITION DU FOYER/);
-  // And the point must refuse the footprint reading the old radius invited.
-  assert.match(text, /aucune emprise/);
-
-  // A1 — each fallback is a legend row with its own count.
   const row = (re) => legend.find((entry) => re.test(entry.label));
   assert.equal(row(/âge non publié/)?.count, 2);
+  // The one A1 shape a reader decodes WRONG unaided keeps its row and count.
   assert.equal(row(/profondeur non publiée/)?.count, 4);
-  assert.equal(row(/tige plancher/)?.count, 6);
-  // A5 — the label cap, with the criterion.
-  const clip = row(/étiquettes de magnitude/);
-  assert.ok(clip, 'the label cap must be declared once it bites');
-  assert.match(clip.label, /96 sur 140/);
-  assert.match(clip.blurb, /plus fortes magnitudes/);
+  // The two disclosures moved to the A5 slot, so they are NOT rows any more.
+  assert.ok(!row(/tige plancher/), 'the floor disclosure belongs in the note');
+  assert.ok(!row(/étiquettes de magnitude/), 'the label cap belongs in the note');
+
+  // The size the whole rewrite is about: the block sits over the map, so it is
+  // bounded rather than merely "shorter than before".
+  const words = legend
+    .map((entry) => `${entry.label} ${entry.blurb || ''}`.trim().split(/\s+/).length)
+    .reduce((a, b) => a + b, 0);
+  assert.ok(legend.length <= 10, `key grew back to ${legend.length} rows`);
+  assert.ok(words <= 110, `key grew back to ${words} words`);
 
   // Every colour swatch is either a real CSS colour or an explicit "not mapped
   // here" row; a legend entry may never invent a hue the map does not draw.
@@ -249,29 +267,59 @@ test('the legend keys magnitude, depth and age, and declares what is not publish
   ]);
   for (const entry of legend) {
     if (entry.color === null) continue;
-    if (entry.glyph) continue; // shape rows: the glyph is the datum
     assert.ok(drawn.has(entry.color), `legend colour ${entry.color} is drawn nowhere`);
   }
+});
+
+test('the A5 note carries the two disclosures, with their counts, and nothing else', () => {
+  assert.equal(buildEarthquakeNote(emptyEarthquakeTally()), '');
+
+  const floored = emptyEarthquakeTally();
+  floored.drawn = 12;
+  floored.labelled = 12;
+  floored.depthFloor = 6;
+  assert.match(buildEarthquakeNote(floored), /6 foyers à moins d’1 km/);
+  assert.doesNotMatch(buildEarthquakeNote(floored), /étiquette/);
+
+  const clipped = emptyEarthquakeTally();
+  clipped.drawn = 140;
+  clipped.labelled = EARTHQUAKE_OVERLAY_COHORT_LIMIT;
+  const note = buildEarthquakeNote(clipped);
+  assert.match(note, /Les 140 secousses sont dessinées/);
+  assert.match(note, /96 plus fortes magnitudes/);
+  assert.doesNotMatch(note, /plancher/);
+
+  // E1 — provenance AND clock, in the slot that frames the classes.
+  assert.match(EARTHQUAKE_LEGEND_NOTE, /USGS/);
+  assert.match(EARTHQUAKE_LEGEND_NOTE, /60 s/);
 });
 
 test('the legend keeps its shape before the first poll, and hides rows that do not apply', () => {
   const legend = buildEarthquakeLegend(emptyEarthquakeTally());
   const labels = legend.map((entry) => entry.label);
-  assert.ok(labels.some((l) => /Taille du point/.test(l)));
-  assert.ok(labels.some((l) => /Tige verticale/.test(l)));
+  assert.ok(labels.some((l) => /^Point —/.test(l)));
+  assert.ok(labels.some((l) => /^Tige —/.test(l)));
   for (const band of EARTHQUAKE_AGE_BANDS) assert.ok(labels.includes(band.label));
-  // Nothing is clipped and nothing is unpublished yet, so those rows are absent
-  // rather than printed as zeroes a reader would have to discount.
-  assert.ok(!labels.some((l) => /non publié|plancher|étiquettes/.test(l)));
+  // Nothing is unpublished yet, so that row is absent rather than printed as a
+  // zero a reader would have to discount.
+  assert.ok(!labels.some((l) => /non publié/.test(l)));
   assert.ok(legend.every((entry) => typeof entry.label === 'string' && entry.label.length > 0));
 });
 
 // ── runtime shape ───────────────────────────────────────────────────────────
 
-/** Drive the real layer through one poll against a fabricated feed. */
-async function runLayer(features, { overlayHost } = {}) {
+/**
+ * Drive the real layer through one poll against a fabricated feed.
+ *
+ * `scene` is opt-in: without it `viewer.scene?.canvas` is undefined and the
+ * click handler declines to install, which is the shape every pre-existing
+ * runtime test was written against. Pass one to exercise the click path, and
+ * `click(x, y)` then fires the handler the layer registered.
+ */
+async function runLayer(features, { overlayHost, drillPick, hitTest, now } = {}) {
   const dataSources = [];
   const hostCalls = [];
+  const listeners = new Map();
   const viewer = {
     dataSources: {
       add(dataSource) { dataSources.push(dataSource); return dataSource; },
@@ -282,19 +330,34 @@ async function runLayer(features, { overlayHost } = {}) {
       },
     },
   };
+  if (drillPick) {
+    viewer.scene = { canvas: {}, drillPick: (position) => drillPick(position) };
+  }
   const host = overlayHost || {
     setEntries: (...args) => hostCalls.push(['entries', ...args]),
     setVisible: (...args) => hostCalls.push(['visible', ...args]),
     clearSource: (...args) => hostCalls.push(['clear', ...args]),
   };
-  const layer = createEarthquakesLayer({ overlayHost: host });
+  if (hitTest) host.hitTest = hitTest;
+  const layer = createEarthquakesLayer({
+    overlayHost: host,
+    now,
+    screenSpaceEventHandlerFactory: () => ({
+      setInputAction(action, type) { listeners.set(type, action); },
+      destroy() { listeners.clear(); },
+    }),
+  });
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => ({ ok: true, json: async () => ({ features }) });
   layer.init(viewer);
   layer.enable(viewer);
   await layer.update(viewer);
   globalThis.fetch = originalFetch;
-  return { layer, viewer, dataSources, hostCalls, entities: dataSources[0].entities.values };
+  const click = (x, y) => listeners
+    .get(Cesium.ScreenSpaceEventType.LEFT_CLICK)?.({ position: { x, y } });
+  return {
+    layer, viewer, dataSources, hostCalls, click, entities: dataSources[0].entities.values,
+  };
 }
 
 const now = () => Cesium.JulianDate.now();
@@ -431,9 +494,13 @@ test('A1: an unpublished depth draws a hollow mark with no ruler, and is counted
       measured.point.color.getValue(now()).toCssColorString(),
     );
 
-    const legend = layer.getRowControls().legend;
-    assert.equal(legend.find((e) => /profondeur non publiée/.test(e.label))?.count, 1);
-    assert.equal(legend.find((e) => /tige plancher/.test(e.label))?.count, 1);
+    const controls = layer.getRowControls();
+    assert.equal(
+      controls.legend.find((e) => /profondeur non publiée/.test(e.label))?.count,
+      1,
+    );
+    // The floor is a disclosure, not a mark: it is counted in the A5 slot.
+    assert.match(controls.note, /1 foyer à moins d’1 km/);
   } finally {
     layer.destroy(viewer);
   }
@@ -509,18 +576,283 @@ test('real earthquake lifecycle publishes host labels while runtime entities car
 
     layer.disable(viewer);
     assert.equal(dataSources[0].show, false);
-    assert.deepEqual(hostCalls.slice(-2), [
+    // Both sources come down together: a card left painted over a hidden layer
+    // is a reading with nothing under it.
+    assert.deepEqual(hostCalls.slice(-4), [
       ['clear', 'earthquakes'],
       ['visible', 'earthquakes', false],
+      ['clear', EARTHQUAKE_SELECTED_OVERLAY_SOURCE_ID],
+      ['visible', EARTHQUAKE_SELECTED_OVERLAY_SOURCE_ID, false],
     ]);
     layer.destroy(viewer);
     assert.equal(dataSources.length, 0);
-    assert.deepEqual(hostCalls.slice(-2), [
+    assert.deepEqual(hostCalls.slice(-4), [
       ['clear', 'earthquakes'],
       ['visible', 'earthquakes', false],
+      ['clear', EARTHQUAKE_SELECTED_OVERLAY_SOURCE_ID],
+      ['visible', EARTHQUAKE_SELECTED_OVERLAY_SOURCE_ID, false],
     ]);
   } finally {
     globalThis.fetch = globalThis.fetch; // no-op; runLayer already restored it
+  }
+});
+
+// ── The card, and the click that opens it ───────────────────────────────────
+// The caveats the key used to print permanently now travel on the card of the
+// event they are about. That only holds if every one of them is actually
+// attached to a number, so the pin is per-line rather than "the card mentions
+// the ruler somewhere".
+
+const CARD_NOW = Date.parse('2026-09-10T20:30:00Z');
+
+test('the card pairs every measurement with the caveat that belongs to it', () => {
+  const card = buildEarthquakeCard({
+    id: 'us7000abcd',
+    magnitude: 4.1,
+    depthKm: 12.3,
+    place: '5 km NE of Mraighah, Lebanon',
+    timeMs: CARD_NOW - 6 * 60e3,
+  }, CARD_NOW);
+  const [title, ...details] = card.split('\n');
+
+  assert.equal(title, 'M4,1');
+  // The magnitude line carries its own pixel size AND the energy ratio: the
+  // whole reason the key no longer has to.
+  const mag = details.find((line) => line.includes('px'));
+  assert.match(mag, /10,8 px/);
+  assert.match(mag, /la magnitude, pas l’énergie/);
+  assert.match(mag, /×31,6/);
+  assert.match(mag, /aucune emprise/);
+
+  // The depth line carries the ruler's direction, next to the depth.
+  const depth = details.find((line) => line.startsWith('↧'));
+  assert.match(depth, /12,3 km sous le niveau de la mer/);
+  assert.match(depth, /VERS LE HAUT/);
+
+  // E1 — the instant REPRESENTED, in UTC because the feed is worldwide, then
+  // the distance to now.
+  assert.ok(details.includes('🕐 2026-09-10 20:24 UTC · il y a 6 min'), card);
+  assert.ok(details.includes('📍 5 km NE of Mraighah, Lebanon'), card);
+  assert.ok(details.some((line) => line.includes('us7000abcd')), card);
+
+  // No line is pre-wrapped: the host measures and breaks against maxWidthPx.
+  assert.ok(details.every((line) => line.length < 200));
+});
+
+test('the card names the three A1 fallbacks in the reader’s own words', () => {
+  const noDepth = buildEarthquakeCard({
+    id: 'a', magnitude: 2.6, depthKm: null, place: 'Nevada', timeMs: null,
+  }, CARD_NOW);
+  assert.match(noDepth, /profondeur non publiée — aucune tige, et le point est creux/);
+  assert.match(noDepth, /horodatage non publié/);
+  assert.doesNotMatch(noDepth, /NaN|undefined|null/);
+
+  // A measured zero is a measurement, and the card says where the 1:1 stops.
+  const floored = buildEarthquakeCard({
+    id: 'b', magnitude: 6.8, depthKm: 0, place: 'Ridgecrest, CA', timeMs: CARD_NOW,
+  }, CARD_NOW);
+  assert.match(floored, /0,0 km sous le niveau de la mer/);
+  assert.match(floored, /tige au plancher d’1 km/);
+
+  // USGS publishes NEGATIVE depths for foci above sea level. The datum is
+  // named with the sign, never as a double negative.
+  const above = buildEarthquakeCard({
+    id: 'c', magnitude: 3, depthKm: -1.4, place: 'The Geysers, CA', timeMs: CARD_NOW,
+  }, CARD_NOW);
+  assert.match(above, /1,4 km au-dessus du niveau de la mer/);
+  assert.doesNotMatch(above, /-1,4|−1,4/);
+});
+
+test('the age line keeps the minutes an age band would round across', () => {
+  const at = (ms) => buildEarthquakeCard(
+    { id: 'x', magnitude: 4, depthKm: 10, place: 'p', timeMs: CARD_NOW - ms },
+    CARD_NOW,
+  );
+  assert.match(at(30e3), /à l’instant/);
+  assert.match(at(6 * 60e3), /il y a 6 min/);
+  // 90 minutes is in the 1–6 h band; « il y a 2 h » would read as the far side
+  // of a boundary the colour beside it has not crossed.
+  assert.match(at(90 * 60e3), /il y a 1 h 30/);
+  assert.match(at(2 * 3600e3), /il y a 2 h(?! )/);
+  assert.equal(formatEarthquakeInstant(Date.parse('2026-01-02T00:04:00Z')), '2026-01-02 00:04 UTC');
+});
+
+test('the card entry is protected, anchored above its mark, and off the age ramp', () => {
+  const position = Cesium.Cartesian3.fromDegrees(2, 48);
+  const entry = createEarthquakeSelectedOverlayEntry(
+    { id: 'us1', magnitude: 5, depthKm: 20, place: 'p', timeMs: CARD_NOW },
+    position,
+    CARD_NOW,
+  );
+  assert.equal(entry.variant, 'selected');
+  assert.equal(entry.protected, true);
+  assert.equal(entry.placement, 'above');
+  assert.equal(entry.title, 'M5,0');
+  assert.ok(entry.details.length >= 4);
+  // The accent may never be a hue the age ramp uses, or the card would read as
+  // a fifth age.
+  const ramp = new Set(EARTHQUAKE_AGE_BANDS.map((band) => band.color));
+  assert.ok(!ramp.has(EARTHQUAKE_SELECTED_COLOR));
+  assert.equal(entry.accent, EARTHQUAKE_SELECTED_COLOR);
+  assert.equal(createEarthquakeSelectedOverlayEntry(null, position, CARD_NOW), null);
+  assert.equal(createEarthquakeSelectedOverlayEntry({ id: 'x' }, null, CARD_NOW), null);
+});
+
+/** A drilled hit shaped like Cesium's: `id` is the Entity, whose `id` is ours. */
+const hit = (id) => ({ id: { id } });
+
+test('a click on a mark opens its card, and a click on the world closes it', async () => {
+  let drilled = [];
+  const { layer, viewer, hostCalls, click } = await runLayer([
+    feature({ id: 'us-a', mag: 5, depth: 33, place: 'Alpha' }),
+    feature({ id: 'us-b', mag: 4, depth: 12, place: 'Bravo', lon: 1, lat: 1 }),
+  ], { drillPick: () => drilled, now: () => CARD_NOW });
+  try {
+    drilled = [hit('earthquake:us-b')];
+    click(10, 10);
+    const published = hostCalls.filter(([type, source]) => (
+      type === 'entries' && source === EARTHQUAKE_SELECTED_OVERLAY_SOURCE_ID
+    ));
+    assert.equal(published.length, 1, 'the click must publish exactly one card');
+    assert.equal(published[0][2].length, 1);
+    assert.match(published[0][2][0].details.join(' '), /Bravo/);
+    assert.deepEqual(published[0][3], { cohortLimit: 1, collisionCapacity: 1, moving: false });
+
+    // The photoreal globe answers a non-null pick with no id (`isWorldPick`),
+    // and that is what "the reader clicked the map" looks like now.
+    drilled = [{ primitive: {}, id: undefined }];
+    click(400, 400);
+    assert.deepEqual(hostCalls.at(-1), ['clear', EARTHQUAKE_SELECTED_OVERLAY_SOURCE_ID]);
+  } finally {
+    layer.destroy(viewer);
+  }
+});
+
+test('the floating magnitude label is a click surface, not a caption', async () => {
+  const { layer, viewer, hostCalls, click } = await runLayer([
+    feature({ id: 'us-a', mag: 5, depth: 33, place: 'Alpha' }),
+  ], {
+    drillPick: () => [],
+    // The label plane is a `pointer-events: none` canvas the depth buffer
+    // knows nothing about, so `scene.pick` under `M5.0` answers the globe.
+    hitTest: () => ({ sourceId: 'earthquakes', entryId: 'us-a' }),
+    now: () => CARD_NOW,
+  });
+  try {
+    click(10, 10);
+    const published = hostCalls.filter(([type, source]) => (
+      type === 'entries' && source === EARTHQUAKE_SELECTED_OVERLAY_SOURCE_ID
+    ));
+    assert.equal(published.length, 1, 'a click on the label must open the card');
+    assert.match(published[0][2][0].details.join(' '), /Alpha/);
+  } finally {
+    layer.destroy(viewer);
+  }
+});
+
+test('a click on a sibling layer’s marker is that sibling’s click, not a dismissal', async () => {
+  let drilled = [];
+  const { layer, viewer, hostCalls, click } = await runLayer([
+    feature({ id: 'us-a', mag: 5, depth: 33, place: 'Alpha' }),
+  ], { drillPick: () => drilled, now: () => CARD_NOW });
+  registerPickOwner('a-sibling', (id) => String(id).startsWith('sibling:'));
+  try {
+    drilled = [hit('earthquake:us-a')];
+    click(10, 10);
+    const opened = hostCalls.length;
+
+    drilled = [hit('sibling:42')];
+    click(20, 20);
+    assert.equal(
+      hostCalls.length,
+      opened,
+      'selecting a neighbouring layer must not silently destroy this reading',
+    );
+  } finally {
+    unregisterPickOwner('a-sibling');
+    layer.destroy(viewer);
+  }
+});
+
+test('the selection ring is a second object, so no channel of the mark is borrowed', async () => {
+  let drilled = [];
+  const { layer, viewer, dataSources, click } = await runLayer([
+    feature({ id: 'us-a', mag: 5, depth: 33, place: 'Alpha' }),
+    feature({ id: 'us-hollow', mag: 4, depth: null, place: 'Hollow', lon: 1, lat: 1 }),
+  ], { drillPick: () => drilled, now: () => CARD_NOW });
+  const entities = dataSources[0].entities;
+  try {
+    // Every channel of the hollow mark is already a datum — its ring carries
+    // the AGE — so the acknowledgement cannot be a repaint.
+    const hollow = entities.getById('earthquake:us-hollow');
+    const before = {
+      pixelSize: hollow.point.pixelSize.getValue(now()),
+      outline: hollow.point.outlineColor.getValue(now()).toCssColorString(),
+    };
+    drilled = [hit('earthquake:us-hollow')];
+    click(10, 10);
+    assert.equal(hollow.point.pixelSize.getValue(now()), before.pixelSize);
+    assert.equal(hollow.point.outlineColor.getValue(now()).toCssColorString(), before.outline);
+
+    const ring = entities.values.find((entity) => entity.id === 'earthquake-selection-ring');
+    assert.ok(ring, 'the click must leave a ring');
+    assert.equal(ring.point.color.getValue(now()).alpha, 0, 'the ring may not fill the mark');
+    assert.ok(ring.point.pixelSize.getValue(now()) > before.pixelSize);
+    assert.equal(
+      ring.point.outlineColor.getValue(now()).toCssColorString(),
+      Cesium.Color.fromCssColorString(EARTHQUAKE_SELECTED_COLOR).toCssColorString(),
+    );
+
+    // …and the analyst is not handed the ring as a 3rd earthquake.
+    const records = layer.getAnalystRecords();
+    assert.equal(records.length, 2);
+    assert.ok(records.every((record) => record.magnitude !== null));
+
+    // One ring at a time.
+    drilled = [hit('earthquake:us-a')];
+    click(20, 20);
+    assert.equal(
+      entities.values.filter((entity) => entity.id === 'earthquake-selection-ring').length,
+      1,
+    );
+  } finally {
+    layer.destroy(viewer);
+  }
+});
+
+test('a poll re-seats an open card, and drops one whose event left the window', async () => {
+  let drilled = [];
+  let features = [
+    feature({ id: 'us-a', mag: 5, depth: 33, place: 'Alpha' }),
+    feature({ id: 'us-b', mag: 4, depth: 12, place: 'Bravo', lon: 1, lat: 1 }),
+  ];
+  const { layer, viewer, dataSources, hostCalls, click } = await runLayer(features, {
+    drillPick: () => drilled,
+    now: () => CARD_NOW,
+  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ features }) });
+  try {
+    drilled = [hit('earthquake:us-b')];
+    click(10, 10);
+
+    // The poll calls `entities.removeAll()`, so the ring and the anchor are
+    // gone unless the layer puts them back.
+    await layer.update(viewer);
+    assert.ok(
+      dataSources[0].entities.values.some((e) => e.id === 'earthquake-selection-ring'),
+      'the ring must survive a poll that still carries the event',
+    );
+
+    // The 24 h window slides, `us-b` falls out, and a card over an event the
+    // layer no longer draws is a reading with nothing under it.
+    features = [feature({ id: 'us-a', mag: 5, depth: 33, place: 'Alpha' })];
+    await layer.update(viewer);
+    assert.deepEqual(hostCalls.at(-1), ['clear', EARTHQUAKE_SELECTED_OVERLAY_SOURCE_ID]);
+    assert.ok(!dataSources[0].entities.values.some((e) => e.id === 'earthquake-selection-ring'));
+  } finally {
+    globalThis.fetch = originalFetch;
+    layer.destroy(viewer);
   }
 });
 
