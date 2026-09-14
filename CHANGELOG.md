@@ -6,6 +6,52 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-14
 
 ### Changed
+- **L'icône d'une installation classée mesurait 16 pixels, et la commune
+  n'était qu'un trait.** Signalé sur la couche Risques (Géorisques) au-dessus
+  de Bassussarry, à 5 859 m : « elle est beaucoup trop petite, quasiment
+  invisible ». Mesure : **15,9 px à l'écran**, alors que la constante de la
+  couche annonçait 24. Personne n'avait jamais mesuré la marque à l'altitude
+  où on la lit, parce que la rampe cache le chiffre — Cesium interpole un
+  `NearFarScalar` sur la distance **au carré** puis élève `t` à la puissance
+  0,2, si bien que la valeur *lointaine* gouverne presque toute la plage. Sur
+  l'ancienne rampe (400/1,0 → 9 000/0,6), `t^0,2` vaut déjà 0,38 à 900 m et
+  0,84 à 5 859 m.
+
+  La réparation est donc surtout à l'autre bout : la rampe va maintenant
+  jusqu'au plafond de dormance de la couche et s'arrête à 0,8 au lieu de 0,6
+  (400/1,0 → 12 000/0,8), et les trois tailles montent de 30/24/18 à
+  **40/34/28**. Mesuré à 5 859 m : **34,0 px** pour un site Seveso, **28,9**
+  pour une installation classée, **23,8** pour un site déclassé, contre 15,9
+  avant. Repère : une installation militaire, dessinée par la couche voisine
+  au-dessus du même maillage, fait 25 px à cette distance. Le prix est le
+  chevauchement dans un quartier industriel dense vu du plafond — un lecteur
+  qui a besoin d'une marque descend, ce que personne ne peut faire avec une
+  marque qu'il ne trouve pas. « Lisible » n'est pas « trouvable » : les 10 px
+  mesurés par le pack d'icônes portaient sur une marque déjà trouvée.
+
+- **Et la commune est maintenant en surbrillance, comme les régions du mix
+  électrique.** Le trait seul perdait son sujet dès que le regard le quittait :
+  une ligne cyan qui traverse une colline est une ligne, et les onze verdicts
+  affichés à côté portent sur le sol *à l'intérieur*. L'intérieur est donc
+  teinté — un lavis du même cyan à 0,18 d'alpha, à plat, classé au sol comme le
+  trait, découpé sur l'anneau de la commune. Composité sur la vue signalée
+  elle-même : le pas à la limite communale se lit déjà à 0,16 et les verts de
+  l'orthophoto blanchissent à partir de 0,24.
+
+  **Une seule couleur, jamais graduée.** Géorisques ne publie aucun score
+  composite et compter les aléas en inventerait un : douze « faible » ne valent
+  pas un « important ». La légende dit ce que la teinte est et ce qu'elle n'est
+  pas — « un périmètre administratif, pas l'étendue d'un risque, qu'aucun de
+  ces aléas ne publie » — et la couche déclare enfin `surfaceFill`, ce qui monte
+  la note partagée sur le drapé du lavis sur le maillage photoréaliste.
+
+  **Un remplissage classé au sol est cliquable** — la couche Délinquance
+  sélectionne une commune exactement comme ça — donc un lavis de cette taille
+  aurait avalé le clic-sol de toutes les couches voisines à l'intérieur de la
+  commune : demander « que dit le PLU ici ? » n'aurait plus rien répondu sur des
+  kilomètres. Le lavis est déclaré **décoration** (nouveau
+  `pickRegistry.registerPickDecoration`) : il ne porte ni nom, ni fiche, ni
+  propriété, `isWorldPick` répond « la carte », et les clics passent au travers.
 - **Une ligne, deux registres, et un seul interrupteur pour les deux.** La
   couche « Urbanisme (PLU & servitudes) » dessine deux réponses sur le même sol :
   un aplat de zonage qui couvre chaque mètre carré du bloc, et des emprises de

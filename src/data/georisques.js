@@ -1,7 +1,9 @@
 import * as Cesium from 'cesium';
 import { createAddressScanLayer } from './addressScanLayer.js';
 import { ringAnchor } from './communeContours.js';
+import { nearFarScalarValueAtDistance } from './focusDeemphasis.js';
 import { hazardPlateGlyph } from './hazardMarkerIcons.js';
+import { registerPickDecoration } from './pickRegistry.js';
 import { surfaceFillDrapesBuildings } from './surfaceFillNotice.js';
 
 /**
@@ -28,33 +30,72 @@ import { surfaceFillDrapesBuildings } from './surfaceFillNotice.js';
  *
  * Three changes answer it, and they are three different problems:
  *
- *   1. THE COMMUNE IS OUTLINED, so the verdicts have a subject on screen.
+ *   1. THE COMMUNE IS DRAWN, so the verdicts have a subject on screen.
  *   2. THE INSTALLATIONS GET A PLATE instead of a filament — see
  *      `hazardMarkerIcons.js`, which measures the old mark.
  *   3. THE VERDICTS ARE PUBLISHED TO THE KEY, where they are legible without
  *      opening a panel that ships collapsed.
  *
- * ── WHY A STROKE AND NOT A WASH, WHICH IS THE WHOLE ARGUMENT ────────────────
+ * ── THE SECOND READING, OVER BASSUSSARRY AT 5 859 M ─────────────────────────
  *
- * The temptation is to fill the commune and ramp its colour by how much risk
- * is in it. Both halves of that are wrong here.
+ * Those three shipped, the layer was read again, and two things came back:
+ * the installation mark is "beaucoup trop petite, quasiment invisible", and
+ * the commune should be HIGHLIGHTED the way the régions are in the
+ * electricity mix rather than merely outlined.
  *
- * A FILL CLAIMS AN EXTENT. None of these hazards publishes one through this
- * endpoint: `resultats_rapport_risque` answers "Risque Existant" over a
- * commune and over an address, with no geometry attached. A filled commune is
- * read as "the water reaches this far", which is a statement about ground that
- * the source never made. A boundary is read as jurisdiction — which is exactly
- * what a commune verdict is. (It also sidesteps the drape: a ground-classified
- * wash climbs the façades of the photorealistic mesh, see
- * `surfaceFillNotice.js`. That is a real cost, but it is the second reason,
- * not the first. The stroke would be right on a flat map too.)
+ * THE MARK WAS 15.9 PIXELS AND THE CONSTANT SAID 24. Nobody had measured it
+ * at the altitude it is read at, because the ramp hides the number: Cesium
+ * interpolates a `NearFarScalar` against SQUARED distance and then raises
+ * `t` to the power 0.2 (`czm_nearFarScalar`), so the FAR value owns nearly
+ * the whole band. On the old ramp — 400/1.0 → 9 000/0.6 — t^0.2 is already
+ * 0.38 at 900 m and 0.84 at 5 859 m, which is scale 0.66 and 15.9 px against
+ * the 24 declared. So the repair is mostly at the FAR END (0.6 → 0.8), which
+ * is the opposite of where a reader of `SIZE_ICPE_PX` would look, and
+ * {@link markPixelsAtDistance} exists so the size on screen is checkable
+ * rather than inferred.
  *
- * A SEVERITY RAMP WOULD INVENT AN INDEX. Géorisques publishes no composite
- * score, and counting hazards is not one: twelve graded "faible" is not worse
- * than one graded "important", and colouring by the count would say it is. So
- * the outline carries ONE colour and says only "this is the commune the
- * verdicts below are about". The severity lives where the source put it — on
- * each hazard, in its own words, in the key.
+ * AND "LEGIBLE" IS NOT "FINDABLE". `hazardMarkerIcons.js` measured a plate
+ * as still a plate at 10 px, and that measurement stands — it is about
+ * reading a mark you have already found. Finding one over a photorealistic
+ * mesh of roofs, gardens and parked cars is a different task with a much
+ * higher floor, and 16 px was under it. The comparison that settled the new
+ * size: a military installation, drawn by `militaryInstallations.js` over
+ * the same mesh, is 25 px at that distance.
+ *
+ * ── THE COMMUNE IS NOW WASHED, AND WHAT KEEPS THAT HONEST ───────────────────
+ *
+ * The stroke alone lost its subject the moment the reader looked away from
+ * it: a cyan line crossing a hillside is a line, and the eleven verdicts
+ * keyed beside it are about the ground INSIDE it. So the interior is tinted,
+ * and the one objection that mattered — a fill claims an extent — is
+ * answered by what the fill is made of rather than by refusing to draw it.
+ *
+ * A HAZARD EXTENT ON THIS MAP IS WARM AND GRADED. The wash is the
+ * interface’s own cyan at {@link COMMUNE_FILL_ALPHA}, flat, outside the
+ * hazard ramp entirely, and cut to the commune’s own ring — the same
+ * vertices the stroke draws. None of these hazards publishes a geometry
+ * through this endpoint (`resultats_rapport_risque` answers "Risque
+ * Existant" over a commune and over an address with nothing attached), so
+ * nothing here could be read as "the water reaches this far" without also
+ * being read as "and stops at the commune line", which no reader believes.
+ * The key says what the shape is, the card says it, and the footnote says a
+ * third time that the hazards themselves are not drawn.
+ *
+ * A SEVERITY RAMP WOULD STILL INVENT AN INDEX, and that argument is
+ * untouched. Géorisques publishes no composite score, and counting hazards
+ * is not one: twelve graded "faible" is not worse than one graded
+ * "important", and colouring by the count would say it is. So the wash
+ * carries ONE colour and says only "this is the commune the verdicts below
+ * are about". The severity lives where the source put it — on each hazard,
+ * in its own words, in the key.
+ *
+ * TWO COSTS COME WITH IT, both disclosed rather than hidden. The wash drapes
+ * onto the photorealistic mesh, buildings included (`surfaceFillNotice.js`),
+ * which is why `surfaceFill` is now declared and the shared drape note
+ * mounts. And a ground-classified fill is PICKABLE — `delinquanceFrance.js`
+ * selects a commune by clicking one — so a wash this size would have
+ * swallowed every sibling layer’s ground click inside the commune. It is
+ * registered as a pick DECORATION instead; see {@link drawCommuneWash}.
  *
  * ── WHAT IS DRAWN AND WHAT IS NOT ───────────────────────────────────────────
  *
@@ -96,6 +137,28 @@ const COMMUNE_STROKE_CSS = '#6fd3e8';
 /** Outline width in pixels. Wide enough to hold at the 12 km ceiling. */
 const COMMUNE_STROKE_PX = 4;
 
+/**
+ * The wash inside the stroke, as an alpha on the SAME cyan.
+ *
+ * 0.18, the figure the address family already spends on a footprint it
+ * annotates rather than replaces — `adsUrbanisme.js` fills an emprise at
+ * exactly this, over a plot a hundred times smaller. A commune covers most of
+ * the frame at the altitude this layer is read at, so the failure mode on this
+ * side is not faintness but a FILTER: a wash that competes with the photograph
+ * under it stops saying "these verdicts are about this ground" and starts
+ * saying "this map is cyan".
+ *
+ * Composited against the reported view itself, over the band of woodland,
+ * rooftops and road the complaint was written over: the step at the commune
+ * line is already unmistakable at 0.16, 0.20 is indistinguishable from it, and
+ * by 0.24 the greens of the orthophoto are visibly milky. 0.18 sits inside the
+ * range where the step reads and the photograph does not pay for it.
+ *
+ * ONE VALUE, never ramped. See the module header: no composite score exists to
+ * ramp it by, and counting hazards would invent one.
+ */
+export const COMMUNE_FILL_ALPHA = 0.18;
+
 /** Refresh cadence. The register is republished in weeks, not minutes. */
 const UPDATE_INTERVAL_MS = 300_000;
 /** Radius asked of the API, in metres. */
@@ -106,23 +169,71 @@ const SCAN_RADIUS_M = 1000;
  *
  * Larger than the line-art mark they replace (26/20/15) because a plate can
  * afford it: the old triangle grew its bounding box without growing its ink,
- * so size bought nothing. Here the smallest class still lands at 18 × 0.6 ≈
- * 11 px at the far end, which is inside the band the military pack measured a
- * plate as still legible in.
+ * so size bought nothing.
+ *
+ * RAISED AGAIN AFTER THE SECOND READING, from 30/24/18, and the near end is
+ * the smaller half of the repair — the ramp below is the other. What these
+ * numbers now buy, at the 5 859 m the complaint was written from
+ * ({@link markPixelsAtDistance}): 34.0 px for a Seveso site, 28.9 for an
+ * ordinary classified installation, 23.8 for a declassified one, against 15.9
+ * before. The floor of the family is the declassified site, and it stays above
+ * 22 px everywhere between a rooftop and the 12 km ceiling.
+ *
+ * THE COST IS OVERLAP, and it is the right way round. A dense industrial
+ * quarter read from the ceiling now packs plates into each other; a reader who
+ * needs one of them flies down, which is the gesture this whole layer is
+ * built around. A mark nobody can find offers no such repair.
  */
-const SIZE_SEVESO_PX = 30;
-const SIZE_ICPE_PX = 24;
-const SIZE_DECLASSIFIED_PX = 18;
+const SIZE_SEVESO_PX = 40;
+const SIZE_ICPE_PX = 34;
+const SIZE_DECLASSIFIED_PX = 28;
 
 /**
  * The distance ramp every installation mark rides.
  *
  * The layer goes dormant at 12 km, so this only has to cover the ground
- * between a rooftop and that ceiling. Full size to 400 m, 0.6 by 9 km: enough
- * to stop a dense industrial quarter from becoming one solid bar of plates,
- * not so much that a site disappears before the layer itself switches off.
+ * between a rooftop and that ceiling — and the FAR END is what it spends
+ * almost all of that on. Cesium interpolates against squared distance and
+ * raises `t` to the power 0.2, so a mark is within a few percent of its far
+ * value for most of the band: at 900 m the old ramp was already 38% of the way
+ * down it. Reading `nearValue` as "the size this draws at" is the mistake this
+ * ramp was written with, and {@link markPixelsAtDistance} is here so the next
+ * change to it is made on a measured number.
+ *
+ * 400 m → 12 000 m, 1.0 → 0.8. The far distance now matches the dormancy
+ * ceiling instead of stopping 3 km short of it, which means the mark reaches
+ * its floor exactly where the layer switches off rather than three kilometres
+ * early; and the floor is 0.8 rather than 0.6, which is where the eight
+ * pixels the complaint was about actually went.
  */
-const MARKER_SCALE = new Cesium.NearFarScalar(400, 1.0, 9000, 0.6);
+const MARKER_SCALE = new Cesium.NearFarScalar(400, 1.0, 12_000, 0.8);
+
+/**
+ * What one mark ACTUALLY measures on screen, in CSS pixels, at a distance.
+ *
+ * Exported because it is the only honest way to talk about the size of these
+ * marks: `SIZE_ICPE_PX` is the value at the near end of a curve that reaches
+ * its far value almost immediately, and reading it as the size on screen is
+ * what let a 15.9 px mark ship behind a constant that said 24. The harness
+ * asserts on this, the unit tests pin it, and a future change to either
+ * constant is measured rather than argued.
+ *
+ * `nearFarScalarValueAtDistance` is the fleet's own restatement of
+ * `czm_nearFarScalar` — squared distance, then `pow(t, 0.2)` — and is shared
+ * with the focus de-emphasis pass rather than copied here.
+ *
+ * @param {number} sizePx One of the three size constants.
+ * @param {number} distanceM Camera distance to the mark, in metres.
+ * @returns {number} CSS pixels, at a `resolutionScale` of 1.
+ */
+export function markPixelsAtDistance(sizePx, distanceM) {
+  return sizePx * nearFarScalarValueAtDistance({
+    near: MARKER_SCALE.near,
+    nearValue: MARKER_SCALE.nearValue,
+    far: MARKER_SCALE.far,
+    farValue: MARKER_SCALE.farValue,
+  }, distanceM);
+}
 
 /**
  * Colour and size one establishment by what it actually is.
@@ -233,7 +344,109 @@ export function hazardLegendEntry(hazard) {
 }
 
 /**
- * Draw the commune outline, one polyline per ring.
+ * Whether an entity id is one of the commune WASH parts.
+ *
+ * A string test and not a lookup, because the question is asked from a click
+ * handler in another layer, which holds no reference to this one's entities.
+ *
+ * @param {string} id
+ * @returns {boolean}
+ */
+export function isCommuneWashId(id) {
+  return typeof id === 'string' && id.startsWith('georisques:commune:') && id.includes(':wash:');
+}
+
+// THE WASH IS NOT AN OBJECT, and every sibling layer's click handler has to
+// know it at the moment of the click. Declared at module scope — the predicate
+// only matches ids that exist while this layer is drawing, so there is nothing
+// to register on enable or tear down on disable.
+registerPickDecoration('georisques', isCommuneWashId);
+
+/**
+ * Draw the commune HIGHLIGHT: one ground-classified wash per ring, behind the
+ * stroke, in the stroke's own cyan.
+ *
+ * ── ANONYMOUS BY CONSTRUCTION ───────────────────────────────────────────────
+ *
+ * No `name`, no `description`, no `properties`. That is the contract
+ * `pickRegistry.registerPickDecoration` asks for and it is also the only
+ * sensible reading: the card belongs to the commune, and it already hangs on
+ * the outline and on the label, which are one shape and one word rather than
+ * half the frame. A reader who clicks inside the commune is asking about the
+ * ground they clicked, not about the administrative envelope around it — and
+ * over on `urbanismeGpu.js` or `bruitFrance.js` that click is a question with
+ * an answer.
+ *
+ * ── ONE COLOUR FOR EVERY PART, WHICH IS ALSO A CESIUM CONSTRAINT ────────────
+ *
+ * A commune keeps up to three pieces, and all of them carry the identical
+ * colour. That is the honest cartography (the module header's argument) and it
+ * is separately what keeps a batched `GroundPrimitive` correct: Cesium's
+ * classification pass keeps the first instance whose AXIS-ALIGNED BOUNDING
+ * RECTANGLE contains a pixel, not the first whose polygon does, so instances
+ * in one batch with DIFFERENT colours repaint each other along rectangle
+ * edges. `qa-cadastre-highlight.mjs` carries the measurement. Identical
+ * colours make the bug unobservable; a per-part tint would resurrect it.
+ *
+ * ── THE CLOSING VERTEX IS DROPPED, AND A RING MAY NOT HAVE ONE ─────────────
+ *
+ * The mirror image of the stroke below, which has to close itself BY HAND
+ * because `fromDegreesArray` draws exactly the vertices it is given. A polygon
+ * hierarchy is closed by definition, so a repeated final vertex is a
+ * degenerate edge; Cesium would discard it, and dropping it here means the
+ * geometry handed over is the geometry meant rather than the geometry that
+ * survives a dedupe pass.
+ *
+ * Tested rather than assumed on both sides: `projectCommuneContours` keeps the
+ * source ring's closing vertex, and `decimateCommuneRing` can stride it away —
+ * which is the very failure the stroke's hand-closing exists for. So the last
+ * point is removed only when it actually repeats the first.
+ *
+ * @param {object} dataSource
+ * @param {object} contour Projected commune from `communeContours.js`.
+ * @param {number} classificationType
+ * @returns {number} Rings washed.
+ */
+export function drawCommuneWash(dataSource, contour, classificationType) {
+  const fill = Cesium.Color.fromCssColorString(COMMUNE_STROKE_CSS)
+    .withAlpha(COMMUNE_FILL_ALPHA);
+  let drawn = 0;
+  for (const [index, flat] of (contour.parts || []).entries()) {
+    // Eight numbers is four points, the smallest ring that encloses anything.
+    // The same floor the stroke applies, for the same reason.
+    if (!Array.isArray(flat) || flat.length < 8) continue;
+    const closed = flat[0] === flat[flat.length - 2] && flat[1] === flat[flat.length - 1];
+    const ring = closed ? flat.slice(0, -2) : flat;
+    if (ring.length < 8) continue;
+    dataSource.entities.add({
+      id: `georisques:commune:${contour.code}:wash:${index}`,
+      polygon: {
+        hierarchy: new Cesium.PolygonHierarchy(Cesium.Cartesian3.fromDegreesArray(ring)),
+        material: fill,
+        // Ground classification, which is what `classificationType` is read
+        // for: no `height` and no `perPositionHeight` here, or Cesium builds
+        // an ordinary primitive and then ignores the surface it was told to
+        // land on — in silence, the way `franceEnergy.js` records for its
+        // prisms.
+        classificationType,
+        // The stroke is the edge. An outline here would double it at a
+        // slightly different width and read as a seam.
+        outline: false,
+      },
+    });
+    drawn += 1;
+  }
+  return drawn;
+}
+
+/**
+ * Draw the commune outline, one polyline per ring, over its wash.
+ *
+ * THE EDGE, NOT THE SUBJECT, since {@link drawCommuneWash} arrived: what this
+ * stroke now carries alone is the PRECISION of the boundary. A wash at alpha
+ * 0.16 has a soft edge over a busy orthophoto, and the one thing a reader must
+ * be able to see sharply is where the jurisdiction the verdicts belong to
+ * actually ends.
  *
  * NOT PICKABLE, and that is a property of the technique rather than an
  * oversight: a `clampToGround` polyline is a ground primitive and `scene.pick`
@@ -285,7 +498,7 @@ export function communeDescription(payload, contour) {
   const concerned = hazards.filter((entry) => entry.communeStanding === 'concerned');
   const varying = hazards.filter((entry) => entry.variesByAddress);
   return [
-    `Limite communale de ${contour.name} (${contour.code})`,
+    `Commune de ${contour.name} (${contour.code})`,
     concerned.length
       ? `${concerned.length} risque${concerned.length > 1 ? 's' : ''} recensé${concerned.length > 1 ? 's' : ''} sur la commune : `
         + concerned.map((entry) => entry.label).join(', ')
@@ -293,13 +506,15 @@ export function communeDescription(payload, contour) {
     varying.length
       ? `${varying.length} verdict${varying.length > 1 ? 's' : ''} diffère${varying.length > 1 ? 'nt' : ''} entre la commune et l’adresse scannée`
       : null,
-    // Said on the object itself, not only in the key: this outline is a legal
+    // Said on the object itself, not only in the key: this shape is a legal
     // boundary that has been decimated to be drawable, and the one thing a
-    // reader must not do with it is measure against it.
+    // reader must not do with it is measure against it. It matters more now
+    // that the boundary is FILLED: a wash reads as an area, and an area
+    // invites being compared with the ground under its edge.
     contour.simplified
       ? 'contour simplifié pour l’affichage — ce n’est pas la limite cadastrale'
       : null,
-    'Aucun de ces risques n’a d’emprise publiée : le trait porte la commune, pas la zone exposée',
+    'Aucun de ces risques n’a d’emprise publiée : la surbrillance porte la commune, pas la zone exposée',
   ].filter(Boolean).join(' · ');
 }
 
@@ -356,10 +571,15 @@ export function georisquesLegend(payload, summary = null) {
   const contour = payload.communeContour || null;
   if (contour) {
     legend.push({
-      label: `Limite de ${contour.name}`,
+      label: `Commune de ${contour.name}`,
       color: COMMUNE_STROKE_CSS,
-      blurb: 'Le périmètre sur lequel portent les verdicts ci-dessous — '
-        + 'pas l\u2019étendue d\u2019un risque, qu\u2019aucun de ces aléas ne publie.',
+      // WHAT THE TINT IS, AND WHAT IT IS NOT, in that order. The shape on
+      // screen is now a filled commune, and a reader who has just read
+      // "inondation — concerné" three lines below is one glance away from
+      // taking the wash for the water.
+      blurb: 'La surbrillance couvre la commune sur laquelle portent les '
+        + 'verdicts ci-dessous — c\u2019est un périmètre administratif, pas '
+        + 'l\u2019étendue d\u2019un risque, qu\u2019aucun de ces aléas ne publie.',
     });
   }
 
@@ -428,9 +648,12 @@ export function georisquesLegend(payload, summary = null) {
   if (!legend.length) return null;
   return {
     legend,
-    // NOT `surfaceFill`. Nothing here is a ground-classified WASH, so the
-    // shared note about the drape over the photorealistic mesh does not apply
-    // — a stroke has no interior to be shaded on a façade.
+    // DECLARED whenever a commune is washed, which is the condition
+    // `drawCommuneWash` draws on. The shell mounts the shared drape sentence
+    // from `surfaceFillNotice.js` only while the photorealistic mesh is the
+    // classification surface — where the tint climbs the façades and the
+    // tileset's own baked shading darkens it.
+    surfaceFill: Boolean(contour),
     note: 'Les aléas n\u2019ont pas de géométrie chez Géorisques : ils sont dits, pas dessinés.',
     legendNote: summary?.commune
       ? `Géorisques — BRGM / MTE · ${summary.commune}${summary.radonClass ? ` · radon classe ${summary.radonClass}` : ''}`
@@ -457,6 +680,12 @@ const georisquesLayer = createAddressScanLayer({
     const contour = payload.communeContour || null;
     if (contour) {
       const description = communeDescription(payload, contour);
+      // The wash FIRST, so the ground primitives are batched in the order they
+      // are read: the tint is the subject, the stroke is its edge. Cesium
+      // draws a `GroundPolylinePrimitive` over a `GroundPrimitive` regardless,
+      // which is the same stacking `urbanismeGpu.js` and `delinquanceFrance.js`
+      // rely on for their own outlines.
+      drawCommuneWash(dataSource, contour, classificationType);
       drawCommuneOutline(dataSource, contour, classificationType, description);
       // The name, written on the ground at the outline's centre. Without it the
       // stroke is an unexplained shape: the key names the commune, but a reader
