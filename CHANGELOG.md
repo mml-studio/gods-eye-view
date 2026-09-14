@@ -229,6 +229,68 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-10
 
 ### Changed
+- **Deux rues perpendiculaires traversaient le même carrefour en même temps, et
+  le boulevard Saint-Michel roulait à 66 km/h sous un panneau 30.** Les points
+  du trafic sont une simulation — les tuiles TomTom portent un ratio de
+  congestion par tronçon, jamais un véhicule — mais la simulation ignorait deux
+  choses que n'importe qui voit depuis une vue aérienne : les feux et les
+  limitations.
+
+  **IL N'Y AVAIT AUCUN CARREFOUR DANS LE MODÈLE.** Chaque point suivait une way
+  OSM d'un bout à l'autre, et le seul feu rouge était un dé lancé à 0,8 % par
+  franchissement, sans aucune corrélation entre deux rues. Une horloge unique de
+  **70 s** les met d'accord : les rues d'azimut 0–90° passent pendant
+  35 s, celles de 90–180° pendant les 35 suivantes. Deux rues perpendiculaires
+  tombent toujours dans des phases opposées — c'est une propriété de
+  l'arithmétique, pas un réglage, et un test l'énumère sur tout le cercle.
+
+  **ET LE CARREFOUR EST LE VRAI CARREFOUR.** Un nœud que deux ways se partagent,
+  trouvé dans la géométrie déjà chargée — aucune requête Overpass en plus. La
+  première version s'arrêtait deux segments avant la FIN DE LA WAY, ce qui n'est
+  pas le même endroit : les points se figeaient au milieu de la rue pendant que
+  ceux déjà engagés traversaient le croisement. Mesuré sur la vue de la capture :
+  1 008 nœuds de carrefour, dont **66 au beau milieu d'une way**, que la règle
+  « fin de way » ne pouvait pas voir. Un point qui n'a plus de place dans la file
+  s'arrête sur place plutôt que de passer au rouge.
+
+  ```
+  file   .:-+* .:---=== :--=          ← la file se remplit puis se vide
+  vert  00000011111111100000          ← l'axe qui passe
+  ```
+
+  Mesuré aux 4 vrais croisements de la vue : quand un axe est au rouge, **jusqu'à
+  75 % de ses points sont à l'arrêt et 0,0 % de ceux de l'axe vert**.
+
+  **LA LIMITE LÉGALE EST UN PLAFOND, PAS UNE CONSIGNE.** `maxspeed` d'OSM
+  n'était lu nulle part ; la vitesse sortait de la seule classe de voirie. Elle
+  est maintenant `min(classe, limite affichée)` — le sens compte : substituer
+  la limite aurait rendu les autoroutes **44 % plus rapides** (130 au lieu des
+  90 qu'on y roule vraiment) en payant un gain de réalisme par une régression.
+  Sur la vue qui a signalé le défaut (place Edmond-Rostand, 242 ways, 100 %
+  tagguées) : 48 ways bridées, les 30 `primary` passent de **50 à 30 km/h**, les
+  15 `secondary` de 40 à 30, et le point le plus rapide de l'écran tombe de
+  **66 à 39 km/h**.
+
+  Une autoroute ne fait jamais la queue (elle n'a pas de carrefour), un
+  rond-point non plus (il existe pour s'en passer), et un point recyclé prend
+  aussitôt sa place dans la file du bloc où il entre — sans quoi les rues d'un
+  seul segment, dont l'unique franchissement EST le recyclage, ne s'arrêtaient
+  jamais. Un axe attend, la carte ne gèle pas : moins de 16 % des points de
+  l'écran sont à l'arrêt au pic.
+
+  **ET LE CADRE EST LÀ SANS QU'ON LE DEMANDE.** Allumer Trafic routier allume
+  la couche Détection : un point nu ne dit rien, le cadre en fait un contact
+  lisible — identifiant, crochets, et en mode live une bordure teintée par la
+  congestion, dont le canvas passe au-dessus de la chaîne post-FX. C'est le
+  mécanisme de Contacts, inchangé : l'activation prend un instantané, la
+  désactivation le rejoue. Éteindre le trafic rend donc exactement l'état de
+  détection d'avant, y compris OFF. Un seul propriétaire et un seul
+  instantané — deux, et chacun restaurerait l'état pré-existant de l'autre.
+
+  Nouveau harnais `npm run qa:traffic-signals`, qui n'assert sur aucun pixel :
+  aucune entité Cesium ne se peint en headless, donc la preuve lit le modèle —
+  y compris à l'échelle où un lecteur regarde vraiment, un croisement à la fois.
+
 - **Une aire du Pays Basque disait « 1 avail » puis « 1 e-bike » : cinq lignes
   et deux langues pour un seul vélo.** La fiche des véhicules partagés était le
   dernier écran de la couche resté en anglais abrégé — `avail`, `docks`, `cap`,

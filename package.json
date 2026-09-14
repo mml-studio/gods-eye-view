@@ -59,6 +59,7 @@
     "qa:idfm-stops": "node scripts/qa-idfm-stops.mjs",
     "qa:road-status-fr": "node scripts/qa-road-status-fr.mjs",
     "qa:traffic-lod": "node scripts/qa-traffic-lod.mjs",
+    "qa:traffic-signals": "node scripts/qa-traffic-signals.mjs",
     "qa:edf-plants": "node scripts/qa-edf-plants.mjs",
     "qa:energy-fr": "node scripts/qa-energy-fr.mjs",
     "qa:shared-mobility-fr": "node scripts/qa-shared-mobility-fr.mjs",
