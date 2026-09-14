@@ -89,6 +89,7 @@
     "qa:schools-fr": "node scripts/qa-schools-fr.mjs",
     "qa:dams": "node scripts/qa-dams.mjs",
     "qa:cadastre-highlight": "node scripts/qa-cadastre-highlight.mjs",
+    "qa:sitadel-floor": "node scripts/qa-sitadel-floor.mjs",
     "qa:petite-enfance-fr": "node scripts/qa-petite-enfance-fr.mjs",
     "qa:delinquance-fr": "node scripts/qa-delinquance-fr.mjs",
     "qa:datasets": "node scripts/qa-datasets.mjs",

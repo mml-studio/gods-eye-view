@@ -51,11 +51,15 @@ import sitadelFranceLayer, {
   SITADEL_NO_HEIGHT_DWELLINGS,
   sitadelHeightLegend,
   sitadelHeightRefusal,
+  sitadelFloorM,
   sitadelParcelFloorM,
   sitadelPrismClipped,
   sitadelPrismHeightM,
+  _drawSitadelPackForTest,
   _drawSitadelSurfacesForTest,
   _sitadelColdFloorPendingForTest,
+  _sitadelFloorReanchorPendingForTest,
+  _sitadelRefreshFloorsForTest,
   _sitadelPrismTallyForTest,
   _clearSitadelSelectionForTest,
   _selectSitadelForTest,
@@ -77,6 +81,7 @@ import {
   projectSitadelCommune,
 } from './sitadelFeed.js';
 import { _clearMeshFloorCellsForTest, reportMeshFloorCell } from './groundFloor.js';
+import { _resetProvisionalFloorsForTest } from './provisionalFloor.js';
 import * as Cesium from 'cesium';
 
 // Cesium reads the aliased line-width range off a live WebGL context, and there
@@ -922,4 +927,202 @@ test('selecting an extruded plot rings its roof, not the ground under an opaque 
 
   _clearSitadelSelectionForTest();
   _clearMeshFloorCellsForTest();
+});
+
+// ── The dot has to be on the ground it describes ────────────────────────────
+//
+// Measured in the running app, Paris, 2026-09-14, camera at 500 m: all 4 753
+// dots sat at ellipsoidal height 1.0 m while `scene.sampleHeight` read the
+// drawn mesh under them at 76.7–96.9 m. A dot 80 m under the city is still
+// painted — `disableDepthTestDistance: Infinity` — so its screen position
+// follows the CAMERA POSE, and the layer slides across the rooftops when the
+// reader turns the map. The three tests below close the three doors: the floor
+// the anchor reads, the probe that fills a cold cell, and the pass that moves a
+// dot already drawn.
+
+/** Nantes-ish mesh: a scene that answers `sampleHeight` like a streamed tileset. */
+function meshScene({ height = 30, lat = 47.2184, lon = -1.5536, camHeightM = 900 } = {}) {
+  const calls = [];
+  return {
+    calls,
+    canvas: { clientWidth: 1280, clientHeight: 720 },
+    globe: { show: false },
+    primitives: { length: 0, get: () => null },
+    camera: {
+      positionCartographic: {
+        height: camHeightM,
+        latitude: lat * Math.PI / 180,
+        longitude: lon * Math.PI / 180,
+      },
+    },
+    requestRender: () => {},
+    height,
+    sampleHeight(carto) {
+      calls.push([Cesium.Math.toDegrees(carto.longitude), Cesium.Math.toDegrees(carto.latitude)]);
+      return this.height; // settable, so a test can let the real surface arrive
+    },
+  };
+}
+
+/** The ellipsoidal height one dot was actually drawn at. */
+function dotHeightM(point) {
+  return Cesium.Cartographic.fromCartesian(point.position).height;
+}
+
+test('the floor prefers the measured DEM and falls back to the drawn surface', () => {
+  _clearMeshFloorCellsForTest();
+  _resetProvisionalFloorsForTest();
+  const parcel = PACK.parcels[0];
+  const [lon, lat] = parcel.p;
+
+  // Neither source has anything. Null is the honest answer, and the caller is
+  // the one that decides what to do about it — never 0, which is the ellipsoid.
+  assert.equal(sitadelFloorM(lat, lon), null);
+  assert.equal(sitadelFloorM(NaN, lon), null);
+  assert.equal(sitadelFloorM(lat, undefined), null);
+
+  // The drawn surface answers while the DEM is still in flight.
+  const viewer = { scene: meshScene({ height: 41.5, lat, lon }) };
+  _setSitadelStateForTest({ payload: PACK, viewer, points: new Cesium.PointPrimitiveCollection() });
+  _drawSitadelPackForTest(PACK);
+  assert.equal(sitadelFloorM(lat, lon), 41.5, 'the mesh read fills the cold cell');
+
+  // The DEM lands and takes over: it is the survey, the probe was a stand-in.
+  reportMeshFloorCell(lat, lon, 55.25);
+  assert.equal(sitadelFloorM(lat, lon), 55.25);
+
+  _clearSitadelSelectionForTest();
+  _clearMeshFloorCellsForTest();
+  _resetProvisionalFloorsForTest();
+});
+
+test('every dot is drawn on the surface under it, never on the ellipsoid', () => {
+  _clearMeshFloorCellsForTest();
+  _resetProvisionalFloorsForTest();
+  const scene = meshScene({ height: 47.75 });
+  _setSitadelStateForTest({
+    payload: PACK, viewer: { scene }, points: new Cesium.PointPrimitiveCollection(),
+  });
+  const points = _drawSitadelPackForTest(PACK);
+  assert.equal(points.length, PACK.summary.placed);
+  assert.ok(scene.calls.length > 0, 'the drawn surface was probed before a single anchor was taken');
+  for (let i = 0; i < points.length; i++) {
+    // 47.75 m of ground + the 1 m lift. The pre-fix number was 1.0 m flat —
+    // the WGS84 ellipsoid, 44–55 m under metropolitan France.
+    assert.ok(Math.abs(dotHeightM(points.get(i)) - 48.75) < 0.01, String(dotHeightM(points.get(i))));
+  }
+  // The card and the DETECT callout stand on the same floor as the dot, so a
+  // reader never sees a label and its own mark in two places.
+  const record = _sitadelRecordForTest(_sitadelRecordIdsForTest()[0]);
+  const card = createSitadelSelectedOverlayEntry(record, PACK);
+  assert.ok(Math.abs(Cesium.Cartographic.fromCartesian(card.position).height - 51.75) < 0.01);
+  const [detect] = _sitadelDetectablesForTest({ maxCount: 1 });
+  assert.ok(Math.abs(Cesium.Cartographic.fromCartesian(detect.position).height - 51.75) < 0.01);
+
+  _clearSitadelSelectionForTest();
+  _clearMeshFloorCellsForTest();
+  _resetProvisionalFloorsForTest();
+});
+
+test('a dot drawn on cold ground is MOVED once the floor lands, not left buried', () => {
+  _clearMeshFloorCellsForTest();
+  _resetProvisionalFloorsForTest();
+  // No surface and no DEM: this is the state `drawPack` runs in on arrival, and
+  // the one the whole defect lived in.
+  const viewer = { scene: { canvas: { clientWidth: 1280, clientHeight: 720 }, requestRender: () => {} } };
+  _setSitadelStateForTest({
+    payload: PACK, viewer, points: new Cesium.PointPrimitiveCollection(),
+  });
+  const points = _drawSitadelPackForTest(PACK);
+  assert.ok(points.length > 0);
+  for (let i = 0; i < points.length; i++) {
+    assert.ok(Math.abs(dotHeightM(points.get(i)) - 1) < 0.01, 'nothing has answered yet');
+  }
+  // A pass is armed rather than the dots being abandoned where they landed.
+  assert.equal(_sitadelFloorReanchorPendingForTest(), true, 'the layer comes back for them');
+
+  // The DEM lands, which is what actually happens a second after the draw.
+  for (const parcel of PACK.parcels) {
+    if (Array.isArray(parcel?.p)) reportMeshFloorCell(parcel.p[1], parcel.p[0], 62.5);
+  }
+  _sitadelRefreshFloorsForTest();
+  for (let i = 0; i < points.length; i++) {
+    assert.ok(Math.abs(dotHeightM(points.get(i)) - 63.5) < 0.01,
+      `dot ${i} still at ${dotHeightM(points.get(i))} m`);
+  }
+  // Nothing is cold any more, so the ladder stops instead of waking forever.
+  assert.equal(_sitadelFloorReanchorPendingForTest(), false);
+
+  _clearSitadelSelectionForTest();
+  _clearMeshFloorCellsForTest();
+  _resetProvisionalFloorsForTest();
+});
+
+test('a label never outruns its own dot when a floor store forgets a cell', () => {
+  _clearMeshFloorCellsForTest();
+  _resetProvisionalFloorsForTest();
+  const scene = meshScene({ height: 33.5 });
+  _setSitadelStateForTest({
+    payload: PACK, viewer: { scene }, points: new Cesium.PointPrimitiveCollection(),
+  });
+  const points = _drawSitadelPackForTest(PACK);
+  const record = _sitadelRecordForTest(_sitadelRecordIdsForTest()[0]);
+  assert.ok(Math.abs(dotHeightM(points.get(0)) - 34.5) < 0.01);
+
+  // The provisional store is an LRU: past 4 000 cells it drops its oldest, and
+  // a commune the size of Paris plus the layers sharing it can reach that.
+  // The dot is already seated; a card rebuilt after the eviction must not be
+  // put back on the ellipsoid under it.
+  _resetProvisionalFloorsForTest();
+  assert.equal(sitadelFloorM(record.at.lat, record.at.lon), null, 'both stores are silent');
+  const card = createSitadelSelectedOverlayEntry(record, PACK);
+  assert.ok(Math.abs(Cesium.Cartographic.fromCartesian(card.position).height - 37.5) < 0.01,
+    'the card stands on the floor the dot was seated at, not on the ellipsoid');
+
+  // And the pass that follows leaves the seated dot alone rather than dragging
+  // it down to a floor nobody can measure any more.
+  _sitadelRefreshFloorsForTest();
+  assert.ok(Math.abs(dotHeightM(points.get(0)) - 34.5) < 0.01, 'a silence never overwrites a reading');
+
+  _clearSitadelSelectionForTest();
+  _clearMeshFloorCellsForTest();
+  _resetProvisionalFloorsForTest();
+});
+
+test('a surface that answers −415 m under Nantes is refused, not drawn', () => {
+  _clearMeshFloorCellsForTest();
+  _resetProvisionalFloorsForTest();
+  // Measured 2026-09-14 with the tileset reporting `tilesLoaded: true`: 81
+  // probes on a 1,3 km grid over Nantes ALL answered between −424.9 m and
+  // −360.2 m — a planet-scale root tile answering for a city. Those readings
+  // pass `provisionalFloor.js`'s WORLD band (−500 m), so before this guard
+  // every one was latched and lent to the commune by the fill radius.
+  const scene = meshScene({ height: -415.7 });
+  _setSitadelStateForTest({
+    payload: PACK, viewer: { scene }, points: new Cesium.PointPrimitiveCollection(),
+  });
+  const points = _drawSitadelPackForTest(PACK);
+  assert.ok(scene.calls.length > 0, 'the surface was asked');
+  const parcel = PACK.parcels[0];
+  assert.equal(sitadelFloorM(parcel.p[1], parcel.p[0]), null, 'and its answer was refused');
+  for (let i = 0; i < points.length; i++) {
+    // Not seated, and that is the honest outcome — but never 400 m under the
+    // city, which is worse than the ellipsoid this whole change is about.
+    assert.ok(Math.abs(dotHeightM(points.get(i)) - 1) < 0.01, String(dotHeightM(points.get(i))));
+  }
+  assert.equal(_sitadelFloorReanchorPendingForTest(), true, 'and the layer keeps asking');
+
+  // A refusal must not latch: the next pass asks the same cells again, and the
+  // moment the real surface streams the dots are seated on it.
+  const before = scene.calls.length;
+  scene.height = 41.5;
+  _sitadelRefreshFloorsForTest();
+  assert.ok(scene.calls.length > before, 'a refused cell is re-probed, never latched');
+  for (let i = 0; i < points.length; i++) {
+    assert.ok(Math.abs(dotHeightM(points.get(i)) - 42.5) < 0.01, String(dotHeightM(points.get(i))));
+  }
+
+  _clearSitadelSelectionForTest();
+  _clearMeshFloorCellsForTest();
+  _resetProvisionalFloorsForTest();
 });

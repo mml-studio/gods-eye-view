@@ -51,7 +51,17 @@ export const PROVISIONAL_MAX_CAMERA_M = 25_000;
  *  sample. This is the junk guard, and it is not theoretical: probing a
  *  tileset that had not streamed returned -11 838 m in this app's own
  *  headless run. Bounds are the Dead Sea shore and above Everest, both with
- *  room for the geoid. */
+ *  room for the geoid.
+ *
+ *  A WORLD band cannot catch a coarse-LOD read, and that is why
+ *  `sampleProvisionalFloors` takes `minM`/`maxM`. Measured over Nantes,
+ *  2026-09-14, tileset reporting `tilesLoaded: true`: 81 probes on a 1,3 km
+ *  grid ALL answered between -424.9 m and -360.2 m, in a smooth 5 % ramp —
+ *  a planet-scale root tile, not the city. Every one of those readings is
+ *  inside this band, so every one was latched, and `fillFromNearest` then
+ *  lent a single junk reading to a whole commune. A caller that knows its
+ *  subject stands on FRENCH ground can say so, and turn 500 m of confident
+ *  nonsense into an honest miss. */
 export const PROVISIONAL_MIN_M = -500;
 export const PROVISIONAL_MAX_M = 9_500;
 /** @constant {number} Default distance, in km, a cell the probe budget did not
@@ -126,7 +136,10 @@ export function provisionalFloor(lat, lon) {
  *
  * @param {Cesium.Scene|undefined} scene - The scene (skipped when absent).
  * @param {Array<{lat: number, lon: number}>} points - Rendered points.
- * @param {{maxProbes?: number, maxCameraM?: number, fillKm?: number}} [options]
+ * @param {{maxProbes?: number, maxCameraM?: number, fillKm?: number,
+ *   minM?: number, maxM?: number}} [options] `minM`/`maxM` narrow the
+ *   plausibility band to the ground the CALLER's subject can stand on; see
+ *   {@link PROVISIONAL_MIN_M}.
  * @returns {{probes: number, pending: number}} Probes actually spent, and how
  *   many cells a LATER pass could still do better on — the caller's cue that
  *   coming back once the tiles land is worth a re-render. See
@@ -138,6 +151,10 @@ export function sampleProvisionalFloors(scene, points, options = {}) {
   const maxCameraM = Number.isFinite(options.maxCameraM)
     ? options.maxCameraM : PROVISIONAL_MAX_CAMERA_M;
   const fillKm = Number.isFinite(options.fillKm) ? options.fillKm : PROVISIONAL_FILL_KM;
+  const minM = Number.isFinite(options.minM)
+    ? Math.max(options.minM, PROVISIONAL_MIN_M) : PROVISIONAL_MIN_M;
+  const maxM = Number.isFinite(options.maxM)
+    ? Math.min(options.maxM, PROVISIONAL_MAX_M) : PROVISIONAL_MAX_M;
 
   if (!scene || typeof scene.sampleHeight !== 'function') return noSampling(points);
   if (!Array.isArray(points) || !points.length) return { probes: 0, pending: 0 };
@@ -180,9 +197,21 @@ export function sampleProvisionalFloors(scene, points, options = {}) {
     // yet, and a forgotten miss would spend the same 40 probes on the same 40
     // cells on every rebuild while the ones behind them never got a turn.
     // `shouldReprobe` retries it as soon as the conditions can beat it.
-    if (!Number.isFinite(height)
-      || height < PROVISIONAL_MIN_M || height > PROVISIONAL_MAX_M) {
+    //
+    // A reading REFUSED by the band is recorded differently, because it is a
+    // different fact. An empty pick says "nothing is drawn here yet"; a
+    // -415 m answer under Nantes says the tileset ANSWERED and lied, and the
+    // `drained` flag it was taken under lied with it. Latching that on
+    // `drained: true` would make it permanent, so a refusal stays open and is
+    // re-probed on every pass until a real surface arrives.
+    if (!Number.isFinite(height)) {
       setProvisional(key, { height: null, camHeightM, drained, borrowed: false });
+      continue;
+    }
+    if (height < minM || height > maxM) {
+      setProvisional(key, {
+        height: null, camHeightM, drained, borrowed: false, refused: true,
+      });
       continue;
     }
     setProvisional(key, { height, camHeightM, drained, borrowed: false });
@@ -255,6 +284,7 @@ function orderByCameraDistance(cells, camCarto) {
  */
 function shouldReprobe(entry, camHeightM, drained) {
   if (!entry) return true;
+  if (entry.refused) return true;             // the surface answered nonsense — ask again
   if (entry.borrowed) return true;            // a real read beats a borrowed one
   if (drained && !entry.drained) return true; // taken mid-stream, tiles are in now
   return camHeightM * 2 <= entry.camHeightM;  // twice as close: finer tiles
