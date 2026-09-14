@@ -273,6 +273,41 @@ test('re-entrancy is decided by the saved snapshot, not the engine state', () =>
   );
 });
 
+test('a layer that wants the brackets claims the SAME snapshot Contacts uses', () => {
+  // Road traffic renders ~2 000 bare points; the bracket is what makes one
+  // readable. Asked for directly: the frame should be on by default for that
+  // layer. It rides the Contacts mechanism rather than a second one — two
+  // owners each holding their own pre-state would restore each other's.
+  assert.match(
+    uiSource,
+    /const DETECTION_DEMANDING_LAYERS = new Set\(\['traffic'\]\)/,
+    'traffic is registered as a detection-demanding layer',
+  );
+  const helper = uiSource.slice(
+    uiSource.indexOf('_syncContactsDetection() {'),
+    uiSource.indexOf('/** Apply a temporary cockpit-only'),
+  );
+  assert.match(
+    helper,
+    /active: this\._contextMode === 'flights' \|\| this\._layerDemandsDetection\(\)/,
+    'the layer demand is ORed into the same activation, not given its own snapshot',
+  );
+  // And it has to be driven by visibility, or enabling the layer changes
+  // nothing until some unrelated context transition happens to fire.
+  assert.match(
+    uiSource,
+    /DETECTION_DEMANDING_LAYERS\.has\(change\?\.layerId\)[\s\S]{0,120}?this\._syncContactsDetection\(\);/,
+    'the layer-visibility stream drives the sync',
+  );
+  // Effective visibility, not the user toggle: a layer switched on as another
+  // mode's dependency draws the same dots.
+  const predicate = uiSource.slice(
+    uiSource.indexOf('_layerDemandsDetection() {'),
+    uiSource.indexOf('_applyDetectionPreset(det) {'),
+  );
+  assert.match(predicate, /isEffectivelyEnabled/);
+});
+
 test('detection is wired to the Contacts transaction, and cockpit no longer touches it', () => {
   // The trigger lives on the context-mode funnel, gated on the transaction
   // having SETTLED so a failed activation cannot strand detection on.

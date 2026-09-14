@@ -4076,7 +4076,41 @@ easier to meet (detection is now on more often), but does not create it.
   road fetch, so a failure landing after the 250 ms paint race still ends the
   shared loading batch as LOAD FAILED. Harnesses must gate on `!stats.error`,
   never on `mode === 'live'` alone.
-- Traffic runs in `sim` mode (white dots, hardcoded speeds) unless `TOMTOM_API_KEY`
+- **The dots obey two things TomTom cannot tell them: signals and speed limits.**
+  A dot's cruising speed is `min(highway-class table, OSM maxspeed)` —
+  `roadSpeed.js`, a ceiling and never a substitution, so a Paris `primary`
+  renders at its posted 30 km/h while a motorway keeps the table's 90 rather
+  than jumping to the legal 130. Junctions come from a single global two-phase
+  clock (`trafficSignals.js`, `SIGNAL_CYCLE_MS` 70 s): a street's bearing
+  folded to 0–180° buckets it into phase 0 (0–90°) or phase 1 (90–180°), and
+  one phase holds the green at a time, so perpendicular streets alternate by
+  construction with no per-junction data. The junction itself is a vertex two
+  ways share, found in the geometry already fetched (`roadJunctions.js`) — no
+  second Overpass request, and an exact coordinate match rather than a radius,
+  so a bridge over a street is correctly NOT a junction. A dot drives to a stop
+  line `STOP_LINE_M` short of the junction ahead of it, `QUEUE_GAP_M` further
+  back per dot already queued; it is never teleported onto its place. A dot
+  with no room left stops where it stands rather than crossing on a red.
+  Grade-separated classes and `junction=roundabout` never queue. `getStats()`
+  publishes `signalHeldByPhase`, `signalDotsByPhase`, `signalGreenPhase`,
+  `signalRedCrossings` and `stoppedDots`; `__qaRoads()`, `__qaDots()` and
+  `__qaJunctions()` publish the model itself. All of it exists because no
+  Cesium point primitive paints in headless software GL —
+  `qa-traffic-signals.mjs` proves the model, not a pixel, and asserts at one
+  crossing at a time as well as viewport-wide: a viewport-wide share can look
+  healthy while the junction someone is watching still has both flows moving.
+  What it deliberately does not model: junction geometry, turning movements,
+  and local phase offsets.
+- **Enabling Traffic enables the detection overlay.** `DETECTION_DEMANDING_LAYERS`
+  (`ui.js`) is ORed into the Contacts detection claim rather than given its own
+  snapshot: two owners each holding their own pre-state would restore each
+  other's. Enabling takes a snapshot and applies the tactical preset (Dense @
+  75 %); disabling replays the snapshot, so a viewer who had detection OFF gets
+  OFF back. Driven from the layer-visibility stream and read through
+  `isEffectivelyEnabled`, so a layer switched on as another mode's dependency
+  gets the same brackets.
+- Traffic runs in `sim` mode (white dots, class-table speeds capped by OSM
+  `maxspeed`) unless `TOMTOM_API_KEY`
   is configured (env or Keychain `tomtom-api`/`api-key`), which enables `live` mode:
   TomTom flow vector tiles via the budget-governed `/api/tomtom` proxy
   (`.gev-cache/tomtom/`, 120 s TTL, `TOMTOM_DAILY_TILE_BUDGET` default 40k/day),

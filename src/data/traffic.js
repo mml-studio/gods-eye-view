@@ -22,6 +22,18 @@ import {
   trafficBucketTier,
 } from './trafficPresetStyle.js';
 import { queuePlatoons, locateAlongRoad } from './trafficQueue.js';
+import { SPEED_MPS, roadCruiseMps } from './roadSpeed.js';
+import {
+  roadSignalPhase,
+  redEndsAt,
+  greenPhase,
+  SIGNAL_CYCLE_MS,
+  SIGNAL_MIN_STOP_MS,
+  SIGNAL_START_JITTER_MS,
+  QUEUE_GAP_M,
+  STOP_LINE_M,
+} from './trafficSignals.js';
+import { countNodeUses, junctionFlags } from './roadJunctions.js';
 import { registerDynamicCredit, TOMTOM_CREDIT } from './dataCredits.js';
 import { holdContinuousRender, releaseContinuousRender } from '../renderGovernor.js';
 import { claimCameraSensitivity, releaseCameraSensitivity } from './cameraSensitivity.js';
@@ -87,16 +99,8 @@ const TRAFFIC_TIMING_ENABLED = import.meta.env?.DEV
   && typeof window !== 'undefined'
   && new URLSearchParams(window.location.search).get('trafficDebug') === '1';
 
-/** @const {Object<string,number>} Speed in meters per second by highway tag (approximate real-world values) */
-const SPEED_MPS = {
-  motorway:     25,   // ~90 km/h
-  trunk:        20,   // ~72 km/h
-  primary:      14,   // ~50 km/h
-  secondary:    11,   // ~40 km/h
-  tertiary:     8,    // ~30 km/h
-  residential:  5,    // ~18 km/h
-  unclassified: 5,
-};
+// Speed per highway class now lives in `roadSpeed.js` alongside the OSM
+// `maxspeed` ceiling that caps it — SPEED_MPS is imported above.
 
 /** @const {Object<string,number>} Density multiplier — higher values spawn more dots on important roads */
 const DENSITY_MULT = {
@@ -625,12 +629,16 @@ async function fetchRoads(
  *
  * @param {Object} overpassData - Raw JSON response from the Overpass API.
  * @param {Array}  overpassData.elements - Array of OSM elements.
- * @returns {Array<{coords:number[][], type:string, waypoints:Cesium.Cartesian3[], segmentDist:number[]}>}
- *   Parsed road objects ready for dot spawning.
+ * @returns {Array<{coords:number[][], type:string, oneway:number,
+ *   waypoints:Cesium.Cartesian3[], segmentDist:number[], cruiseMps:number,
+ *   signalPhase:0|1|null}>} Parsed road objects ready for dot spawning.
  */
 function parseRoads(overpassData) {
   if (!overpassData || !overpassData.elements) return [];
 
+  // One pass over the whole response first: a junction is a vertex two ways
+  // share, and that is only knowable across ways, not within one.
+  const nodeUses = countNodeUses(overpassData.elements);
   const roads = [];
   for (const el of overpassData.elements) {
     if (el.type !== 'way' || !el.geometry || el.geometry.length < 2) continue;
@@ -686,7 +694,27 @@ function parseRoads(overpassData) {
       segmentDist.push(Cesium.Cartesian3.distance(waypoints[i], waypoints[i + 1]));
     }
 
-    roads.push({ coords, type, oneway, waypoints, segmentDist });
+    roads.push({
+      coords,
+      type,
+      oneway,
+      waypoints,
+      segmentDist,
+      // Cruising speed, capped by the posted limit when OSM knows one. The
+      // class table alone ran Paris `primary` at 50 km/h base (65 with spawn
+      // noise) on streets limited to 30 since 2021.
+      cruiseMps: roadCruiseMps(type, el.tags),
+      // Signal phase from the street's AXIS — perpendicular streets land in
+      // opposite phases, which is what stops both of them crossing at once.
+      // null = grade-separated or a roundabout: never queues.
+      signalPhase: roadSignalPhase(type, coords, el.tags),
+      // Which vertices are shared with another way, i.e. where the dots stop.
+      junctions: junctionFlags(coords, nodeUses),
+      // Per-half-cycle queue counters (see joinQueue).
+      queueHalf: -1,
+      queueFwd: 0,
+      queueBack: 0,
+    });
   }
 
   return roads;
@@ -842,7 +870,8 @@ function allocateRoadDotBudgets(roads, altitude, dotCap) {
  * randomized speed (base +/-30%), and given a direction (alternating
  * forward/backward to simulate two-way traffic).
  *
- * @param {{waypoints:Cesium.Cartesian3[], segmentDist:number[], type:string, coords:number[][]}} road
+ * @param {{waypoints:Cesium.Cartesian3[], segmentDist:number[], type:string,
+ *   coords:number[][], cruiseMps?:number, signalPhase?:0|1|null}} road
  *   Parsed road object with pre-computed waypoints.
  * @param {number} altitude      - Camera altitude (used if budgetCount is null).
  * @param {number|null} [budgetCount=null] - Pre-allocated dot count. Falls back
@@ -861,7 +890,10 @@ function spawnDotsForRoad(road, altitude, budgetCount = null) {
   const numSegments = road.waypoints.length - 1;
   if (numSegments < 1 || count <= 0) return;
 
-  const baseMps = SPEED_MPS[road.type] || 5;
+  // `cruiseMps` is the parsed road's class speed already capped by its OSM
+  // `maxspeed`. The fallback covers roads built outside parseRoads (tests,
+  // fixtures) so they keep the pre-maxspeed behaviour exactly.
+  const baseMps = road.cruiseMps || SPEED_MPS[road.type] || 5;
   const bucket = flow ? flowBucket(flow.level) : null;
   // Jam dots get +1px: a red queue should read as a queue at a glance.
   // Preset-aware styling adds its own size delta and floors the base (0 /
@@ -954,6 +986,10 @@ function spawnDotsForRoad(road, altitude, budgetCount = null) {
       baseMps: noisedMps, // pre-flow speed, for in-place flow rescale
       direction,
       stoppedUntil: 0,
+      // Stop line for the junction ahead (-1 = none). The dot drives to it
+      // under its own speed; it is never teleported onto it.
+      stopSeg: -1,
+      stopT: 0,
       // Stop-and-go creep state (jam-viz density prototype): jam dots
       // alternate move-bursts and stops. Null in sim mode and for non-jam.
       creep: (bucket === 'jam' && jamDensityOn())
@@ -969,12 +1005,51 @@ function spawnDotsForRoad(road, altitude, budgetCount = null) {
 let _lastAnimTime = 0;
 /** @type {number} Running frame counter (for diagnostics) */
 let _animFrame = 0;
+/**
+ * @type {number[]} Dots held at a red signal on the last tick, BY PHASE.
+ * Read by getStats() — no Cesium point paints in a headless harness, so the
+ * model has to say out loud which axis is stopped. Split by phase because the
+ * count alone cannot tell "the north-south streets are waiting" from "every
+ * street froze", and only the first of those is the feature.
+ */
+let _signalHeldByPhase = [0, 0];
+/**
+ * @type {number[]} Dots on a signalled street, BY PHASE. The denominator the
+ * held count needs: "400 dots held" says nothing until you know whether the
+ * red axis carries 500 dots or 5000, and the share of the RED axis that is
+ * actually stopped is the number a viewer is reading off the screen.
+ */
+let _signalDotsByPhase = [0, 0];
+/** @type {number} Dots stopped for any reason on the last tick. */
+let _stoppedCount = 0;
+/** @type {number} Dots driving toward a stop line on the last tick. */
+let _targetedCount = 0;
+/**
+ * @type {number} Junction crossings made against a red since the dots loaded.
+ *
+ * The only number that answers the complaint this feature exists for — "the
+ * two flows cross each other all the time". A share of held dots can look
+ * healthy while every dot that actually reaches the junction sails through
+ * it; this counts the sailing.
+ */
+let _redCrossings = 0;
+/**
+ * @type {number} Phase that held the green on the previous tick. A change is
+ * the one moment the queues have to be rebuilt: a dot discovers a light by
+ * crossing a vertex, so one already mid-block when the light turned would
+ * otherwise drive straight through the junction.
+ */
+let _lastGreenPhase = -1;
+/** @type {number} Epoch ms of the last red-axis queue sweep. */
+let _lastQueueScan = 0;
+/** @const {number} Sweep cadence (ms) — one O(dots) pass, not a per-frame cost. */
+const QUEUE_SCAN_MS = 2000;
 
 /**
  * Per-frame animation callback registered on `scene.preRender`.
  *
  * For every active dot:
- *  1. Skip if currently paused by a simulated stop-light.
+ *  1. Skip if currently held by a red signal phase (or a jam-creep stop).
  *  2. Convert speed (m/s) to a parametric t-delta relative to the current
  *     segment's Cartesian distance.
  *  3. Advance t in the dot's travel direction, handling segment boundary
@@ -990,11 +1065,41 @@ function animate() {
   const dt = _lastAnimTime ? Math.min((now - _lastAnimTime) / 1000, 0.1) : 0.016;
   _lastAnimTime = now;
 
+  // Sweep the red axis for dots that still have no stop line: at the phase
+  // flip, and every QUEUE_SCAN_MS after it. The flip alone was not enough —
+  // a dot that spawns, or recycles, mid-red would otherwise drive the whole
+  // block without ever being offered a queue to join.
+  const green = greenPhase(now);
+  if (green !== _lastGreenPhase) {
+    if (_lastGreenPhase >= 0) formQueuesForRed(now, green);
+    _lastGreenPhase = green;
+    _lastQueueScan = now;
+  } else if (now - _lastQueueScan >= QUEUE_SCAN_MS) {
+    formQueuesForRed(now, green);
+    _lastQueueScan = now;
+  }
+  const half = Math.floor(now / (SIGNAL_CYCLE_MS / 2));
+  const redPhase = green === 0 ? 1 : 0;
+
+  let held0 = 0;
+  let held1 = 0;
+  let total0 = 0;
+  let total1 = 0;
+  let stopped = 0;
+  let targeted = 0;
   for (let i = 0; i < _dots.length; i++) {
     const dot = _dots[i];
+    const dotPhase = dot.road?.signalPhase;
+    if (dotPhase === 0) total0++;
+    else if (dotPhase === 1) total1++;
 
-    // Simulated stop-light pause — skip movement while timer is active
-    if (now < dot.stoppedUntil) continue;
+    // Red signal (or a jam-creep stop) — skip movement while the timer runs.
+    if (now < dot.stoppedUntil) {
+      stopped++;
+      if (dotPhase === 0) held0++;
+      else if (dotPhase === 1) held1++;
+      continue;
+    }
 
     // Stop-and-go creep (jam-viz density prototype, live jam dots only):
     // alternate short forward bursts with stops. The burst multiplier keeps
@@ -1010,6 +1115,12 @@ function animate() {
       burst = CREEP_BURST;
     }
 
+    // Set when this tick takes the dot through a junction vertex. Resolved
+    // AFTER the stop-line test below: a dot correctly held at its line also
+    // crosses the boundary, and counting it there would report the feature
+    // working as the defect it prevents.
+    let crossedJunction = false;
+
     // Convert m/s speed to parametric t-delta for the current segment length
     const segLen = dot.segmentDist[dot.segIdx] || 1;
     const tDelta = (dot.mps * burst * dt) / segLen;
@@ -1021,25 +1132,48 @@ function animate() {
     if (dot.t >= 1.0) {
       dot.t -= 1.0;
       dot.segIdx++;
+      if (dotPhase === redPhase && dot.road.junctions?.[dot.segIdx]) crossedJunction = true;
       if (dot.segIdx >= dot.numSegments) {
         // End of road: recycle to the road's entry with a small stagger —
         // cars don't reverse at the end of a street (field-test round 1).
         // Direction is preserved, so one-way flow stays legal.
         dot.segIdx = 0;
         dot.t = Math.random() * 0.3;
+        // The stop line belonged to the block it just left — take a new one
+        // straight away. Not doing this stranded every dot on a single-segment
+        // way, whose ONLY boundary crossing is the recycle: it could never
+        // reach the test below, so those streets never queued at all.
+        dot.stopSeg = -1;
+        if (dot.road?.signalPhase === redPhase) joinQueue(dot, now, half);
+      } else if (dot.stopSeg < 0 && dot.road?.signalPhase === redPhase) {
+        joinQueue(dot, now, half);
       }
-      maybeStopLight(dot, now);
     } else if (dot.t <= 0.0) {
       // Handle backward segment boundary crossing (t <= 0.0)
       dot.t += 1.0;
       dot.segIdx--;
+      if (dotPhase === redPhase && dot.road.junctions?.[dot.segIdx + 1]) crossedJunction = true;
       if (dot.segIdx < 0) {
         // Start of road (traveling backward): recycle to the far end.
         dot.segIdx = dot.numSegments - 1;
         dot.t = 1.0 - Math.random() * 0.3;
+        dot.stopSeg = -1;
+        if (dot.road?.signalPhase === redPhase) joinQueue(dot, now, half);
+      } else if (dot.stopSeg < 0 && dot.road?.signalPhase === redPhase) {
+        joinQueue(dot, now, half);
       }
-      maybeStopLight(dot, now);
     }
+
+    // Reached the stop line — park until the light changes.
+    if (dot.stopSeg >= 0) {
+      if (dotPhase === redPhase) targeted++;
+      const atLine = dot.direction >= 0
+        ? (dot.segIdx > dot.stopSeg || (dot.segIdx === dot.stopSeg && dot.t >= dot.stopT))
+        : (dot.segIdx < dot.stopSeg || (dot.segIdx === dot.stopSeg && dot.t <= dot.stopT));
+      if (atLine) parkAtStopLine(dot, now);
+    }
+    // Held in time? Then nothing crossed.
+    if (crossedJunction && now >= dot.stoppedUntil) _redCrossings++;
 
     // Lerp between pre-computed Cartesian3 waypoints (no trig needed).
     // Pass the scratch directly: PointPrimitive's position setter clones the
@@ -1059,24 +1193,199 @@ function animate() {
       HEAT_JAM_BASE_ALPHA + HEAT_JAM_PULSE_ALPHA * Math.sin(now / 260);
   }
 
+  _signalHeldByPhase[0] = held0;
+  _signalHeldByPhase[1] = held1;
+  _signalDotsByPhase[0] = total0;
+  _signalDotsByPhase[1] = total1;
+  _stoppedCount = stopped;
+  _targetedCount = targeted;
   _animFrame++;
 }
 
 /**
- * Randomly pause a dot near road endpoints to simulate stop-light behaviour.
+ * Index of the next junction vertex ahead of a dot, or -1 when the street has
+ * none left in that direction (a cul-de-sac, or a way whose far end is not
+ * shared with anything).
  *
- * Only triggers within the first 2 or last 2 segments of the road, and only
- * with a very low per-frame probability (0.8%) to keep traffic flowing.
- *
- * @param {Object} dot - The dot state object.
- * @param {number} now - Current timestamp in milliseconds.
+ * @param {Object} road - Parsed road, carrying `junctions` flags.
+ * @param {number} segIdx - Segment the dot is currently inside.
+ * @param {number} direction - +1 or -1.
+ * @returns {number} Vertex index, or -1.
  */
-function maybeStopLight(dot, now) {
-  const nearEnd = dot.segIdx <= 1 || dot.segIdx >= dot.numSegments - 2;
-  if (nearEnd && Math.random() < 0.008) {
-    // Pause for 2–6 seconds
-    dot.stoppedUntil = now + 2000 + Math.random() * 4000;
+function nextJunctionIndex(road, segIdx, direction) {
+  const flags = road?.junctions;
+  if (!flags) return -1;
+  if (direction >= 0) {
+    for (let j = segIdx + 1; j < flags.length; j++) if (flags[j]) return j;
+    return -1;
   }
+  for (let j = segIdx; j >= 0; j--) if (flags[j]) return j;
+  return -1;
+}
+
+/**
+ * Distance from a dot's current position to a vertex ahead of it, in metres.
+ *
+ * @param {Object} road
+ * @param {number} segIdx
+ * @param {number} t - Parametric position inside `segIdx`.
+ * @param {number} j - Target vertex index.
+ * @param {number} direction
+ * @returns {number} Metres (never negative).
+ */
+function distanceToVertex(road, segIdx, t, j, direction) {
+  const seg = road.segmentDist;
+  if (direction >= 0) {
+    let d = (1 - t) * (seg[segIdx] || 0);
+    for (let k = segIdx + 1; k < j; k++) d += seg[k] || 0;
+    return d;
+  }
+  let d = t * (seg[segIdx] || 0);
+  for (let k = j; k < segIdx; k++) d += seg[k] || 0;
+  return d;
+}
+
+/**
+ * Give a dot a stop line: the place it will come to rest, `setback` metres
+ * short of junction vertex `j`.
+ *
+ * The dot is NOT moved. It keeps driving under its own speed until it reaches
+ * the line, which is what makes a queue build up in the right order and from
+ * the front — teleporting a dot backward onto its place in the queue was the
+ * obvious shortcut and it reads, on a photorealistic view, as a dot sliding
+ * the wrong way down the street.
+ *
+ * @param {Object} dot
+ * @param {number} j - Junction vertex index.
+ * @param {number} setback - Metres short of the junction.
+ * @returns {boolean} False when the line falls outside the street (the queue
+ *   is already longer than the block, so this dot simply keeps driving).
+ */
+function setStopLine(dot, j, setback) {
+  const road = dot.road;
+  const seg = road.segmentDist;
+  let cum = 0;
+  for (let k = 0; k < j; k++) cum += seg[k] || 0;
+  let total = cum;
+  for (let k = j; k < seg.length; k++) total += seg[k] || 0;
+
+  const s = dot.direction >= 0 ? cum - setback : cum + setback;
+  if (s < 0 || s > total) return false;
+
+  const at = locateAlongRoad(seg, s);
+  // Behind the dot already — it is past the line, let it go.
+  if (dot.direction >= 0) {
+    if (at.segIdx < dot.segIdx || (at.segIdx === dot.segIdx && at.t < dot.t)) return false;
+  } else if (at.segIdx > dot.segIdx || (at.segIdx === dot.segIdx && at.t > dot.t)) {
+    return false;
+  }
+  dot.stopSeg = at.segIdx;
+  dot.stopT = at.t;
+  return true;
+}
+
+/**
+ * Reset a street's queue counters when the cycle moves on.
+ * @param {Object} road
+ * @param {number} half - Index of the current half-cycle.
+ */
+function resetQueue(road, half) {
+  if (road.queueHalf !== half) {
+    road.queueHalf = half;
+    road.queueFwd = 0;
+    road.queueBack = 0;
+  }
+}
+
+/**
+ * Send a dot to the back of the queue at the junction it is driving toward.
+ *
+ * @param {Object} dot
+ * @param {number} now
+ * @param {number} half - Current half-cycle index.
+ * @returns {boolean} Whether a stop line was set.
+ */
+function joinQueue(dot, now, half) {
+  const road = dot.road;
+  const j = nextJunctionIndex(road, dot.segIdx, dot.direction);
+  if (j < 0) return false;
+  resetQueue(road, half);
+  const rank = dot.direction >= 0 ? road.queueFwd : road.queueBack;
+  if (dot.direction >= 0) road.queueFwd = rank + 1;
+  else road.queueBack = rank + 1;
+  if (setStopLine(dot, j, STOP_LINE_M + rank * QUEUE_GAP_M)) return true;
+
+  // No room left on the block: the queue is longer than the street, or the
+  // dot is already past where its place would be. It stops where it stands
+  // rather than driving through the red — a saturated block backing up is
+  // real traffic; a dot crossing on a red is the defect.
+  const redEnd = redEndsAt(now, road.signalPhase);
+  if (redEnd - now < SIGNAL_MIN_STOP_MS) return false;
+  dot.stoppedUntil = redEnd + Math.random() * SIGNAL_START_JITTER_MS;
+  return true;
+}
+
+/**
+ * Build the queues for every street that has just gone red.
+ *
+ * Runs once per phase flip, not per frame. It exists because a dot only
+ * discovers a light when it crosses a vertex: without this pass, a dot already
+ * rolling down the block when the light turned red would sail through the
+ * junction, and a viewer watching one crossing would see the flow never stop.
+ *
+ * Dots are ranked by their actual distance to the junction, so the queue forms
+ * front-to-back instead of in whatever order the dot array happens to hold.
+ *
+ * @param {number} now - Epoch ms.
+ * @param {number} green - Phase currently holding the green.
+ */
+function formQueuesForRed(now, green) {
+  const half = Math.floor(now / (SIGNAL_CYCLE_MS / 2));
+  /** @type {Map<Object, Array<{dot:Object, j:number, d:number}>>} */
+  const byRoad = new Map();
+
+  for (let i = 0; i < _dots.length; i++) {
+    const dot = _dots[i];
+    const road = dot.road;
+    const phase = road?.signalPhase;
+    if (phase === null || phase === undefined || phase === green) continue;
+    if (dot.stopSeg >= 0 || now < dot.stoppedUntil) continue;
+    const j = nextJunctionIndex(road, dot.segIdx, dot.direction);
+    if (j < 0) continue;
+    const d = distanceToVertex(road, dot.segIdx, dot.t, j, dot.direction);
+    let list = byRoad.get(road);
+    if (!list) byRoad.set(road, (list = []));
+    list.push({ dot, j, d });
+  }
+
+  for (const [road, list] of byRoad) {
+    resetQueue(road, half);
+    // Nearest to its junction takes the stop line; the rest stack up behind.
+    list.sort((a, b) => a.d - b.d);
+    for (const { dot, j } of list) {
+      const rank = dot.direction >= 0 ? road.queueFwd : road.queueBack;
+      if (!setStopLine(dot, j, STOP_LINE_M + rank * QUEUE_GAP_M)) continue;
+      if (dot.direction >= 0) road.queueFwd = rank + 1;
+      else road.queueBack = rank + 1;
+    }
+  }
+}
+
+/**
+ * Park a dot that has reached its stop line, until its light goes green.
+ *
+ * @param {Object} dot
+ * @param {number} now
+ */
+function parkAtStopLine(dot, now) {
+  dot.segIdx = dot.stopSeg;
+  dot.t = dot.stopT;
+  dot.stopSeg = -1;
+  const redEnd = redEndsAt(now, dot.road.signalPhase);
+  // Green already, or green so soon that stopping would read as a twitch.
+  if (redEnd - now < SIGNAL_MIN_STOP_MS) return;
+  // Jitter the release so a held platoon pulls away as an accordion.
+  dot.stoppedUntil = redEnd + Math.random() * SIGNAL_START_JITTER_MS;
 }
 
 // ─── Camera Monitoring ─────────────────────────────────────
@@ -2043,6 +2352,7 @@ function parseRoadsTimed(overpassData, trace) {
     return [];
   }
 
+  const nodeUses = countNodeUses(overpassData.elements);
   const roads = [];
   /* TRACE_ONLY_BEGIN */
   const _trafficTimingSampledCells = new Set();
@@ -2108,7 +2418,27 @@ function parseRoadsTimed(overpassData, trace) {
     _trafficTimingWaypointMaterializationMs += performance.now() - _trafficTimingMaterializeStart;
     /* TRACE_ONLY_END */
 
-    roads.push({ coords, type, oneway, waypoints, segmentDist });
+    roads.push({
+      coords,
+      type,
+      oneway,
+      waypoints,
+      segmentDist,
+      // Cruising speed, capped by the posted limit when OSM knows one. The
+      // class table alone ran Paris `primary` at 50 km/h base (65 with spawn
+      // noise) on streets limited to 30 since 2021.
+      cruiseMps: roadCruiseMps(type, el.tags),
+      // Signal phase from the street's AXIS — perpendicular streets land in
+      // opposite phases, which is what stops both of them crossing at once.
+      // null = grade-separated or a roundabout: never queues.
+      signalPhase: roadSignalPhase(type, coords, el.tags),
+      // Which vertices are shared with another way, i.e. where the dots stop.
+      junctions: junctionFlags(coords, nodeUses),
+      // Per-half-cycle queue counters (see joinQueue).
+      queueHalf: -1,
+      queueFwd: 0,
+      queueBack: 0,
+    });
   }
 
   /* TRACE_ONLY_BEGIN */
@@ -2368,6 +2698,16 @@ function clearDots() {
   _count = 0;
   _bucketCounts = { free: 0, slow: 0, jam: 0, sim: 0 };
   _closedRoads = 0;
+  // Stale hold counts would outlive the dots they described — a cleared layer
+  // reporting 400 dots at a red is exactly the phantom getStats() must never
+  // print.
+  _signalHeldByPhase = [0, 0];
+  _signalDotsByPhase = [0, 0];
+  _stoppedCount = 0;
+  _redCrossings = 0;
+  // Re-arm the latch: the first tick after a reload must not rebuild queues
+  // for dots that no longer exist, and the pass is skipped while it is -1.
+  _lastGreenPhase = -1;
 }
 
 // ─── Data Layer Interface ──────────────────────────────────
@@ -2736,6 +3076,18 @@ const trafficLayer = {
       // qa-traffic color assertions and the sync-chip mode label below.
       flowBuckets: { ..._bucketCounts },
       closedRoads: _closedRoads,
+      // Signal-clock diagnostics (additive). `signalGreenPhase` is the axis
+      // holding the green right now (0 = bearings 0-90 deg, 1 = 90-180), so a
+      // harness can assert the alternation the clock exists for without ever
+      // reading a pixel — no Cesium entity paints headless.
+      signalHeld: _signalHeldByPhase[0] + _signalHeldByPhase[1],
+      signalHeldByPhase: [..._signalHeldByPhase],
+      signalDotsByPhase: [..._signalDotsByPhase],
+      signalTargeted: _targetedCount,
+      signalRedCrossings: _redCrossings,
+      stoppedDots: _stoppedCount,
+      signalGreenPhase: greenPhase(Date.now()),
+      signalCycleMs: SIGNAL_CYCLE_MS,
       // Jam-viz prototype diagnostics (additive — harness contract untouched).
       heatLines: _heatLineCount,
       jamViz: _jamViz,
@@ -2751,6 +3103,78 @@ const trafficLayer = {
       // layer does not have.
       loadingLabel: feed.loadingLabel,
     };
+  },
+
+  /**
+   * Every junction vertex the loaded roads agree on, as `[lon, lat]`.
+   *
+   * A harness that wants to ask "does THIS crossing hold anything" first has
+   * to know the layer found a crossing there at all — an unmarked junction
+   * and a broken queue look identical from the dot positions alone.
+   *
+   * @returns {number[][]}
+   */
+  __qaJunctions() {
+    const out = [];
+    for (const road of _roads) {
+      const flags = road.junctions;
+      if (!flags) continue;
+      for (let i = 0; i < flags.length; i++) if (flags[i]) out.push(road.coords[i]);
+    }
+    return out;
+  },
+
+  /**
+   * Per-dot diagnostics for the QA harnesses: where each dot is, which signal
+   * phase it obeys, and whether it is stopped right now.
+   *
+   * The share of a whole viewport that is held can look healthy while the one
+   * junction a viewer is actually watching still has both flows moving
+   * through it. This is what lets a harness ask the question the way a person
+   * asks it: at THIS crossing, right now, is one axis stopped?
+   *
+   * @returns {Array<{lon:number, lat:number, phase:0|1|null, stopped:boolean}>}
+   */
+  __qaDots() {
+    const carto = new Cesium.Cartographic();
+    const now = Date.now();
+    const out = [];
+    for (const dot of _dots) {
+      const pos = dot.point?.position;
+      if (!pos) continue;
+      Cesium.Cartographic.fromCartesian(pos, undefined, carto);
+      out.push({
+        lon: Cesium.Math.toDegrees(carto.longitude),
+        lat: Cesium.Math.toDegrees(carto.latitude),
+        phase: dot.road?.signalPhase ?? null,
+        stopped: now < dot.stoppedUntil,
+      });
+    }
+    return out;
+  },
+
+  /**
+   * Per-road diagnostics for the QA harnesses: the signal phase and the
+   * cruising speed each loaded road ended up with.
+   *
+   * Exists because neither is observable any other way. No Cesium point
+   * primitive paints in headless software GL, so `qa-traffic-signals.mjs`
+   * cannot watch a dot stop at a light — it has to read the model that
+   * decided to stop it. Returns plain numbers only (no Cesium handles, no
+   * waypoints), so a harness can serialise the whole answer across the
+   * page boundary in one round trip.
+   *
+   * @returns {Array<{type:string, cruiseMps:number, signalPhase:0|1|null,
+   *   segments:number}>} One entry per loaded road.
+   */
+  __qaRoads() {
+    return _roads.map((r) => ({
+      type: r.type,
+      cruiseMps: r.cruiseMps,
+      signalPhase: r.signalPhase ?? null,
+      segments: r.segmentDist?.length ?? 0,
+      junctionCount: r.junctions ? r.junctions.reduce((a, b) => a + b, 0) : 0,
+    }));
   },
 
   /**

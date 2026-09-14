@@ -483,6 +483,22 @@ const MILITARY_DETECTION_PRESET = Object.freeze({ mode: 'dense', densityPct: 75 
 const FIRST_RUN_DETECTION_PRESET = Object.freeze({ mode: 'balanced', densityPct: 50 });
 
 /**
+ * Layers whose whole point is the bracketed contact, not the dot.
+ *
+ * Road traffic renders as ~2 000 bare points; the detection overlay is what
+ * turns one into a READ object — a bracket, an id, and in live mode a
+ * congestion-tiered frame whose canvas sits above the post-FX chain. Asked for
+ * directly: "je voudrais que le cadre soit par défaut sur ce datalayer."
+ *
+ * The mechanism is the one Contacts already uses, unchanged: enabling takes a
+ * snapshot and applies the tactical preset, disabling replays the snapshot. So
+ * a viewer who turns traffic on gets the brackets, and turning it off gives
+ * back exactly the detection state they had before — including OFF.
+ * @type {Set<string>}
+ */
+const DETECTION_DEMANDING_LAYERS = new Set(['traffic']);
+
+/**
  * What the render profile grants of a preset's sharpen request.
  *
  * Sharpening is a full-screen post-process pass, and `perf:gpu-ab` measures it
@@ -3232,12 +3248,19 @@ export class StyleManager {
    * `_contextMode` mutation routes through, and gated on the transaction having
    * SETTLED (`!_contextModeChanging`) so a failed activation can never strand
    * detection on.
+   *
+   * Contacts is no longer the only claimant: a layer in
+   * {@link DETECTION_DEMANDING_LAYERS} asks for the same thing, through the
+   * same snapshot and the same restore. The two are ORed rather than given
+   * separate snapshots on purpose — two owners each holding their own
+   * pre-state would restore each other's, and whichever released last would
+   * win with a snapshot taken before the other one ever ran.
    * @returns {void}
    */
   _syncContactsDetection() {
     if (this._contextModeChanging) return;
     const result = applyContactsDetection({
-      active: this._contextMode === 'flights',
+      active: this._contextMode === 'flights' || this._layerDemandsDetection(),
       restore: this._contactsDetectionRestore,
       // A map style picked DURING the session owns detection on the way out —
       // its auto-enable preset is younger than the entry snapshot.
@@ -3861,6 +3884,23 @@ export class StyleManager {
    * @param {{mode?: string, densityPct?: number}} det Preset detection config.
    * @returns {void}
    */
+  /**
+   * Whether any enabled layer wants the detection overlay on.
+   *
+   * Reads EFFECTIVE visibility, not the user's toggle: a layer switched on as
+   * another mode's dependency draws the same dots and deserves the same
+   * brackets.
+   * @returns {boolean}
+   */
+  _layerDemandsDetection() {
+    const dm = this._dataManager;
+    if (!dm?.isEffectivelyEnabled) return false;
+    for (const layerId of DETECTION_DEMANDING_LAYERS) {
+      if (dm.isEffectivelyEnabled(layerId)) return true;
+    }
+    return false;
+  }
+
   _applyDetectionPreset(det) {
     if (!det) return;
     if (typeof det.densityPct === 'number' && this._detectionDensitySlider) {
@@ -4527,6 +4567,11 @@ export class StyleManager {
       this._dataManagerUnsubscribe = this._dataManager.subscribe((change) => {
         if (String(change?.type || '').startsWith('visibility')) {
           this._handleContextLayerChange(change);
+          // A layer that wants the brackets claims detection the moment it
+          // becomes visible, and releases it when it goes away.
+          if (DETECTION_DEMANDING_LAYERS.has(change?.layerId)) {
+            this._syncContactsDetection();
+          }
         }
         this._loadingFeedbackEvent = change;
         this._updateGlobalLoadingFeedback(performance.now());
