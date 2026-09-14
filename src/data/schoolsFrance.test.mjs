@@ -496,12 +496,15 @@ test('the site legend counts establishments by level and drops empty rows', () =
 
 test('the maillage legend says the mix it shows is a sample', () => {
   // Not saying so would let a reader take the thinned mix for the national one.
+  // ONE line under the classes, not one clause per class: the disclosure is
+  // true of all of them, and five copies of it was a third of that key's prose.
   _setSchoolsStateForTest({
     regime: 'mesh',
     records: [record({ id: 'a', mesh: true, site: site({ level: 'ecole' }) })],
   });
-  const { legend } = _schoolsRowControlsForTest();
-  assert.match(legend[0].blurb, /échantillon/);
+  const { legend, note } = _schoolsRowControlsForTest();
+  assert.match(note, /Échantillon/);
+  assert.equal(legend.some((row) => row.blurb), false);
 });
 
 test('the national legend publishes the height ruler with numbered ticks', () => {
@@ -1057,8 +1060,31 @@ test('the maillage legend says where the index comes from in that regime', () =>
     regime: 'mesh',
     records: [record({ id: 'a', mesh: true, site: site({ level: 'ecole' }) })],
   });
-  const { legend } = _schoolsRowControlsForTest();
-  assert.match(legend[0].blurb, /IPS arrive au clic/);
+  const { note } = _schoolsRowControlsForTest();
+  assert.match(note, /Cliquez un point/);
+  assert.match(note, /IPS/);
+});
+
+test('the exact-sites legend carries no prose under the obvious levels', () => {
+  // « École » answers the only question a key is asked. A sentence under it
+  // answered one nobody had. `autre` is the exception and keeps its gloss:
+  // those dots are in a school layer and are not schools.
+  _setSchoolsStateForTest({
+    regime: 'sites',
+    records: [
+      record({ id: 'a', site: site({ level: 'ecole' }) }),
+      record({ id: 'b', site: site({ level: 'college' }) }),
+      record({ id: 'c', site: site({ level: 'lycee' }) }),
+      record({ id: 'd', site: site({ level: 'autre' }) }),
+    ],
+  });
+  const { legend, note } = _schoolsRowControlsForTest();
+  assert.equal(note, undefined);
+  const byLabel = new Map(legend.map((row) => [row.label, row]));
+  for (const label of ['École', 'Collège', 'Lycée']) {
+    assert.equal(byLabel.get(label).blurb, undefined);
+  }
+  assert.match(byLabel.get('Administratif & orientation').blurb, /pas des écoles/);
 });
 
 test('the level ladder and the dot sizes are untouched by the IPS join', () => {

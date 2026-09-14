@@ -350,14 +350,33 @@ const SELECTED_POINT_PX = 18;
 const MESH_POINT_MIN_PX = 3.4;
 const MESH_POINT_MAX_PX = 9;
 
-/** One-line explanations behind each level swatch. */
+/**
+ * A gloss under a swatch, and ONLY where the label cannot stand alone.
+ *
+ * There used to be one per level, each a full sentence, and each carrying a
+ * verbatim copy of the maillage disclosure. Measured on the fused Enseignement
+ * row over Bayonne on 2026-09-14: 209 words of prose behind 9 swatches.
+ * « École », « Collège » and « Lycée » answer the only question a key is
+ * asked — what is this colour — with the word itself, and a sentence under them
+ * answered one the reader had not asked.
+ *
+ * `autre` keeps one because its dots are the exception the map cannot state on
+ * its own: fourteen marks in a school layer that are not schools. `adapte` is
+ * dropped with the rest — the label already names its subject.
+ */
 const LEVEL_BLURBS = Object.freeze({
-  ecole: 'Maternelle et élémentaire — 71% du registre, et la texture réelle du pays.',
-  college: 'Collèges publics et privés, le maillage de secteur le plus régulier de France.',
-  lycee: 'Lycées généraux, technologiques, professionnels et polyvalents.',
-  adapte: 'EREA et établissements médico-sociaux — la scolarisation adaptée.',
-  autre: 'Rectorats, DSDEN et CIO. Dans le registre, mais ce ne sont pas des écoles.',
+  autre: 'Rectorats et CIO, pas des écoles.',
 });
+
+/**
+ * The maillage's own disclosure, printed ONCE under the classes.
+ *
+ * It was appended to all five blurbs, which is where a third of that key's
+ * prose came from. It qualifies every class equally, so it belongs in the
+ * block-level `note` slot and not in any of them.
+ */
+const MESH_LEGEND_NOTE = 'Échantillon de la vue, pas tous les établissements. '
+  + 'Cliquez un point pour son nom et son indice social (IPS).';
 
 const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
@@ -2034,23 +2053,24 @@ const schoolsFranceLayer = {
       const level = record.site?.level;
       if (level) tally.set(level, (tally.get(level) || 0) + 1);
     }
-    const meshRegime = _regime === 'mesh';
     const legend = SCHOOL_LEVELS
       .filter((level) => tally.get(level) > 0)
-      .map((level) => ({
-        label: schoolLevelLabel(level),
-        color: schoolLevelColor(level),
-        count: tally.get(level),
-        blurb: meshRegime
-          // Naming the sample is the point: this mix is what the thinning
-          // drew, close to the real one but not it. See `schoolsMesh.js`.
-          // The IPS clause is here and not in the status line because the
-          // maillage ships no index at all — it is fetched per click, with the
-          // name, and a reader has to be told that before they conclude the
-          // index is missing.
-          ? `${LEVEL_BLURBS[level]} Compté sur le maillage échantillonné — un échantillon du mélange en vue, pas le chiffre national. L’IPS arrive au clic, avec le nom.`
-          : LEVEL_BLURBS[level],
-      }));
+      .map((level) => {
+        const entry = {
+          label: schoolLevelLabel(level),
+          color: schoolLevelColor(level),
+          count: tally.get(level),
+        };
+        if (LEVEL_BLURBS[level]) entry.blurb = LEVEL_BLURBS[level];
+        return entry;
+      });
+    // Naming the sample is the point: this mix is what the thinning drew, close
+    // to the real one but not it. See `schoolsMesh.js`. The IPS half is here
+    // and not in the status line because the maillage ships no index at all —
+    // it is fetched per click, with the name, and a reader has to be told that
+    // before they conclude the index is missing. One line, under the classes,
+    // because it is true of all of them.
+    if (_regime === 'mesh') return { chips: [], legend, note: MESH_LEGEND_NOTE };
     return { chips: [], legend };
   },
 

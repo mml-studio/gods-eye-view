@@ -53,7 +53,7 @@ import { schoolLevelColor } from './schoolsFrance.js';
  * `toLocaleString('fr-FR')` separates thousands with U+202F, which is correct
  * French typography and invisible in a diff.
  */
-const norm = (value) => String(value).replace(/[\s  ]+/g, ' ');
+const norm = (value) => String(value).replace(/[\s  ]+/g, ' ');
 
 /** The shipped scale's own arguments, so a twin can be built to compare with. */
 const spec = () => ({
@@ -631,11 +631,30 @@ test('the site legend counts sites by band, in ladder order, dropping empty rows
 
 test('the lycée legend row warns that those addresses are also in schools-fr', () => {
   // Without it, a reader with both layers on reads a stacked dot as a bug.
+  // Named by the CHIP the reader pressed, not by the taxonomy label.
   _setSupStateForTest({
     regime: 'sites',
     records: [record({ id: 'a', site: site({ kind: 'lycee' }) })],
   });
-  assert.match(_supRowControlsForTest().legend[0].blurb, /Établissements scolaires/);
+  assert.match(_supRowControlsForTest().legend[0].blurb, /Écoles et lycées/);
+});
+
+test('the site legend carries no prose under the self-evident bands', () => {
+  // A gloss that restates its own label costs a line and says nothing.
+  _setSupStateForTest({
+    regime: 'sites',
+    records: [
+      record({ id: 'a', site: site({ kind: 'universite' }) }),
+      record({ id: 'b', site: site({ kind: 'ingenieur' }) }),
+      record({ id: 'c', site: site({ kind: 'commerce' }) }),
+      record({ id: 'd', site: site({ kind: 'autre' }) }),
+    ],
+  });
+  const byLabel = new Map(_supRowControlsForTest().legend.map((row) => [row.label, row]));
+  for (const label of ['Université', 'École d’ingénieurs', 'Commerce & gestion']) {
+    assert.equal(byLabel.get(label).blurb, undefined);
+  }
+  assert.match(byLabel.get('Autres écoles spécialisées').blurb, /CFA/);
 });
 
 // --- The national legend (D1) ------------------------------------------------

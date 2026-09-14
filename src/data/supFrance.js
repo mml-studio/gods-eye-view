@@ -359,15 +359,22 @@ const SIZE_CEILING_STUDENTS = 20_000;
  */
 const CARD_OFFER_LIMIT = 4;
 
-/** One-line explanations behind each band swatch. */
+/**
+ * A gloss under a swatch, and ONLY where the label cannot stand alone.
+ *
+ * There was one per band, each restating its own label in longer words —
+ * « École d’ingénieurs » under « École d’ingénieurs ». Two survive, and both
+ * say something the map cannot:
+ *
+ *  - `lycee`, because the same address is drawn twice when both halves of the
+ *    row are on, and a reader with no warning reads a stacked dot as a bug.
+ *    It names the CHIP the reader pressed — « Écoles et lycées » — and not the
+ *    taxonomy label « Enseignement », which appears nowhere in the panel.
+ *  - `autre`, because a catch-all label names nothing at all.
+ */
 const KIND_BLURBS = Object.freeze({
-  universite: 'Universités, établissements assimilés et ENS — 58% des étudiants.',
-  lycee: 'BTS et CPGE, enseignés dans un lycée. Ces adresses sont AUSSI dans la couche Établissements scolaires.',
-  ingenieur: 'Écoles d’ingénieurs et écoles vétérinaires.',
-  commerce: 'Écoles de commerce, gestion et vente, écoles juridiques et administratives.',
-  sante: 'Écoles paramédicales hors université (IFSI, IFAS) et écoles du travail social.',
-  art: 'Écoles supérieures artistiques et culturelles, écoles d’architecture, écoles de journalisme.',
-  autre: 'La catégorie fourre-tout du registre : CFA et organismes de formation, pour l’essentiel.',
+  lycee: 'Aussi comptés dans « Écoles et lycées ».',
+  autre: 'Surtout des CFA et organismes de formation.',
 });
 
 const DEFAULT_OVERLAY_HOST = Object.freeze({
@@ -1660,12 +1667,16 @@ const supFranceLayer = {
     }
     const legend = SUP_KINDS
       .filter((kind) => tally.get(kind) > 0)
-      .map((kind) => ({
-        label: supKindLabel(kind),
-        color: supKindColor(kind),
-        count: tally.get(kind),
-        blurb: KIND_BLURBS[kind],
-      }));
+      .map((kind) => {
+        const entry = {
+          label: supKindLabel(kind),
+          color: supKindColor(kind),
+          count: tally.get(kind),
+        };
+        // Absent rather than undefined: the painter tests the key's presence.
+        if (KIND_BLURBS[kind]) entry.blurb = KIND_BLURBS[kind];
+        return entry;
+      });
     return { chips: [], legend };
   },
 
