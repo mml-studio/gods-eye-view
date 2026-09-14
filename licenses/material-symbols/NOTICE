@@ -11,7 +11,7 @@ Source: https://github.com/google/material-design-icons
         symbols/web/<name>/materialsymbolsrounded/<name>_fill1_24px.svg
         (Material Symbols Rounded, filled, weight 400)
 
-WHAT WAS TAKEN. Twenty-five glyphs, across five modules.
+WHAT WAS TAKEN. Twenty-eight glyphs, across six modules.
 
 `src/data/transitVehicleIcons.js` draws live French transit vehicles by class
 (retrieved 2026-08-31): airport_shuttle, directions_boat, directions_bus,
@@ -67,6 +67,37 @@ its header refusing to conflate a barrage with the usine it feeds, and this
 project draws those structures as their own layer. A drop says water, which is
 the whole of what the filière's name claims.
 
+`src/data/medecinFamilyIcons.js` draws three of the six families of the French
+conventioned-doctors layer (retrieved 2026-09-14 at commit 40a7a292a79d):
+escalator_warning for « Femme et enfant », psychology for « Santé mentale »,
+surgical for « Chirurgie ». The other three families are CC0 cartographic
+glyphs and carry no claim under this notice — Maki's `doctor` and `hospital`,
+and Temaki's `radiation`.
+
+Each of the three is there because neither CC0 set publishes the subject at all,
+and each beat a Material alternative on a contact sheet rendered over a real
+Lyon capture at 30 / 24 / 19 / 15 / 12 px — the band that layer draws in:
+
+  escalator_warning — the international adult-and-child pictogram. Its NAME is
+                      the context Google drew it for and says nothing about what
+                      it draws. Chosen over `gynecology` (a uterus), which covers
+                      the family's 7 393 gynaecology entries and says nothing
+                      about its 3 709 paediatric ones, and over `pregnant_woman`
+                      for the same reason. Two masses of different heights is
+                      what keeps it reading as a PAIR at 15 px.
+
+  psychology        — a head in profile with a cogged disc inside it. The HEAD
+                      does the work: it is an outline that resolves at 15 px,
+                      where `psychiatry` — a bare brain — is a lobed blob and
+                      Temaki's `psychic` is a palmist's hand, which names a
+                      fortune teller.
+
+  surgical          — a scalpel. Temaki publishes three knives (`chefs_knife`,
+                      `cleaver`, `dagger`) and every one of them says kitchen or
+                      weapon; neither CC0 set publishes a surgical instrument.
+                      One diagonal mass, which is the one thing that still
+                      resolves at 12 px.
+
 `src/data/roadEventGlyphs.js` draws declared road events by category (retrieved
 2026-09-10): car_crash, traffic_jam, block, warning, rainy, construction, merge,
 alt_route, question_mark. Nine glyphs, added when the category left the hue
@@ -79,10 +110,10 @@ Only the single `d` path string of each glyph is vendored, verbatim and
 unmodified, into those modules — the surrounding SVG document is not, and the
 coordinates are NOT rescaled. `transitVehicleIcons.js` and `roadEventGlyphs.js`
 carry Material's own `0 -960 960 960` viewBox precisely so that this paragraph
-stays true; the three plate packs — `plantFiliereIcons.js`, `irveMarkIcons.js`
-and `sharedMobilityIcons.js` — place that same 960-unit box inside their own
-96-unit plate with an SVG `transform`, which moves no coordinate and is what the
-paragraph above already claims for the punch.
+stays true; the four plate packs — `plantFiliereIcons.js`, `irveMarkIcons.js`,
+`sharedMobilityIcons.js` and `medecinFamilyIcons.js` — place that same 960-unit
+box inside their own 96-unit plate with an SVG `transform`, which moves no
+coordinate and is what the paragraph above already claims for the punch.
 
 At render time each path is drawn TWICE by this project: once as a wide dark
 stroke (a halo, so the glyph stays readable over pale terrain) and once as a
@@ -90,8 +121,9 @@ white fill (so Cesium's per-billboard colour multiply can tint it — by vehicle
 class in the transit layer, by nothing at all in the road-event one, which draws
 every category in a single ink). In the three plate packs it is punched as a
 HOLE instead and drawn once — the tint then reaches the plate around it, by
-filière in the EDF fleet and by operator in the shared-mobility one. The path
-geometry itself is untouched either way.
+filière in the EDF fleet, by operator in the shared-mobility one and by family
+of medicine in the doctors one. The path geometry itself is untouched either
+way.
 
 `roadEventGlyphs.js` emits each path a THIRD way, for the map key: the same `d`
 string, with no halo and no fill colour, used as a CSS mask so the panel can

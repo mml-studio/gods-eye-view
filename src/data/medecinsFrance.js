@@ -24,14 +24,36 @@
  *   mesh     — real practice positions, spatially thinned to 1 100–2 200 dots.
  *   sites    — every practice in the box, with the doctors' names on the card.
  *
- * ── What the colour means, and what the size means ──────────────────────────
- * In the two close regimes the colour is the FAMILY of medicine practised —
- * six of them, cut by what a person is looking for rather than by the
- * nomenclature's own tree (see `medecinsFrFeed.js`). Size is the number of
- * DISTINCT DOCTORS at the address, never the number of register entries: a
- * radiologist is listed at every imaging site they cover, 5.53 entries per
- * name against 1.18 for a GP, and sizing on entries would make radiology look
- * like the second-largest specialty in France.
+ * ── What the shape, the colour and the size mean ────────────────────────────
+ * In the two close regimes the SHAPE and the COLOUR both say the FAMILY of
+ * medicine practised — six of them, cut by what a person is looking for rather
+ * than by the nomenclature's own tree (see `medecinsFrFeed.js`). The mark is a
+ * tinted plate with the family's silhouette punched out of it
+ * (`medecinFamilyIcons.js`): a stethoscope, a cross, an adult and a child, a
+ * head, a scalpel, a trefoil. Colour alone was not enough here, and the reason
+ * is arithmetic rather than taste — over central Lyon this layer paints 544
+ * marks and over central Paris 5 907, none of them labelled, so a reader had to
+ * hold six colour-to-word pairs in their head and find the one they wanted by
+ * elimination against a key on the other side of the screen.
+ *
+ * SIZE is the number of DISTINCT DOCTORS at the address, never the number of
+ * register entries: a radiologist is listed at every imaging site they cover,
+ * 5.53 entries per name against 1.18 for a GP, and sizing on entries would make
+ * radiology look like the second-largest specialty in France.
+ *
+ * ── Where the marks STAND, which is not the ellipsoid ───────────────────────
+ * Every mark is placed on the ground under it — the shared DEM/mesh cell when
+ * it is warm, a rendered-surface probe while it is not — and re-placed when a
+ * better floor lands. Because these draw with the depth test off (they would
+ * otherwise be eaten from below by the buildings they stand next to), a mark
+ * left on the ellipsoid is painted anyway and its screen position becomes a
+ * function of the CAMERA POSE: it SLIDES across the rooftops on a pan instead
+ * of staying on its address.
+ *
+ * Measured over Place Bellecour on 2026-09-14, camera 900 m at −40°, 193 marks
+ * drawn: the ellipsoidal anchor projected **171 px from the ground one at the
+ * median and 276 px at the worst**, and a 300 m pan and return moved a seated
+ * mark **0.00 px at the median, 0.01 px at the worst**.
  *
  * ── What this layer cannot tell you, and says so ────────────────────────────
  * It is conventioned LIBERAL practice. A hospital's salaried doctors are not
@@ -47,7 +69,14 @@ import { governorRequestRender } from '../renderGovernor.js';
 import { registerSpriteCollection, restoreSpriteOrder, unregisterSpriteCollection } from './spriteOrder.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import { publishJoin } from './layerJoins.js';
-import { cachedGroundFloor } from './groundFloor.js';
+import { cachedGroundFloor, coarseFloorCoord, warmGroundFloor } from './groundFloor.js';
+import {
+  PROVISIONAL_MAX_CAMERA_M,
+  provisionalFloor,
+  provisionalFloorRetryDelayMs,
+  sampleProvisionalFloors,
+} from './provisionalFloor.js';
+import { MEDECIN_GLYPH_RASTER_PX, medecinFamilyGlyph } from './medecinFamilyIcons.js';
 import { parseDepartements } from './meteoFranceVigilance.js';
 import {
   clearOverlaySource,
@@ -122,8 +151,52 @@ export const FAMILY_COLORS = Object.freeze({
 });
 
 const SELECTED_COLOR = '#ffffff';
-const COLOR_OUTLINE = Cesium.Color.fromCssColorString('#0b1220').withAlpha(0.85);
 const GROUND_LIFT_M = 6;
+
+/** Plate side in the key, where the swatch is masked rather than tinted. */
+const LEGEND_GLYPH_PX = 32;
+
+/**
+ * How far a cold cell may borrow a neighbour's rendered-surface read, and how
+ * many cells one pass may warm over the network.
+ *
+ * `fillKm` is tighter than the shared default (25 km) because this layer's two
+ * close regimes never draw a box wider than 0.6° ≈ 67 km, and a French city's
+ * ground moves far less over 10 km than a mountain valley's does. The warm cap
+ * is the same figure `fraicheurParis.js` uses: a dense Paris box is thousands of
+ * practices in a few hundred distinct 111 m cells, and the cap is on CELLS.
+ */
+const FLOOR_FILL_KM = 10;
+const FLOOR_WARM_LIMIT = 400;
+
+/**
+ * Plate size ramp, and the distance ramp it rides.
+ *
+ * A plate big enough to read a stethoscope out of at street level is a blanket
+ * over a whole city, so the mark's own side comes from the practice's size and
+ * the CAMERA shrinks it back to roughly the speck this layer drew before it had
+ * shapes — the montage `sharedMobilityFrance.js` records for its vehicles.
+ *
+ * Cesium does NOT interpolate a `NearFarScalar` linearly: `czm_nearFarScalar`
+ * works on SQUARED distance and then takes `pow(t, 0.2)`, so the falloff is
+ * violently front-loaded. Measured against that curve, these four numbers give
+ * 100 % of the plate below 900 m, 84 % at 2 km, 68 % at 10 km, 50 % at 30 km and
+ * the floor at 60 km — where the sites regime's widest box sits, and where a
+ * solo practice lands back on 6.5 px, which is what it used to be drawn at.
+ */
+const MARK_MIN_PX = 17;
+const MARK_MAX_PX = 30;
+const MARK_SCALE = Object.freeze({ near: 900, nearValue: 1.0, far: 60_000, farValue: 0.34 });
+
+/**
+ * Fade, so a wide box does not stack six thousand opaque plates into a mat.
+ * Shared by every mark rather than built per mark: a `Billboard` CLONES a
+ * `NearFarScalar` on assignment, and a dense Paris box is 5 907 of them.
+ */
+const MARK_SCALE_BY_DISTANCE = new Cesium.NearFarScalar(
+  MARK_SCALE.near, MARK_SCALE.nearValue, MARK_SCALE.far, MARK_SCALE.farValue,
+);
+const MARK_TRANSLUCENCY = new Cesium.NearFarScalar(900, 1.0, 90_000, 0.4);
 
 /**
  * The APL ladder, anchored on the two thresholds the ARS actually use.
@@ -154,13 +227,19 @@ const fr = (value) => (Number.isFinite(value) ? Number(value).toLocaleString('fr
 const pct = (value) => `${(value * 100).toFixed(0)} %`;
 
 /**
- * Dot size from the number of DOCTORS at the address. Square-root, so a
+ * Plate side from the number of DOCTORS at the address. Square-root, so a
  * fifteen-doctor practice reads as bigger than a solo one without swallowing
  * the street it sits on.
+ *
+ * The floor is 17 rather than the 5 the bare dots used, because this is the
+ * side a punched silhouette has to survive inside: a plate stays a plate at
+ * 10 px, but the hole in it stops being a shape well before that. The ceiling
+ * is what the distance ramp multiplies, not what is drawn — see
+ * {@link MARK_SCALE}.
  */
-export function medecinPixelSize(practitioners) {
+export function medecinMarkPixelSize(practitioners) {
   const count = Math.max(1, Number(practitioners) || 1);
-  return Math.min(15, 5 + Math.sqrt(count) * 1.6);
+  return Math.min(MARK_MAX_PX, MARK_MIN_PX + Math.sqrt(count) * 2.0);
 }
 
 /**
@@ -385,7 +464,7 @@ export function createMedecinsLayer({
   fetchImpl = (...args) => globalThis.fetch(...args),
 } = {}) {
   let _viewer = null;
-  let _points = null;
+  let _marks = null;
   let _clickHandler = null;
   let _enabled = false;
   let _loading = false;
@@ -415,14 +494,183 @@ export function createMedecinsLayer({
   let _nationalPromise = null;
   let _sitesAbort = null;
   let _lastServedKey = null;
+  let _floorRetryTimer = null;
+  let _floorRetries = 0;
   /** siteIndex → practitioner rows, fetched on the click that needs them. */
   const _practitionerCache = new Map();
 
   const renderId = (key) => `${RENDER_PREFIX}${key}`;
 
-  function markerPosition(lat, lon) {
+  /**
+   * The ground one practice stands on: the shared DEM/mesh cell when it is
+   * warm, the PROVISIONAL rendered-surface read when it is not, and null when
+   * neither has an answer yet.
+   *
+   * WHY THE SECOND SOURCE EXISTS. `cachedGroundFloor` answers over the NETWORK,
+   * and until it does this file used the ellipsoid. Measured over Place
+   * Bellecour, the drawn surface sits at 220-309 m of ellipsoidal height — 168 m
+   * of Lyon plus 50 m of geoid — so the ellipsoid is the better part of a
+   * QUARTER KILOMETRE under the street these marks describe. Every mark here
+   * draws with `disableDepthTestDistance: Infinity`, so a buried one is painted
+   * anyway and its screen position becomes a function of the CAMERA POSE: pan
+   * the map and the practices slide across the rooftops, then jump when the DEM
+   * lands. That is the reported "les points ne sont pas bien positionnés",
+   * and it is the same defect `sharedMobilityFrance.js` measured on its fleet.
+   *
+   * @returns {?number} Ellipsoidal floor in metres, or null.
+   */
+  function recordFloor(lat, lon) {
     const floor = cachedGroundFloor(lat, lon);
-    return Cesium.Cartesian3.fromDegrees(lon, lat, (Number.isFinite(floor) ? floor : 0) + GROUND_LIFT_M);
+    if (Number.isFinite(floor)) return floor;
+    const provisional = provisionalFloor(lat, lon);
+    return Number.isFinite(provisional) ? provisional : null;
+  }
+
+  function markerPosition(lat, lon) {
+    return Cesium.Cartesian3.fromDegrees(lon, lat, (recordFloor(lat, lon) ?? 0) + GROUND_LIFT_M);
+  }
+
+  /**
+   * Whether placing marks on the ground is worth any work at all right now.
+   *
+   * The ceiling is the shared one, and it is borrowed rather than picked:
+   * `sampleProvisionalFloors` already refuses to probe above 25 km because "a
+   * ground-height error is worth well under a pixel" there. The same arithmetic
+   * settles the DEM warm this file does alongside it — measured over Lyon, a
+   * 220 m floor is 5.5 px at 30 km and 2.7 px at 60 km, against a wide mesh box
+   * whose plates are 10 px across, and paying for it means up to ten `/api/
+   * terrain/heights` round trips per view for a correction nobody can see.
+   *
+   * Above the ceiling the marks therefore keep the anchor this layer has always
+   * given them. That is not a regression the shapes introduced: the ellipsoid
+   * was the ONLY anchor at every altitude before, including the street-level one
+   * where the same error measured 171 px at the median and is what was reported.
+   */
+  function floorWorkIsWorthIt() {
+    const camera = _viewer?.scene?.camera?.positionCartographic?.height;
+    return Number.isFinite(camera) && camera <= PROVISIONAL_MAX_CAMERA_M;
+  }
+
+  /** Every drawn practice's coordinate, for the two floor sources. */
+  function floorPoints() {
+    const points = [];
+    for (const record of _records.values()) points.push({ lat: record.lat, lon: record.lon });
+    return points;
+  }
+
+  /** True while any drawn practice is still standing on no measured floor. */
+  function hasColdFloor() {
+    for (const record of _records.values()) {
+      if (recordFloor(record.lat, record.lon) == null) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Ground the cold cells against the surface actually being DRAWN, then warm
+   * the DEM behind it.
+   *
+   * Synchronous, no network of ours, ≤40 probes and nothing at all above 25 km
+   * of camera. The DEM warm is fire-and-forget and NOTHING repositions what it
+   * resolves, which is the other half of why the retry loop below exists.
+   * @returns {number} Cells a later pass could still do better on.
+   */
+  function sampleFloors() {
+    if (!floorWorkIsWorthIt()) return 0;
+    const points = floorPoints();
+    if (!points.length) return 0;
+    const { pending } = sampleProvisionalFloors(_viewer?.scene, points, { fillKm: FLOOR_FILL_KM });
+    // Deduped to CELLS and capped on cells, and a cell that is already warm does
+    // not spend a slot: that is what lets a second pass reach the cells the
+    // first one's cap cut off, instead of re-offering the same 400 for ever.
+    const cells = new Map();
+    for (const at of points) {
+      if (cachedGroundFloor(at.lat, at.lon) != null) continue;
+      const cell = coarseFloorCoord(at.lat, at.lon);
+      const key = `${cell.lat},${cell.lon}`;
+      if (cells.has(key)) continue;
+      cells.set(key, cell);
+      if (cells.size >= FLOOR_WARM_LIMIT) break;
+    }
+    if (cells.size) warmGroundFloor([...cells.values()]);
+    return pending;
+  }
+
+  /**
+   * Re-place every drawn mark on the best floor now known for its cell.
+   *
+   * A `Billboard` position is written ONCE, at `add()`, so a floor that lands
+   * after the repaint changes nothing until something walks the set — which is
+   * what this is. Cheap: no network, no allocation beyond the new Cartesians.
+   * @returns {number} How many marks actually moved.
+   */
+  function reanchor() {
+    let moved = 0;
+    for (const record of _records.values()) {
+      const mark = record.mark;
+      if (!mark || mark.isDestroyed?.() || !mark.position) continue;
+      const next = markerPosition(record.lat, record.lon);
+      // 5 cm: below this the move is not a pixel anywhere, and rewriting the
+      // primitive would only cost the collection a dirty flag.
+      if (Cesium.Cartesian3.equalsEpsilon(mark.position, next, 0, 0.05)) continue;
+      mark.position = next;
+      record.position = next;
+      moved += 1;
+    }
+    // The open card carries a COPY of its practice's anchor, so it has to
+    // follow the mark up rather than stay where the buried one used to be.
+    if (moved && _selectedId && !_selectedId.startsWith('dep:')) {
+      const record = _records.get(_selectedId);
+      if (record) paintSiteCard(_selectedId, record, _practitionerCache.get(record.index) ?? null);
+    }
+    return moved;
+  }
+
+  /** One deferred floor pass: sample again, re-place, decide whether to return. */
+  function refreshFloors() {
+    if (!_enabled || !_viewer || !_records.size) return;
+    const pending = sampleFloors();
+    if (reanchor()) governorRequestRender('medecins-fr-reanchor');
+    if (pending || (floorWorkIsWorthIt() && hasColdFloor())) scheduleFloorRetry();
+  }
+
+  /**
+   * Come back for the practices the surface could not place yet.
+   *
+   * A probe misses while the tiles under a mark have not streamed — the
+   * ordinary state for the second or two after arriving somewhere — and a
+   * parked camera produces no repaint, so nothing would ask again. Bounded on
+   * purpose: five DOUBLING wake-ups (~37 s in total, `provisionalFloor.js`),
+   * refilled only when the situation is new, so ground with no photoreal
+   * coverage cannot undo the render governor's idle parking. A fixed-interval
+   * loop was measured expiring before a cold stream finished, which leaves the
+   * defect whole.
+   */
+  function scheduleFloorRetry() {
+    if (_floorRetryTimer != null) return;
+    const delay = provisionalFloorRetryDelayMs(_floorRetries);
+    if (delay == null) return; // budget spent — wait for the camera to move
+    _floorRetries += 1;
+    _floorRetryTimer = setTimeout(() => {
+      _floorRetryTimer = null;
+      refreshFloors();
+    }, delay);
+  }
+
+  /** Drops a pending pass and refills its budget: a new view gets a new one. */
+  function resetFloorRetries() {
+    if (_floorRetryTimer != null) {
+      clearTimeout(_floorRetryTimer);
+      _floorRetryTimer = null;
+    }
+    _floorRetries = 0;
+  }
+
+  /** Sample, re-place and book a return pass after a repaint. */
+  function groundDrawnMarks() {
+    const pending = sampleFloors();
+    reanchor();
+    if (pending || (floorWorkIsWorthIt() && hasColdFloor())) scheduleFloorRetry();
   }
 
   function cameraBox() {
@@ -651,26 +899,68 @@ export function createMedecinsLayer({
     governorRequestRender('medecins-fr-select-dep');
   }
 
-  function repaintPoints(rows) {
-    if (!_points) return;
-    _points.removeAll();
+  /**
+   * Six colours and six glyphs, parsed and built once.
+   *
+   * A `Billboard` CLONES its colour on assignment and Cesium keys its texture
+   * atlas on the image STRING, so six data URIs are six atlas entries however
+   * many marks share them — but re-deriving either per mark is six thousand
+   * throwaway parses on a dense Paris box.
+   */
+  const _familyColor = new Map();
+  const _familyGlyph = new Map();
+  function familyColor(family) {
+    const key = FAMILY_COLORS[family] ? family : 'specialiste';
+    let color = _familyColor.get(key);
+    if (!color) {
+      color = Cesium.Color.fromCssColorString(FAMILY_COLORS[key]);
+      _familyColor.set(key, color);
+    }
+    return color;
+  }
+  function familyGlyph(family) {
+    const key = FAMILY_COLORS[family] ? family : 'specialiste';
+    let glyph = _familyGlyph.get(key);
+    if (!glyph) {
+      glyph = medecinFamilyGlyph(key, { px: MEDECIN_GLYPH_RASTER_PX });
+      _familyGlyph.set(key, glyph);
+    }
+    return glyph;
+  }
+
+  function repaintMarks(rows) {
+    if (!_marks) return;
+    _marks.removeAll();
     _records = new Map();
+    resetFloorRetries();
     for (const row of rows) {
       const id = renderId(row.key);
       const position = markerPosition(row.lat, row.lon);
-      const color = Cesium.Color.fromCssColorString(FAMILY_COLORS[row.family] ?? FAMILY_COLORS.specialiste);
-      _points.add({
+      const side = medecinMarkPixelSize(row.practitioners);
+      const mark = _marks.add({
         id,
         position,
-        pixelSize: medecinPixelSize(row.practitioners),
-        color,
-        outlineColor: COLOR_OUTLINE,
-        outlineWidth: 1,
-        translucencyByDistance: undefined,
+        image: familyGlyph(row.family),
+        width: side,
+        height: side,
+        color: familyColor(row.family),
+        scaleByDistance: MARK_SCALE_BY_DISTANCE,
+        translucencyByDistance: MARK_TRANSLUCENCY,
+        // The mark stands on the pavement, and every building it stands next to
+        // is taller than it. With the depth test ON, a plate anchored at street
+        // level is eaten from below by the ground that is NEARER the camera at
+        // those screen pixels — the « parasol » that made these read as dots
+        // half-sunk into the roofs. `Infinity` is this repository's value
+        // everywhere, and it is safe here without a horizon curtain because
+        // every row drawn came out of the CURRENT view rectangle: neither
+        // `renderSites` nor `renderMesh` can hand back a practice on the far
+        // side of the planet.
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
       });
-      _records.set(id, { ...row, position });
+      _records.set(id, { ...row, position, mark });
     }
     restoreSpriteOrder();
+    groundDrawnMarks();
     _viewer?.scene?.requestRender?.();
   }
 
@@ -679,7 +969,7 @@ export function createMedecinsLayer({
     // § 3.5 — see `profileCountBudget`. Coverage first, density second.
     const budget = profileCountBudget(medecinsMeshBudget(box.north - box.south));
     const { picked } = selectMedecinsMesh(payload.sites, { box, budget });
-    repaintPoints(picked.map((row, index) => ({
+    repaintMarks(picked.map((row, index) => ({
       key: `mesh:${index}:${row[MESH_LAT]}:${row[MESH_LON]}`,
       lat: row[MESH_LAT],
       lon: row[MESH_LON],
@@ -712,7 +1002,7 @@ export function createMedecinsLayer({
     _sites = payload.sites;
     _sitesTruncated = Boolean(payload.truncated);
     _sitesBox = box;
-    repaintPoints(payload.sites.map((entry) => ({
+    repaintMarks(payload.sites.map((entry) => ({
       key: `site:${entry.index}`,
       index: entry.index,
       lat: entry.site[SITE_LAT],
@@ -743,7 +1033,7 @@ export function createMedecinsLayer({
         await ensureDepartementShapes();
         repaintDepartements();
         publishDepartementLabels();
-        repaintPoints([]);
+        repaintMarks([]);
       } else {
         if (changed) { repaintDepartements(); publishDepartementLabels(); }
         // The proxy refuses a box wider than its ceiling, and the ceiling bites
@@ -831,10 +1121,10 @@ export function createMedecinsLayer({
 
     init(viewer) {
       _viewer = viewer;
-      _points = new Cesium.PointPrimitiveCollection({ blendOption: Cesium.BlendOption.TRANSLUCENT });
-      viewer.scene.primitives.add(_points);
-      _points.show = false;
-      registerSpriteCollection(MEDECINS_FR_LAYER_ID, _points);
+      _marks = new Cesium.BillboardCollection({ scene: viewer.scene, blendOption: Cesium.BlendOption.TRANSLUCENT });
+      viewer.scene.primitives.add(_marks);
+      _marks.show = false;
+      registerSpriteCollection(MEDECINS_FR_LAYER_ID, _marks);
       registerPickOwner(MEDECINS_FR_LAYER_ID, (pickedId) => (
         typeof pickedId === 'string' && pickedId.startsWith(RENDER_PREFIX)
       ));
@@ -847,7 +1137,7 @@ export function createMedecinsLayer({
       _enabled = true;
       publishDrawingJoin();
       if (viewer) installClickHandler(viewer);
-      if (_points) _points.show = true;
+      if (_marks) _marks.show = true;
       if (_depDataSource) _depDataSource.show = true;
       overlayHost.setVisible(OVERLAY_SOURCE_ID, true);
       overlayHost.setVisible(LABEL_SOURCE_ID, true);
@@ -866,7 +1156,7 @@ export function createMedecinsLayer({
     disable() {
       _enabled = false;
       publishDrawingJoin();
-      if (_points) { _points.show = false; _points.removeAll(); }
+      if (_marks) { _marks.show = false; _marks.removeAll(); }
       if (_depDataSource) _depDataSource.show = false;
       for (const parts of _depEntities.values()) for (const entity of parts) entity.show = false;
       overlayHost.clearSource(OVERLAY_SOURCE_ID);
@@ -876,6 +1166,9 @@ export function createMedecinsLayer({
       removeClickHandler();
       for (const remove of _cameraRemovers) remove();
       _cameraRemovers = [];
+      // A pending floor pass outlives the layer otherwise, and fires against an
+      // empty record set on a viewer the reader has already moved on from.
+      resetFloorRetries();
       _records = new Map();
       _selectedId = null;
       _sites = [];
@@ -893,7 +1186,7 @@ export function createMedecinsLayer({
       this.disable();
       unregisterSpriteCollection(MEDECINS_FR_LAYER_ID);
       unregisterPickOwner(MEDECINS_FR_LAYER_ID);
-      if (_points) { viewer?.scene?.primitives?.remove?.(_points); _points = null; }
+      if (_marks) { viewer?.scene?.primitives?.remove?.(_marks); _marks = null; }
       if (_depDataSource) { viewer?.dataSources?.remove?.(_depDataSource, true); _depDataSource = null; }
       _depEntities.clear();
       _depShapesPromise = null;
@@ -948,6 +1241,13 @@ export function createMedecinsLayer({
         : MEDECIN_FAMILIES.map((family) => ({
           color: FAMILY_COLORS[family],
           label: MEDECIN_FAMILY_LABELS[family],
+          // Two channels on ONE row, not a second list by shape: the hue names
+          // the family and the swatch IS the mark drawn on the globe, at key
+          // size. `manager.js` masks this raster and paints it with the row's
+          // own colour — which is why the ring is dropped (`key: true`): a mask
+          // reads ALPHA, and an opaque ring would flatten all six rows into the
+          // same plain dot.
+          glyph: medecinFamilyGlyph(family, { px: LEGEND_GLYPH_PX, key: true }),
         }));
       return { chips, legend };
     },

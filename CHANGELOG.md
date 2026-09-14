@@ -6,6 +6,48 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-14
 
 ### Changed
+- **Les cabinets de la couche Médecins étaient posés à un quart de kilomètre
+  sous la rue qu'ils décrivent, et on n'en voyait que la moitié.** Deux pannes
+  sur le même point, et chacune ressemble à autre chose.
+
+  La première est une HAUTEUR. Chaque marqueur était ancré sur l'ellipsoïde ;
+  au-dessus de la place Bellecour le sol dessiné est à 220–309 m ellipsoïdaux
+  (168 m de Lyon plus 50 m de géoïde). Comme la couche peint sans test de
+  profondeur, un marqueur enterré est peint quand même : sa position à l'écran
+  devient une fonction de la pose de la caméra. Mesuré sur 193 marqueurs,
+  caméra à 900 m inclinée à −40° : **171 px d'écart médian, 276 px au pire**,
+  et le marqueur GLISSAIT sur les toits à chaque déplacement. Les marqueurs
+  sont désormais assis sur le sol — cellule DEM partagée, sondage de la surface
+  rendue en attendant — et **replacés** quand un meilleur sol arrive : un
+  panoramique aller-retour de 300 m les laisse à **0,00 px** de leur pixel.
+
+  La seconde est un PARASOL. Le test de profondeur était actif : une pastille
+  porte UNE profondeur pour tout son carré, donc le sol plus bas à l'écran —
+  plus PRÈS de la caméra — mangeait sa moitié inférieure. C'est le « à moitié à
+  l'intérieur des bâtiments » du rapport. `disableDepthTestDistance` passe à
+  l'infini, la valeur maison partout ailleurs dans ce dépôt.
+
+- **Et un point coloré ne disait pas de quel médecin il s'agissait.** Six
+  familles, six teintes, aucune étiquette : au-dessus de Lyon la couche peint
+  544 marques, au-dessus de Paris 5 907, et un lecteur devait retenir six
+  couples couleur-mot puis trouver le sien par élimination contre une légende à
+  l'autre bout de l'écran.
+
+  Chaque famille porte maintenant sa silhouette, découpée dans la pastille
+  teintée : un **stéthoscope** pour la médecine générale, une **croix** pour le
+  fourre-tout des 24 spécialités médicales, un **adulte et un enfant** pour
+  femme et enfant, une **tête** pour la santé mentale, un **scalpel** pour la
+  chirurgie, un **trèfle** pour l'imagerie et la biologie — dont 90,8 % des
+  40 009 lignes sont radiologie, médecine nucléaire ou radiothérapie. Rien n'est
+  dessiné à la main : Maki et Temaki (CC0) d'abord, Material Symbols pour les
+  trois sujets qu'aucun jeu cartographique ne publie. La ligne de légende porte
+  la même marque, masquée et teintée par `manager.js` — une famille, une ligne,
+  deux canaux, jamais une seconde liste par forme.
+
+  La pastille descend une rampe de distance : pleine taille sous 900 m (17 à
+  30 px selon le nombre de médecins à l'adresse), 50 % à 30 km, et à 60 km elle
+  revient au point de 6,5 px que la couche dessinait avant.
+
 - **À Lyon, la couche Défibrillateurs recouvrait la ville de fiches dont une
   ligne sur six disait quelque chose.** Le jeu GeoDAE rend 1 176 appareils dans
   une vue de centre-ville. L'hôte d'annotations en matérialise au plus 160 par
