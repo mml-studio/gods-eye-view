@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { DataLayerManager } from './manager.js';
 import {
+  DISABLED_LAYER_IDS,
   LAYER_STATE_REGISTRY,
   LAYER_STATE_STORAGE_KEY,
   LayerStateCoordinator,
@@ -11,8 +12,10 @@ import {
   createDefaultLayerState,
   decodeLayerStateParams,
   encodeLayerStateParams,
+  isLayerDisabled,
   normalizeLayerState,
   parseStoredLayerState,
+  pruneDisabledLayers,
   serializeStoredLayerState,
   validateLayerStateRegistry,
 } from './layerState.js';
@@ -591,6 +594,61 @@ test('stored state is deterministic, rejects other versions, and stays within a 
   assert.deepEqual(parseStoredLayerState(stored), normalizeLayerState(state));
   assert.equal(parseStoredLayerState('{"v":1,"l":[]}'), null);
   assert.ok(encode(state).length < 420, encode(state));
+});
+
+test('a withdrawn layer is registered, still encodes, and never comes back at boot', async () => {
+  const withdrawn = DISABLED_LAYER_IDS[0];
+  assert.ok(withdrawn, 'this test is about the withdrawn layers; there must be one');
+  // Still a first-class layer: registered, tokenized, and drivable in code.
+  // Withdrawn is a decision about the INTERFACE, not a kill switch on the
+  // module — `scripts/qa-velo-pulse.mjs` drives it through `setEnabled`.
+  assert.ok(REGISTERED_LAYER_IDS.includes(withdrawn));
+  assert.equal(isLayerDisabled(withdrawn), true);
+
+  // A stored session that still remembers it ON does NOT restore it. Without
+  // this, a reader who had the layer on the day before it was withdrawn would
+  // boot with it drawing and no control anywhere to switch it off.
+  const stored = createDefaultLayerState();
+  stored.enabledLayerIds = [withdrawn, 'flights'];
+  const manager = productionManager();
+  const coordinator = new LayerStateCoordinator(manager, shareSink(), {
+    storage: memoryStorage(serializeStoredLayerState(stored)),
+  });
+  await coordinator.start();
+  assert.equal(manager.isEnabled(withdrawn), false, `${withdrawn} came back from storage`);
+  assert.equal(manager.isEnabled('flights'), true, 'the rest of the session still restores');
+  assert.ok(!coordinator.getDurableState().enabledLayerIds.includes(withdrawn));
+  coordinator.destroy();
+
+  // And an old share link that carries its token restores everything else and
+  // drops it, rather than rejecting the whole payload: the link is not corrupt,
+  // it is simply older than the decision.
+  const shared = decodeLayerStateParams(new URLSearchParams(encode(stored)));
+  assert.ok(shared.enabledLayerIds.includes(withdrawn), 'the codec still decodes the token');
+  const shareManager = productionManager();
+  const shareCoordinator = new LayerStateCoordinator(shareManager, shareSink(), {
+    storage: memoryStorage(),
+  });
+  await shareCoordinator.start({ shareLayerState: shared, shareCreatedAtMs: 1_000 });
+  assert.equal(shareManager.isEnabled(withdrawn), false, `${withdrawn} came back from a link`);
+  assert.equal(shareManager.isEnabled('flights'), true);
+  shareCoordinator.destroy();
+});
+
+test('pruning drops the withdrawn ids and leaves everything else, options included', () => {
+  const withdrawn = DISABLED_LAYER_IDS[0];
+  const state = normalizeLayerState({
+    ...createDefaultLayerState(),
+    enabledLayerIds: [withdrawn, 'flights'],
+  });
+  const pruned = pruneDisabledLayers(state);
+  assert.deepEqual(pruned.enabledLayerIds, ['flights']);
+  // The options survive: the flag that withdrew the layer is one line, and a
+  // reader who comes back to it should find the mode they left it on.
+  assert.deepEqual(pruned.options, state.options);
+  // Nothing to prune is the identity, not a copy — this runs on every boot.
+  const clean = normalizeLayerState({ ...createDefaultLayerState(), enabledLayerIds: ['flights'] });
+  assert.equal(pruneDisabledLayers(clean), clean);
 });
 
 test('restore applies sanitized params after init and before enable', async () => {

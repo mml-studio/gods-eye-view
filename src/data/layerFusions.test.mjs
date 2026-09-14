@@ -8,7 +8,7 @@ import {
   fusionToggleGroupFor,
   validateLayerFusions,
 } from './layerFusions.js';
-import { REGISTERED_LAYER_IDS } from './layerState.js';
+import { DISABLED_LAYER_IDS, REGISTERED_LAYER_IDS } from './layerState.js';
 import { LAYER_TAXONOMY, groupLayerIdsByCategory, layerTaxonomyFor } from './layerTaxonomy.js';
 
 test('the shipped table validates against the registered layer set', () => {
@@ -122,6 +122,49 @@ test('the merge is measured, not asserted: the panel loses 22 rows and keeps eve
   }
 });
 
+test('a withdrawn companion loses its chip, keeps its layer, and never gets a row', () => {
+  // The three halves of `disabled: true`, asserted together because dropping
+  // any one of them is a different bug: no chip (the reader cannot ask for it),
+  // not in the row's toggle group (the row never switches it on behind their
+  // back), and STILL fused (so it does not come back as a row of its own — the
+  // failure mode of simply deleting the entry).
+  const offered = fusionCompanionsFor('bikeshare');
+  assert.deepEqual(offered.map((entry) => entry.id), ['shared-mobility-fr']);
+  assert.deepEqual(fusionToggleGroupFor('bikeshare'), ['bikeshare', 'shared-mobility-fr']);
+  assert.equal(fusedIntoFor('velo-pulse-fr'), 'bikeshare');
+
+  // Nothing was deleted: the entry is still in the table, still registered,
+  // and still carries the chip label it comes back with.
+  const entry = LAYER_FUSIONS.find((fusion) => fusion.primary === 'bikeshare')
+    .companions.find((companion) => companion.id === 'velo-pulse-fr');
+  assert.equal(entry.disabled, true);
+  assert.equal(entry.chip, 'Semaine type');
+  assert.ok(REGISTERED_LAYER_IDS.includes('velo-pulse-fr'));
+  assert.ok(DISABLED_LAYER_IDS.includes('velo-pulse-fr'));
+
+  // And the panel projection agrees: no row, and no chip on anyone else's.
+  const rows = groupLayerIdsByCategory().flatMap((group) => group.layerIds);
+  assert.ok(!rows.includes('velo-pulse-fr'));
+  const byId = new Map(LAYER_TAXONOMY.map((row) => [row.id, row]));
+  assert.deepEqual(byId.get('bikeshare').companions.map((c) => c.id), ['shared-mobility-fr']);
+});
+
+test('a fusion may withdraw every companion it has', () => {
+  // Validation accepts it rather than calling it an empty fusion: the entry is
+  // still the statement that these layers are one subject, and taking the flags
+  // back off is how the row gets its strip again. `fusionCompanionsFor` then
+  // answers `null` rather than `[]`, so such a row renders exactly like an
+  // unfused one instead of opening a control strip with nothing in it.
+  const table = [
+    { primary: 'a', companions: [{ id: 'b', chip: 'B', disabled: true }] },
+  ];
+  assert.equal(validateLayerFusions(table, ['a', 'b']), true);
+  // The shipped table's own case: `bikeshare` keeps one offered companion, so
+  // it still has a strip — the `null` branch is the contract, asserted above on
+  // every layer that has no fusion at all.
+  assert.equal(fusionCompanionsFor('cctv'), null);
+});
+
 test('validation refuses the four ways a fusion table goes wrong', () => {
   const ids = ['a', 'b', 'c'];
   assert.throws(
@@ -153,5 +196,9 @@ test('validation refuses the four ways a fusion table goes wrong', () => {
   assert.throws(
     () => validateLayerFusions([{ primary: 'a', companions: [{ id: 'b' }] }], ids),
     /missing chip label/,
+  );
+  assert.throws(
+    () => validateLayerFusions([{ primary: 'a', companions: [{ id: 'b', chip: 'B', disabled: 'yes' }] }], ids),
+    /disabled flag must be a boolean/,
   );
 });

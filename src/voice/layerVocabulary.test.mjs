@@ -24,6 +24,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { ANALYST_LAYERS } from '../data/analystEngine.js';
+import { DISABLED_LAYER_IDS, isLayerDisabled } from '../data/layerState.js';
 import { LAYER_TAXONOMY } from '../data/layerTaxonomy.js';
 import {
   ANALYST_QUERY_LAYER_IDS,
@@ -50,17 +51,28 @@ function toolEnum(toolName, path) {
   return [...literal.slice(enumStart, enumEnd).matchAll(/'([a-z0-9-]+)'/g)].map((m) => m[1]);
 }
 
-test('every registered dataset is speakable, and only the coordinator is not', () => {
-  const datasets = LAYER_TAXONOMY.filter((entry) => entry.kind === 'dataset').map((entry) => entry.id);
+test('every offered dataset is speakable, and the two exclusions are the only ones', () => {
+  const datasets = LAYER_TAXONOMY
+    .filter((entry) => entry.kind === 'dataset' && !isLayerDisabled(entry.id))
+    .map((entry) => entry.id);
   assert.deepEqual([...VOICE_LAYER_IDS], datasets);
   // military-awareness loads nothing of its own and is entered through the
   // Contacts tab. A toggle for it would be a switch for a non-source.
   assert.ok(!VOICE_LAYER_IDS.includes('military-awareness'));
+  // A layer withdrawn from the interface is withdrawn from the microphone too:
+  // "montre le pouls vélo" must not put on the globe something the panel has no
+  // chip to switch back off.
+  for (const id of DISABLED_LAYER_IDS) {
+    assert.ok(!VOICE_LAYER_IDS.includes(id), `${id} is withdrawn but still speakable`);
+    assert.equal(resolveVoiceLayerId(id), null, `${id} still resolves from its id`);
+    const entry = LAYER_TAXONOMY.find((row) => row.id === id);
+    assert.equal(resolveVoiceLayerId(entry.label), null, `"${entry.label}" still resolves`);
+  }
 });
 
 test('every layer resolves from its own id and from its panel label', () => {
   for (const entry of LAYER_TAXONOMY) {
-    if (entry.kind !== 'dataset') continue;
+    if (entry.kind !== 'dataset' || isLayerDisabled(entry.id)) continue;
     assert.equal(resolveVoiceLayerId(entry.id), entry.id, `${entry.id} does not resolve from its id`);
     assert.equal(
       resolveVoiceLayerId(entry.label),

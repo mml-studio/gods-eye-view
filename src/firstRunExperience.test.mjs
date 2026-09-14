@@ -716,10 +716,20 @@ test('the voice TOOL SCHEMA is byte-identical to main — the mission mapping is
   // place, so "la fréquence des transports" and "la desserte" still resolve,
   // now onto `idfm-network`. Net −5 bytes, one cache bust. A voice-reachable
   // subject must never disappear because its implementation was merged.
-  assert.equal(block.length, 38259, 'tool schema byte length drifted from the frozen baseline');
+  //
+  // Re-frozen a NINTH time, the third edit that SHRINKS the schema and the
+  // first for a product decision rather than an implementation one:
+  // `velo-pulse-fr` left `set_layer_visibility` and `show_data_layers_menu`
+  // because the « Semaine type » chip was withdrawn from the Data Layers panel
+  // on 2026-09-14 (`DISABLED_LAYER_IDS`). The layer is still registered and
+  // still drivable in code — what it no longer has is a control, and a voice
+  // enum that kept it would let the model put on the globe something the reader
+  // cannot switch back off. −58 bytes, one cache bust. No common-name clause
+  // takes its place: there is nothing to resolve TO.
+  assert.equal(block.length, 38201, 'tool schema byte length drifted from the frozen baseline');
   assert.equal(
     crypto.createHash('sha256').update(block).digest('hex'),
-    '7df6a65bef6e7d64952169dfbfaf8d24328a15e3dfa6104aa8cd1dbf65aec837',
+    '49ffacee5d36ffe306d8ee518e923e3d201185c7bc6ee493423099007bd62e73',
     'the first-run missions must ride EXISTING tools: no schema edit, no cache bust',
   );
 
