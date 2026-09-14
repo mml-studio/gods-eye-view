@@ -23,8 +23,8 @@ import {
 } from './frHydroFeed.js';
 
 /**
- * Petite hydro (FR) — every hydro plant in France's national register, not just
- * the big ones.
+ * Centrales hydro — every hydro plant in France's national register, not just
+ * the big ones, plus the 592 stations OpenStreetMap maps elsewhere.
  *
  * This layer exists because of a hole a user found by looking for one place.
  * There are nine hydroelectric plants in the commune of Laruns, in the
@@ -118,6 +118,71 @@ import {
  */
 
 const REGISTRY_URL = new URL('./local_data/fr_hydro_plants/plants.json', import.meta.url).href;
+
+/**
+ * The world half — 592 hydroelectric stations, and NOT a second register.
+ *
+ * They arrived on 2026-09-14 from the dams pack, where they had been shipping
+ * as "barrages" since the fork began. That pack's French half is an extraction
+ * of dam STRUCTURES; its world half was the old Open Infrastructure Map
+ * POWER-PLANT layer, filtered on a dam tag. Two different objects under one
+ * row name, and the divergence was loudest on the pack's top tier — 592 world
+ * features against 494 French ones — so a reader who switched on "Barrages"
+ * and looked at the globe got a map of the world's hydroelectricity.
+ *
+ * A generating station belongs to the layer that draws generating stations.
+ * What it does NOT do is make this layer a world register: France is ODRÉ's
+ * hydraulic filière entire, down to a 40 kW mill, and these 592 are one
+ * snapshot's worth of everywhere else. They get their own colour and their own
+ * legend row for exactly that reason — see {@link WORLD_HYDRO_COLOR}.
+ */
+const WORLD_HYDRO_URL = new URL('./local_data/world_hydro/plants.json', import.meta.url).href;
+
+/**
+ * The world half's own hue, and why it is not the register's neutral grey.
+ *
+ * `HYDRO_UNKNOWN_COLOR` means "the French register left the technology blank",
+ * and its legend row says so in those words. An OSM station is a different
+ * silence: nobody ever asked it the question. Sharing the grey would file 592
+ * foreign stations under a sentence about ODRÉ's vocabulary.
+ *
+ * Slate blue, clear of the five technology hues and of the cluster ring's grey.
+ */
+export const WORLD_HYDRO_COLOR = '#6f8fc9';
+
+/** Bucket label for the world half, in the legend and in `techBucket`'s place. */
+export const WORLD_HYDRO_TECH_LABEL = 'Hors registre français';
+
+/**
+ * Project one shipped world record into the shape the layer draws.
+ *
+ * The register's vocabulary is deliberately NOT invented here: no `tech`, no
+ * `techKey`, no `commune`, no `energyKwh`. Those fields are absent because
+ * OpenStreetMap does not publish them, and a card that omits a line is honest
+ * where one that prints a placeholder is not.
+ *
+ * @param {object} row A `world_hydro/plants.json` record.
+ * @returns {?object} A plant, or null when the record has no usable position.
+ */
+export function worldHydroPlant(row) {
+  const lat = Number(row?.lat);
+  const lon = Number(row?.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const osm = String(row?.osm || '').trim();
+  if (!osm) return null;
+  const kw = Number(row?.kw);
+  return {
+    id: `osm:${osm}`,
+    osm,
+    scope: 'world',
+    lat,
+    lon,
+    name: row?.name ? String(row.name) : null,
+    operator: row?.operator ? String(row.operator) : null,
+    kw: Number.isFinite(kw) && kw > 0 ? kw : null,
+    builtYear: Number.isFinite(Number(row?.builtYear)) ? Number(row.builtYear) : null,
+  };
+}
 
 /** Layer id — also the share-link registry key. */
 export const FR_HYDRO_LAYER_ID = 'fr-hydro-plants';
@@ -237,6 +302,10 @@ export function hydroPixelSize(kw) {
  * @returns {Cesium.Color}
  */
 export function hydroColor(plant) {
+  // The world half first: it carries no `techKey` and never will, so falling
+  // through to the register's neutral grey would file it under a sentence
+  // about ODRÉ's vocabulary. Two different silences, two colours.
+  if (plant?.scope === 'world') return Cesium.Color.fromCssColorString(WORLD_HYDRO_COLOR);
   const entry = plant?.techKey
     ? Object.values(HYDRO_TECHNOLOGIES).find((tech) => tech.key === plant.techKey)
     : null;
@@ -351,6 +420,38 @@ export const SOURCE_NOTES = Object.freeze({
   'osm-plant': 'OpenStreetMap',
   'rte-switchyard': 'OpenStreetMap',
 });
+
+/**
+ * The card for one world station — four lines at most, and none of them
+ * borrowed from the French register.
+ *
+ * `buildHydroCard` next door is built around ODRÉ: injected energy, head,
+ * turbine groups, commune, EIC, the placement audit trail. OpenStreetMap
+ * publishes none of that, so running a world station through it would print
+ * `⚡ — kW installés` over `↻ énergie injectée non publiée` — two placeholders
+ * and a French register's vocabulary, about an object neither belongs to.
+ *
+ * The last line is the one that has to be there. 592 stations is a SAMPLE, and
+ * a reader looking at a sparse globe is owed the reason it is sparse rather
+ * than left to read it as "there is no hydro here".
+ *
+ * @param {object} plant A `worldHydroPlant` record.
+ * @returns {string} Newline-separated; the first line is the title.
+ */
+export function buildWorldHydroCard(plant) {
+  const lines = [plant?.name || 'Centrale hydroélectrique'];
+  lines.push(Number.isFinite(plant?.kw) && plant.kw > 0
+    ? `⚡ ${formatHydroPower(plant.kw)} installés`
+    : '⚡ puissance non publiée par OpenStreetMap');
+  const identity = [
+    plant?.operator || '',
+    Number.isFinite(plant?.builtYear) && plant.builtYear > 0 ? `mise en service ${plant.builtYear}` : '',
+  ].filter(Boolean).join(' · ');
+  if (identity) lines.push(`▸ ${identity}`);
+  lines.push('🌍 OpenStreetMap, hors registre français — un échantillon de 592 centrales, '
+    + 'pas un inventaire mondial');
+  return lines.join('\n');
+}
 
 /**
  * The card for one placed plant.
@@ -618,7 +719,9 @@ export function selectHydroOverlayCohort(entries, limit = FR_HYDRO_OVERLAY_COHOR
 export function hydroLegend(plants, clusters) {
   const tally = new Map();
   for (const plant of plants) {
-    const bucket = techBucket(plant);
+    // `techBucket` reads the REGISTER's vocabulary, which a world station has
+    // no row in; asking it would file all 592 under "Non publiée".
+    const bucket = plant?.scope === 'world' ? WORLD_HYDRO_TECH_LABEL : techBucket(plant);
     const entry = tally.get(bucket) || { count: 0, kw: 0 };
     entry.count += 1;
     entry.kw += plant.kw ?? 0;
@@ -646,6 +749,21 @@ export function hydroLegend(plants, clusters) {
         + 'hydraulique — 25 centrales corses sont classées « Photovoltaïque » dans le fichier source',
     });
   }
+  // The world half gets its OWN row rather than joining "Non publiée": that
+  // row's blurb is about ODRÉ leaving a column blank, which is not what is
+  // going on 8 000 km away. The row also carries the sample warning, because
+  // a legend row is where a reader checks what a colour promises.
+  const world = tally.get(WORLD_HYDRO_TECH_LABEL);
+  if (world) {
+    legend.push({
+      label: WORLD_HYDRO_TECH_LABEL,
+      color: WORLD_HYDRO_COLOR,
+      count: world.count,
+      blurb: `Centrales cartographiées hors de France — ${formatHydroPower(world.kw)} publiés `
+        + 'sur les 273 qui déclarent une puissance. Un échantillon OpenStreetMap de 592 '
+        + 'ouvrages, pas un inventaire mondial : la France, elle, est complète.',
+    });
+  }
   const clusterPlants = clusters.reduce((sum, c) => sum + (c.plants ?? 0), 0);
   if (clusterPlants) {
     legend.push({
@@ -670,6 +788,7 @@ export function mapHydroAnalystRecord(plant, index = 0) {
   const text = (value) => { const t = String(value ?? '').trim(); return t || null; };
   const num = (value) => (Number.isFinite(value) ? value : null);
   const cluster = plant?.kind === 'cluster';
+  const world = plant?.scope === 'world';
   return {
     id: text(plant?.id) || `HYDRO-${String(index).padStart(4, '0')}`,
     // Null, not "Confidentiel": an analyst asking "which plants are unnamed"
@@ -683,6 +802,11 @@ export function mapHydroAnalystRecord(plant, index = 0) {
     plants: cluster ? (Number(plant?.plants) || null) : null,
     anonymousPlants: cluster ? (Number(plant?.anonymous) || 0) : null,
     kind: cluster ? 'commune-rollup' : 'plant',
+    // WHICH REGISTER SPOKE. An analyst asked "how much hydro does this region
+    // have" must be able to exclude a station that is in no French register at
+    // all, and every world field below is null, so without this it would read
+    // as a French plant with a very incomplete row.
+    register: world ? 'openstreetmap' : 'odre',
     capacityKw: num(plant?.kw),
     technology: text(plant?.tech),
     energyKwh12m: num(plant?.energyKwh),
@@ -694,7 +818,12 @@ export function mapHydroAnalystRecord(plant, index = 0) {
     region: text(plant?.region),
     voltage: text(plant?.voltage),
     substation: text(plant?.poste),
-    gridOperator: text(plant?.operator),
+    // The register's `operator` is the GRID operator — Enedis, RTE. A world
+    // station's is the party running the plant (USACE, Алроса, Verbund), which
+    // is a different fact under the same key, so it is reported under the name
+    // it deserves rather than filed as a grid operator it is not.
+    gridOperator: world ? null : text(plant?.operator),
+    plantOperator: world ? text(plant?.operator) : null,
     commissioned: text(plant?.commissioned),
     eic: text(plant?.eic),
     lat: num(plant?.lat),
@@ -718,6 +847,7 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
 export function createFrHydroPlantsLayer({
   overlayHost = DEFAULT_OVERLAY_HOST,
   registryUrl = REGISTRY_URL,
+  worldUrl = WORLD_HYDRO_URL,
   // Injected so the lifecycle can be exercised headless: Vite serves this file
   // over HTTP in the browser, and Node's `fetch` refuses the `file:` URL the
   // test resolves to.
@@ -728,6 +858,7 @@ export function createFrHydroPlantsLayer({
   let _clickHandler = null;
   let _registry = null;
   let _plants = [];
+  let _worldPlants = [];
   let _clusters = [];
   let _visiblePlants = [];
   let _visibleClusters = [];
@@ -758,6 +889,31 @@ export function createFrHydroPlantsLayer({
     return Cesium.Cartesian3.fromDegrees(
       lon, lat, (Number.isFinite(floor) ? floor : 0) + GROUND_LIFT_M,
     );
+  }
+
+  /**
+   * Read the world half out of a settled fetch, and never let it fail the load.
+   *
+   * Three ways it can be absent — the request was refused, the response is not
+   * 200, or the body is not the shape this layer projects — and all three
+   * answer with an empty array and a warning. The row still draws France.
+   *
+   * @param {PromiseSettledResult<Response>} settled
+   * @returns {Promise<Array<object>>}
+   */
+  async function readWorldHalf(settled) {
+    if (settled.status !== 'fulfilled' || !settled.value?.ok) {
+      console.warn('[Data:Centrales hydro] world half unavailable, drawing France only');
+      return [];
+    }
+    try {
+      const payload = await settled.value.json();
+      if (!Array.isArray(payload?.plants)) return [];
+      return payload.plants.map(worldHydroPlant).filter(Boolean);
+    } catch (error) {
+      console.warn('[Data:Centrales hydro] world half unreadable:', error);
+      return [];
+    }
   }
 
   function applyFloor() {
@@ -836,7 +992,15 @@ export function createFrHydroPlantsLayer({
         id,
       });
       const record = {
-        id, point, position, subject: plant, kind: 'plant', baseColor: color, basePixelSize: pixelSize,
+        id,
+        point,
+        position,
+        subject: plant,
+        // The card factory forks on this: a world station has none of the
+        // register's fields, and `buildHydroCard` would print placeholders.
+        kind: plant.scope === 'world' ? 'world' : 'plant',
+        baseColor: color,
+        basePixelSize: pixelSize,
         degrees: { lat: plant.lat, lon: plant.lon },
         floorResolved: Number.isFinite(cachedGroundFloor(plant.lat, plant.lon)),
       };
@@ -1054,9 +1218,13 @@ export function createFrHydroPlantsLayer({
     // The neighbourhood is asked for HERE, at selection, and never on the
     // render pass: two layers are searched and neither answer changes while a
     // card is open. A cluster has no single position to ask from.
-    const text = record.kind === 'cluster'
-      ? buildHydroClusterCard(record.subject)
-      : buildHydroCard(record.subject, hydroNeighbours(record.subject));
+    let text;
+    if (record.kind === 'cluster') text = buildHydroClusterCard(record.subject);
+    // The neighbourhood join is France-only — it reads the dams pack, whose
+    // world tail is 69 unclassified structures — so a world station is never
+    // offered one rather than being offered an empty answer.
+    else if (record.kind === 'world') text = buildWorldHydroCard(record.subject);
+    else text = buildHydroCard(record.subject, hydroNeighbours(record.subject));
     const [title, ...details] = text.split('\n');
     overlayHost.setEntries(
       FR_HYDRO_SELECTED_OVERLAY_SOURCE_ID,
@@ -1134,7 +1302,7 @@ export function createFrHydroPlantsLayer({
 
   const layer = {
     id: FR_HYDRO_LAYER_ID,
-    name: 'Petite hydro (FR)',
+    name: 'Centrales hydro',
     icon: '≈',
     source: 'ODRÉ + OSM',
     // The register is a shipped file and never changes between page loads.
@@ -1154,7 +1322,7 @@ export function createFrHydroPlantsLayer({
       registerPickOwner(FR_HYDRO_LAYER_ID, (pickedId) => (
         typeof pickedId === 'string' && pickedId.startsWith(FR_HYDRO_RENDER_PREFIX)
       ));
-      console.log('[Data:Petite hydro] Initialized');
+      console.log('[Data:Centrales hydro] Initialized');
     },
 
     enable(viewer) {
@@ -1212,7 +1380,16 @@ export function createFrHydroPlantsLayer({
       if (_registry) return true;
       _loading = true;
       try {
-        const response = await fetchImpl(registryUrl);
+        // The register is REQUIRED and the world half is not. They are fetched
+        // together and settled separately for that reason: this layer's
+        // subject is France's long tail, and a 404 on 592 foreign stations
+        // must not cost a reader the 2 742 installations the row exists for.
+        const [registryResult, worldResult] = await Promise.allSettled([
+          fetchImpl(registryUrl),
+          fetchImpl(worldUrl),
+        ]);
+        if (registryResult.status !== 'fulfilled') throw registryResult.reason;
+        const response = registryResult.value;
         if (!response.ok) {
           _lastError = `Registre hydro HTTP ${response.status}`;
           return false;
@@ -1223,21 +1400,25 @@ export function createFrHydroPlantsLayer({
           return false;
         }
         _registry = payload;
-        _plants = payload.plants.filter((p) => Number.isFinite(p?.lat) && Number.isFinite(p?.lon));
         _clusters = payload.clusters.filter((c) => Number.isFinite(c?.lat) && Number.isFinite(c?.lon));
+        const french = payload.plants
+          .filter((p) => Number.isFinite(p?.lat) && Number.isFinite(p?.lon));
+        _worldPlants = await readWorldHalf(worldResult);
+        _plants = french.concat(_worldPlants);
         applyFloor();
         _lastUpdate = Date.now();
         _lastError = null;
         repaint();
         _rowControlsListener?.();
         console.log(
-          `[Data:Petite hydro] ${payload.stats?.plants ?? 0} installations, `
+          `[Data:Centrales hydro] ${payload.stats?.plants ?? 0} installations FR, `
           + `${formatHydroPower(payload.stats?.installedKw)} installés, `
-          + `${_plants.length} placées + ${_clusters.length} communes`,
+          + `${french.length} placées + ${_clusters.length} communes`
+          + `${_worldPlants.length ? ` + ${_worldPlants.length} hors registre` : ''}`,
         );
         return true;
       } catch (error) {
-        console.warn('[Data:Petite hydro] Load error:', error);
+        console.warn('[Data:Centrales hydro] Load error:', error);
         _lastError = 'Registre hydro illisible';
         return false;
       } finally {
@@ -1267,6 +1448,7 @@ export function createFrHydroPlantsLayer({
       _records = new Map();
       _registry = null;
       _plants = [];
+      _worldPlants = [];
       _clusters = [];
       _visiblePlants = [];
       _visibleClusters = [];
@@ -1308,6 +1490,9 @@ export function createFrHydroPlantsLayer({
         state: _floorKw === floor.kw ? 'active' : 'idle',
         title: floor.kw === 0
           ? `Tout le registre — ${_plants.length + _clusters.length} marqueurs`
+          // A power floor hides what has no published power, and that is the
+          // honest answer rather than a special case: 319 of the 592 world
+          // stations declare none, so they cannot clear a megawatt threshold.
           : `Masquer les installations sous ${formatHydroPower(floor.kw)}`,
         params: { floorKw: floor.kw },
       }));
@@ -1343,8 +1528,14 @@ export function createFrHydroPlantsLayer({
         loading: _loading,
         error: _lastError,
         stale: false,
-        // The register's own figures, reported whatever the floor hides.
+        // The register's own figures, reported whatever the floor hides. They
+        // stay FRENCH figures: the 592 world stations are not in ODRÉ's
+        // hydraulic filière and adding them to `installations` would make the
+        // row quote a register for a number it does not publish.
         installations: stats?.plants ?? null,
+        // Counted separately for the same reason, and named so a reader of the
+        // stats line can see the two halves rather than one blended total.
+        world: _worldPlants.length,
         placed: stats?.placed ?? null,
         clustered: stats?.clustered ?? null,
         communes: stats?.communes ?? null,

@@ -298,7 +298,7 @@ export function formatMegawatts(mw) {
  * 900 MW`. `blurb` is the extra sentence a REGIME needs and a machine does
  * not: "réacteur à eau pressurisée" is a thing a reader can picture, "Éclusée"
  * is not, and the same five hydro regimes are already explained in exactly
- * these words by the Petite hydro legend (`frHydroFeed.js`).
+ * these words by the Centrales hydro legend (`frHydroFeed.js`).
  *
  * Keyed on all thirteen strings the three files publish, measured against the
  * live proxy on 2026-09-10. A value that is not in this table falls through to

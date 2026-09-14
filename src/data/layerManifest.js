@@ -94,7 +94,7 @@ export const LAYER_MANIFEST = Object.freeze([
   }),
   Object.freeze({
     id: 'fr-hydro-plants',
-    name: 'Petite hydro (FR)',
+    name: 'Centrales hydro',
     icon: '≈',
     source: 'ODRÉ + OSM',
     capabilities: Object.freeze(['destroy', 'getStats', 'setParams']),
@@ -487,7 +487,7 @@ export const LAYER_MANIFEST = Object.freeze([
   }),
   Object.freeze({
     id: 'local-dams',
-    name: 'Barrages',
+    name: 'Barrages & digues',
     icon: '▰',
     source: 'OpenStreetMap',
     capabilities: Object.freeze(['destroy', 'getStats', 'setParams']),

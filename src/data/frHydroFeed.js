@@ -1,5 +1,5 @@
 /**
- * French hydro register projection — the pure half of the Petite hydro layer.
+ * French hydro register projection — the pure half of the Centrales hydro layer.
  *
  * Lives here rather than inside the build script for the reason
  * `rteGenerationFeed.js` and `edfPlantsFeed.js` do: the shapes ODRÉ publishes

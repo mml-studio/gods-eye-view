@@ -447,10 +447,29 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   // `static`, like `local-dams`: the register is a file committed in the repo
   // (ODRÉ publishes no coordinates, so every position is a build-time join) and
   // it changes only when someone re-runs `npm run hydro:registry`.
+  //
+  // NOT 'Petite hydro' any more. That name was wrong in both directions at
+  // once: the layer draws ODRÉ's hydraulic filière ENTIRE — Grand-Maison,
+  // 1 690 MW, the largest hydro plant in France, is in it — so nothing about
+  // it is small, and the `(FR)` suffix it used to carry in the manifest went
+  // with the rename because the row also draws 592 stations elsewhere now.
+  //
+  // `coverage` stays 'fr' all the same, and the reason is the one `local-dams`
+  // states below: THE CHIP SAYS WHERE THE LAYER CAN BE TRUSTED TO HAVE THE
+  // SET. France is complete, down to a 40 kW mill at Monteils. The 592 world
+  // stations are one OSM snapshot against a real world population in the tens
+  // of thousands — a tail, not a coverage, and `global` would promise a reader
+  // in Lima a register that does not exist. It would also fold a 'global'
+  // companion under the narrower 'fr' primary of the Centrales électriques
+  // row, which `layerFusions.test.mjs` refuses outright.
+  //
+  // What the world half gets instead is said where the question is actually
+  // asked: its own colour, its own legend row (`échantillon … pas un
+  // inventaire mondial`) and that same sentence on all 592 cards.
   Object.freeze({
     id: 'fr-hydro-plants',
     category: 'energy',
-    label: 'Petite hydro',
+    label: 'Centrales hydro',
     kind: 'dataset',
     coverage: 'fr',
     auth: 'none',
@@ -497,7 +516,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   Object.freeze({
     id: 'local-dams',
     category: 'energy',
-    label: 'Barrages',
+    label: 'Barrages & digues',
     kind: 'dataset',
     coverage: 'fr',
     auth: 'none',

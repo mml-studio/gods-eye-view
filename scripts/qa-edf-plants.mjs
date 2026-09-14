@@ -412,7 +412,7 @@ async function main() {
     // millisecond and still runs the manager's whole params lane.
     //
     // THE IDS ON THE ROW ARE NAMESPACED, and that is not a detail: this row is
-    // FUSED (`layerFusions.js`) with Groupes de production and Petite hydro, so
+    // FUSED (`layerFusions.js`) with Groupes de production and Centrales hydro, so
     // `_composedRowControls` prefixes every chip this layer publishes with
     // `edf-power-plants::` and puts two `fusion:` toggles in front of them. The
     // strip is read through that prefix rather than by position, so a fourth

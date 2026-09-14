@@ -333,7 +333,10 @@ export const DATA_CREDITS = [
       '(<a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener">ODbL 1.0</a>) ' +
       'and <a href="https://geo.api.gouv.fr" target="_blank" rel="noopener">geo.api.gouv.fr</a> commune centres. ' +
       'Installed capacity, not live output; the energy figure on a card is a trailing twelve-month total. ' +
-      'A hollow ring is a commune, not a plant.',
+      'A hollow ring is a commune, not a plant. ' +
+      'The 592 stations drawn OUTSIDE France are ' +
+      '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors ' +
+      'via Open Infrastructure Map (ODbL 1.0) &mdash; a sample, not a world register.',
   },
   {
     key: 'pan-transit',
@@ -630,11 +633,11 @@ export const DATA_CREDITS = [
   {
     key: 'dams',
     html:
-      'Barrages: ' +
+      'Barrages &amp; digues: ' +
       '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a> ' +
       '(ODbL 1.0) — France extracted via the ' +
       '<a href="https://overpass-api.de" target="_blank" rel="noopener">Overpass API</a>, ' +
-      'rest of the world from Open Infrastructure Map',
+      'the 69-feature world tail from Open Infrastructure Map',
   },
   {
     key: 'ports',
