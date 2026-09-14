@@ -2959,6 +2959,7 @@ export class StyleManager {
       event,
       (activate, focus) => this._runExplicitCctvFocus(activate, focus),
       (cameraId, durationSec) => cctvLayer.focusCamera?.(cameraId, durationSec),
+      () => this._revealCctvPanelForWorldClick(),
     );
     this._removeCctvRequestFocusListener = registerCctvFocusRequestListener(
       window,
@@ -6551,6 +6552,22 @@ export class StyleManager {
   }
 
   /**
+   * Opens the CCTV panel for a camera the operator just clicked in the world.
+   *
+   * `explicit: true` is the whole point. The ambient disclosure in
+   * `_renderCctvState` passes `false`, so it never claims the right rail's
+   * lane — and the lane allocator, which orders expanded panels by the latest
+   * explicit disclosure, is then free to auto-collapse the CCTV panel straight
+   * back on any rail short enough to need the room. A click is an explicit
+   * disclosure by definition, so it takes the lane rather than borrowing it.
+   * @returns {void}
+   */
+  _revealCctvPanelForWorldClick() {
+    if (this._disposed) return;
+    this.setPanelCollapsed('cctv-panel', false, { explicit: true });
+  }
+
+  /**
    * Activates an explicit CCTV target, then releases tracking before its camera
    * flight. Cockpit mode keeps tracking and suppresses only the flight.
    * @param {Function} activate CCTV target activation returning its camera ID.
@@ -7101,18 +7118,26 @@ export class StyleManager {
     const activeCamera = state?.activeCamera || null;
 
     // Auto-expand the panel when the active camera CHANGES to a new non-null
-    // id while the layer is enabled. Covers click-on-globe, panel controls,
-    // and voice (selectCamera/cycleCamera/focusNearest all notify through
-    // this subscription). The last-seen guard keeps routine notifications
-    // from re-expanding a panel the user deliberately collapsed, and timed
+    // id while the layer is enabled. Covers panel controls, layer enable and
+    // voice (selectCamera/cycleCamera/focusNearest all notify through this
+    // subscription). The last-seen guard keeps routine notifications from
+    // re-expanding a panel the user deliberately collapsed, and timed
     // auto-hop transitions only expand on the first activation so the panel
     // does not pop open on every hop.
+    //
+    // A click on a camera in the world does NOT rely on this path. Both of
+    // this reducer's guards are wrong for it — a re-click of the already-active
+    // camera changes no id, and auto-hop being on says nothing about a gesture
+    // the operator just made — so `_revealCctvPanelForWorldClick` answers that
+    // one directly off the focus request. `explicit: false` here is that split
+    // written down: this is the ambient disclosure, and it does not take the
+    // right rail's lane from a panel the operator opened on purpose.
     const effectiveActiveId = enabled ? (activeId || null) : null;
     const isFirstActivation = this._lastSeenCctvActiveId === null;
     if (effectiveActiveId
       && effectiveActiveId !== this._lastSeenCctvActiveId
       && (!state?.autoHop || isFirstActivation)) {
-      this.setPanelCollapsed('cctv-panel', false, { explicit: Boolean(state?.explicitSelection) });
+      this.setPanelCollapsed('cctv-panel', false, { explicit: false });
     }
     this._lastSeenCctvActiveId = effectiveActiveId;
 

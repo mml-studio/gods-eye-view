@@ -839,7 +839,7 @@ test('CCTV focus refuses camera flights while cockpit owns the view', () => {
   assert.equal(flyCalls, 0);
 });
 
-test('CCTV repeated in-world clicks dispatch focus only for the one real activation', () => {
+test('CCTV repeated in-world clicks keep requesting focus, flagged as already-active', () => {
   const target = new EventTarget();
   const activated = [];
   const requests = [];
@@ -858,15 +858,34 @@ test('CCTV repeated in-world clicks dispatch focus only for the one real activat
     activateCctvCameraFromWorldClick('atx-cam-3', activate, target),
     activateCctvCameraFromWorldClick('atx-cam-3', activate, target),
     activateCctvCameraFromWorldClick('atx-cam-3', activate, target),
-  ], [true, false, false]);
+  ], [true, true, true]);
 
   assert.deepEqual(activated, ['atx-cam-3', 'atx-cam-3', 'atx-cam-3']);
-  assert.deepEqual(requests, [{ cameraId: 'atx-cam-3' }]);
+  // Every click asks; only the first one was a real activation. The panel that
+  // paints the snapshot is what the later two are for, and it is reached
+  // through the request — see `routeCctvFocusRequest`'s `revealPanel`.
+  assert.deepEqual(requests, [
+    { cameraId: 'atx-cam-3', alreadyActive: false },
+    { cameraId: 'atx-cam-3', alreadyActive: true },
+    { cameraId: 'atx-cam-3', alreadyActive: true },
+  ]);
   assert.match(cctvLayer.init.toString(), /bindCctvWorldClickGesture\(_clickHandler/);
   assert.match(cctvLayer.init.toString(), /_cctvOverlayHost\.hitTest/);
   assert.match(cctvLayer.init.toString(), /sourceId: CCTV_OVERLAY_SOURCE_ID/);
   assert.match(cctvLayer.init.toString(), /activateCctvCameraFromWorldClick\(cameraId, setActiveCamera\)/);
   assert.match(cctvLayer.init.toString(), /activateCctvCameraFromWorldClick\(cardId, setActiveCamera\)/);
+});
+
+test('CCTV in-world click on an unknown id stays inert', () => {
+  const target = new EventTarget();
+  const requests = [];
+  target.addEventListener(CCTV_FOCUS_REQUEST_EVENT, (event) => requests.push(event.detail));
+
+  assert.equal(
+    activateCctvCameraFromWorldClick('no-such-cam', () => CCTV_ACTIVATION_RESULT.NOT_FOUND, target),
+    false,
+  );
+  assert.deepEqual(requests, []);
 });
 
 // ─── Empty-space deselection and stable null-active state ──────────────────
@@ -1207,7 +1226,7 @@ test('CCTV drag-then-release over a camera is inert, while a clean tap activates
   handler.fire(GESTURE_TYPES.LEFT_UP, { position: { x: 11, y: 11 } });
   handler.fire(GESTURE_TYPES.LEFT_CLICK, { position: { x: 11, y: 11 } });
   assert.equal(activationCalls, 1);
-  assert.deepEqual(requests, [{ cameraId: 'atx-cam-3' }]);
+  assert.deepEqual(requests, [{ cameraId: 'atx-cam-3', alreadyActive: false }]);
 });
 
 test('CCTV auto-hop remains activation-only and never dispatches a focus request', () => {
