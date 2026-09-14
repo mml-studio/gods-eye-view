@@ -45,16 +45,81 @@ function lumpy() {
 test('both adapters delegate to this module, and agree row for row', () => {
   // The point of the extraction. If either adapter ever grows its own copy of
   // the algorithm, these three picks stop matching and this test says so.
+  //
+  // `stepDeg: 0` on the charge-point side is not a loophole, it is the whole
+  // remaining claim: that adapter now asks for a WORLD LATTICE by default —
+  // a policy, set in `irveMesh.js` — and this asserts that turning the policy
+  // off lands back on the shared algorithm, byte for byte, rather than on a
+  // private fork of it.
   const rows = lumpy();
   const budget = 300;
   const generic = selectGeoMesh(rows, { box: BOX, budget });
-  const irve = selectIrveMesh(rows, { box: BOX, budget });
+  const irve = selectIrveMesh(rows, { box: BOX, budget, stepDeg: 0 });
   const schools = selectSchoolsMesh(rows, { box: BOX, budget });
 
   assert.deepEqual(irve.picked, generic.picked);
   assert.deepEqual(schools.picked, generic.picked);
   assert.equal(irve.inBox, generic.inBox);
   assert.equal(schools.cells, generic.cells);
+});
+
+test('a lattice pick is world-locked, complete per cell, and stride-free', () => {
+  const rows = lumpy();
+  const stepDeg = 0.25;
+  const lattice = selectGeoMesh(rows, { box: BOX, budget: 5000, lattice: { stepDeg } });
+
+  // One mark per occupied cell, and not one more: the stride fill is off,
+  // because a second dot in a counted cell would be counted twice by anything
+  // reading the aggregates.
+  assert.equal(lattice.picked.length, lattice.cells);
+  assert.equal(lattice.aggregates.length, lattice.picked.length);
+  assert.equal(lattice.stepDeg, stepDeg);
+  assert.equal(lattice.coarsened, 0);
+
+  // COMPLETE, not sampled: the aggregates account for every row in the box.
+  const rowsCounted = lattice.aggregates.reduce((sum, cell) => sum + cell.rows, 0);
+  assert.equal(rowsCounted, lattice.inBox);
+
+  // Every mark is a real row, and it sits inside the cell it is the aggregate of.
+  for (const [index, row] of lattice.picked.entries()) {
+    assert.ok(rows.includes(row));
+    assert.ok(lattice.aggregates[index].total >= row[MESH_WEIGHT]);
+  }
+});
+
+test('the lattice is the same mesh whatever the box, which the view grid is not', () => {
+  // G3's own test, run as arithmetic: pan without changing altitude and see
+  // whether the aggregation moved. A lattice cell is `floor(lat/step)`, so the
+  // box cannot enter the answer; the view-relative grid is a fraction of the
+  // box, so it can only move.
+  const rows = lumpy();
+  const panned = {
+    south: BOX.south + 0.3, north: BOX.north + 0.3, west: BOX.west + 0.3, east: BOX.east + 0.3,
+  };
+  const inBoth = (row) => row[MESH_LAT] >= panned.south && row[MESH_LAT] <= BOX.north
+    && row[MESH_LON] >= panned.west && row[MESH_LON] <= BOX.east;
+
+  const before = selectGeoMesh(rows, { box: BOX, budget: 5000, lattice: { stepDeg: 0.25 } });
+  const after = selectGeoMesh(rows, { box: panned, budget: 5000, lattice: { stepDeg: 0.25 } });
+  const kept = before.picked.filter(inBoth);
+  const still = new Set(after.picked);
+  assert.ok(kept.length > 0);
+  for (const row of kept) {
+    assert.ok(still.has(row), 'a row inside both boxes changed its mark when the camera moved');
+  }
+});
+
+test('a lattice that would overflow its budget coarsens instead of ranking', () => {
+  // The one failure the grid exists to prevent: more cells than budget means
+  // only the highest-ranked cells win, and the pick is rank-based again. The
+  // view grid rules it out by construction; a world lattice has to double its
+  // step until it fits, and it stays on the quadtree while doing it.
+  const rows = lumpy();
+  const tight = selectGeoMesh(rows, { box: BOX, budget: 12, lattice: { stepDeg: 1 / 64 } });
+  assert.ok(tight.cells <= 12, `${tight.cells} cells for a budget of 12`);
+  assert.ok(tight.coarsened > 0);
+  assert.equal(tight.stepDeg, (1 / 64) * 2 ** tight.coarsened);
+  assert.equal(tight.picked.length, tight.cells);
 });
 
 test('each adapter resolves its own budget from its own ladder', () => {

@@ -118,6 +118,73 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   7 thermiques, et aucun nucléaire : les 18 réacteurs gardent tous leur tour de
   refroidissement. Le choix se fait sur la taille propre de la marque, donc il
   ne coûte aucune passe par image, et la clé continue de décoder la couleur.
+- **Le plus gros canal de la carte des bornes disait la même chose 960 fois, et
+  le nombre de prises tenait dans 0,44 pixel.** Sur une vue du Pays basque, la
+  couche **Bornes IRVE** dressait 960 faisceaux verticaux **tous longs de
+  55,8 px** : leur longueur était le NOMBRE DE MARQUEURS à l'écran, pas une
+  mesure. Le chiffre qu'un lecteur de cette couche veut — combien de points de
+  charge — était sur le diamètre du disque, où un parking de 2 prises faisait
+  3,99 px et un de 6 prises 4,43 px.
+
+  **LA HAUTEUR DEVIENT LE NOMBRE DE POINTS DE CHARGE.** L'information ne naît
+  pas, elle **déménage** : 0,44 px de diamètre deviennent 13,5 px de hauteur
+  sur le même couple. Racine carrée sur un domaine gelé de 24 prises — mesuré
+  sur les 40 028 sites du registre, médiane 4, p95 16, maximum 606 : une règle
+  linéaire écraserait **57 %** du fichier sur son plancher, ou en écrêterait
+  **6,7 %**, alors que la racine n'a besoin d'aucun plancher et couvre
+  **98,1 %** des sites. Le disque repasse à une taille constante par régime :
+  c'est une position, rien d'autre.
+
+  **ET LA RÈGLE EST CORRIGÉE DU TANGAGE, sinon la légende ment dès qu'on
+  incline.** Un faisceau est vertical dans le monde ; ce qu'on mesure à l'écran
+  vaut `L · cos(tangage)` — 87 % à −30°, la vue d'ouverture, 50 % à −60°, et
+  **zéro au nadir**, où une verticale se projette en un point. Corrigé, borné à
+  −70°, et la clé cesse de promettre une règle au-delà.
+
+- **La rampe de puissance descendait de 20 niveaux de gris entre la charge la
+  plus rapide et la plus lente.** Mesurée en clarté CIE L\* sur les encres
+  livrées : 51,0 → 68,8 → 79,4 → **76,9 → 58,9**. L'échelle montait, faisait
+  demi-tour et retombait, si bien qu'en niveaux de gris la charge haute
+  puissance lisait **plus sombre** que la charge lente. Deux des cinq encres
+  étaient en outre déjà prises, à l'identique, par deux autres couches —
+  `#4c6ef5` est le « Travaux achevés » de Sitadel, `#7c8899` l'« autre » des
+  écoles.
+
+  La rampe est remplacée par une échelle **monotone en clarté** : 30,6 → 48,7 →
+  61,9 → 72,9 → 83,0, dix points d'écart au minimum. Les deux tests de la règle
+  passent au lieu d'être affirmés : en niveaux de gris l'ordre survit, et en
+  deutéranopie simulée aussi (28,7 → 40,6 → 46,5 → 58,2 → 80,8). Compositées à
+  l'alpha du faisceau sur trois fonds témoins — eau, forêt, urbain clair — deux
+  classes voisines restent séparées d'au moins **ΔE 19,3**, pour un seuil de
+  perception d'environ 2,3.
+
+  **« Puissance non exploitable » quitte la rampe.** Elle était en ardoise à
+  L\* 56,3, soit **2,6 clartés** de la haute puissance à 58,9 : la classe qui
+  veut dire « nous n'avons pas su lire » était, en gris, la même marque que la
+  charge la plus rapide de France. Elle est maintenant un **anneau creux** dans
+  le graphite que le dépôt réserve aux refus — un motif, pas une teinte, et un
+  motif survit aux passes NVG et FLIR.
+
+- **La clé publiait six classes, en affichait trois, et n'avait pas d'horloge.**
+  Mesuré sur la même vue en 1440×900 : la troisième classe était coupée en plein
+  mot, et chacune des six portait la **même phrase de 19 mots** — « Counted as
+  SITES over the sampled maillage… » — répétée à l'identique, **en anglais**,
+  dans un panneau français. Rien ne disait quand un opérateur avait déposé, sur
+  un fichier dont un dixième n'a pas bougé depuis 2023.
+
+  La phrase répétée sort des six classes et devient **une** note sous le bloc ;
+  la provenance et l'horloge deviennent la ligne du bloc. Six lignes courtes
+  tiennent. L'horloge est celle des **opérateurs** (`date_maj`) et jamais celle
+  du proxy — et elle refuse les dépôts datés dans l'avenir : mesuré le
+  2026-09-10, **56 lignes sur 227 007** sont estampillées 2026-12-30, si bien
+  que le maximum brut daterait toute la clé nationale de trois mois en avance.
+  Le vrai dernier dépôt est le **31/08/2026**, et les 56 lignes écartées sont
+  comptées à côté.
+
+  **Et le libellé dit son unité.** Le même mot « sites » comptait des cellules
+  de carroyage au large et des points de charge en ville. Chaque régime nomme
+  désormais ce qu'il a compté, dans la ligne comme dans la clé.
+
 
 - **Le Pays Basque affichait 561 punaises dont 447 disaient « rien ici », et
   toutes portaient le même mot.** Sur la vue de Biarritz, la couche **Vélos et
@@ -199,7 +266,42 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   est la croyance de l'auteur du test sur ce que Cesium renvoie ; celui-ci
   échoue si Cesium se met un jour à étiqueter ses tuiles. 13 vérifications.
 
+### Added
+- **Un plancher de puissance sur la couche Bornes IRVE — `TOUT · > 22 kW ·
+  > 50 kW · > 150 kW`.** 960 marques qui disent toutes « il y a de la recharge
+  ici » ne répondent pas à la question qu'un conducteur se pose. Les crans sont
+  les **bornes de l'échelle de bandes elle-même** et non des nombres ronds :
+  « ≥ 22 kW » serait indécidable, un point à 11 kW étant `normale`, dont le
+  plafond EST 22. Mesuré sur le registre national : 50,7 % des sites passent
+  « > 22 kW », 24,1 % « > 50 kW », 10,9 % « > 150 kW ».
+
+  Un site dont la puissance publiée est hors gabarit (3,3 % du registre) est
+  **masqué et compté**, jamais affiché comme franchissant le seuil : rien ne dit
+  qu'il le franchit, rien ne dit qu'il ne le franchit pas. Le régime exact
+  bascule un drapeau et ne reconstruit jamais sa collection ; le maillage
+  repique, parce que le plancher change quel site représente une cellule —
+  mesuré à 1 à 12 ms sur 40 028 tuples.
+
 ### Changed
+- **Le maillage des bornes se recomposait à chaque déplacement de caméra.** Ses
+  cellules étaient une fraction de la vue : un panoramique d'un kilomètre
+  déplaçait chaque frontière d'un kilomètre, un autre site gagnait chaque
+  cellule, et la carte se redessinait pendant que le pays ne bougeait pas.
+  Mesuré sur une vue France panée de 0,05° — environ 5 km, un glissement
+  ordinaire : **179 marques sur 1 100 survivaient**.
+
+  Les cellules sont maintenant des carrés du **graticule**, à pas gelé par
+  palier de zoom (0,25° / 0,0625° / 0,015625°, un quadtree, donc un changement
+  de palier subdivise au lieu de rebattre). Sur le même panoramique :
+  **1 050 marques sur 1 057**, et les sept qui bougent sont celles qui sont
+  entrées ou sorties du cadre. Chaque marque porte désormais le **total complet
+  de sa cellule** — tous les sites additionnés, plus un échantillon — et sa
+  fiche donne les deux chiffres séparément : ce que contient la cellule, et ce
+  que contient le site réel sur lequel la marque est posée. La clé déclare la
+  taille de la cellule en kilomètres à la latitude où elle est dessinée, parce
+  qu'une maille en degrés n'est pas équi-aire : 20,6 km de large à Perpignan
+  contre 17,5 km à Lille.
+
 - **Un arrêt IDFM ne porte plus qu'une seule marque, et on la voit.** La couche
   fusionnée dessinait le pictogramme du mode ET la pastille de fréquence sur le
   même point. Le lecteur qui l'a vue a dit la chose évidente : c'est un seul

@@ -11,6 +11,8 @@ import assert from 'node:assert/strict';
 import {
   cellRepresentative,
   irveMeshBudget,
+  irveMeshCellKm,
+  irveMeshStepDeg,
   meshSiteId,
   meshSiteInBox,
   selectIrveMesh,
@@ -153,9 +155,67 @@ test('the drawn band mix tracks the real one instead of inverting it', () => {
 });
 
 test('the budget is actually spent, not left on the table', () => {
-  // The stride fill undershot by ~300 dots before it learned to top up.
-  const result = selectIrveMesh(franceLike(), { box: FRANCE, budget: 1500 });
+  // The stride fill undershot by ~300 dots before it learned to top up. It
+  // only runs without a lattice now — with one, an extra dot in a cell that
+  // already has a mark would be double-counted by that mark's aggregate — so
+  // the property is pinned on the path that still has it.
+  const result = selectIrveMesh(franceLike(), { box: FRANCE, budget: 1500, stepDeg: 0 });
   assert.equal(result.picked.length, 1500);
+});
+
+test('the lattice spends the budget on the STEP, and reports the whole cell', () => {
+  const sites = franceLike();
+  const result = selectIrveMesh(sites, { box: FRANCE, budget: 1500 });
+  // One mark per occupied cell — under budget rather than at it, because the
+  // remaining budget buys a finer step at the next tier, not more dots here.
+  assert.equal(result.picked.length, result.cells);
+  assert.ok(result.picked.length <= result.budget);
+  assert.equal(result.stepDeg, 0.25);
+  // And the aggregates are COMPLETE: every one of the 4 200 sites was counted
+  // into exactly one cell, which is what lets a card print a cell total.
+  const counted = result.aggregates.reduce((sum, cell) => sum + cell.rows, 0);
+  assert.equal(counted, result.inBox);
+  const pdc = result.aggregates.reduce((sum, cell) => sum + cell.total, 0);
+  assert.equal(pdc, sites.reduce((sum, entry) => sum + entry[MESH_PDC], 0));
+});
+
+test('the maillage is world-locked, so a pan does not redraw it', () => {
+  // G3, measured on the shape the layer actually draws. Before the lattice a
+  // France-wide pan of 0.05° kept 179 marks of 1 100; the fixture below is
+  // smaller than the register but the property is the same one.
+  const sites = franceLike();
+  const panned = { south: FRANCE.south + 0.05, north: FRANCE.north + 0.05, west: FRANCE.west + 0.05, east: FRANCE.east + 0.05 };
+  const before = selectIrveMesh(sites, { box: FRANCE });
+  const after = selectIrveMesh(sites, { box: panned });
+  const key = (entry) => `${entry[MESH_LAT]},${entry[MESH_LON]}`;
+  const kept = new Set(after.picked.map(key));
+  const survived = before.picked.filter((entry) => kept.has(key(entry))).length;
+  assert.ok(survived / before.picked.length > 0.95,
+    `only ${survived} of ${before.picked.length} marks survived a 0.05° pan`);
+
+  // The same pan on the view-relative grid, for the contrast that justifies it.
+  const gridBefore = selectIrveMesh(sites, { box: FRANCE, stepDeg: 0 });
+  const gridAfter = new Set(selectIrveMesh(sites, { box: panned, stepDeg: 0 }).picked.map(key));
+  const gridSurvived = gridBefore.picked.filter((entry) => gridAfter.has(key(entry))).length;
+  assert.ok(gridSurvived / gridBefore.picked.length < survived / before.picked.length);
+});
+
+test('a cell is a square of the graticule, and it is not equi-area (C3)', () => {
+  assert.equal(irveMeshStepDeg(8), 1 / 4);
+  assert.equal(irveMeshStepDeg(2), 1 / 16);
+  assert.equal(irveMeshStepDeg(0.5), 1 / 64);
+  // Nested: every tier is a quadtree level of the one above, so a tier change
+  // splits or merges four cells instead of reshuffling the mesh.
+  assert.equal(irveMeshStepDeg(2) * 4, irveMeshStepDeg(8));
+  assert.equal(irveMeshStepDeg(0.5) * 4, irveMeshStepDeg(2));
+
+  // The height is the same everywhere and the width is not — 15 % across
+  // metropolitan France, which is the figure the key has to print.
+  const perpignan = irveMeshCellKm(0.25, 42.7);
+  const lille = irveMeshCellKm(0.25, 50.6);
+  assert.equal(perpignan.latKm.toFixed(1), lille.latKm.toFixed(1));
+  assert.ok(perpignan.lonKm > lille.lonKm);
+  assert.ok((perpignan.lonKm / lille.lonKm - 1) > 0.1);
 });
 
 test('ties break on position, so a still camera does not shimmer', () => {
@@ -172,7 +232,10 @@ test('the pick reports what it dropped', () => {
   assert.equal(result.inBox, 4200);
   assert.ok(result.picked.length < result.inBox);
   assert.equal(result.thinned, true);
-  assert.equal(result.picked.length, result.budget);
+  // Not `=== budget` any more: with a lattice the marks are the occupied
+  // cells, so the layer's line prints marks AND sites in view rather than
+  // implying the budget was the answer.
+  assert.ok(result.picked.length <= result.budget);
 });
 
 test('a view that fits under budget is NOT reported as thinned', () => {

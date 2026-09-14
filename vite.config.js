@@ -4483,6 +4483,56 @@ async function sweepIrveNational() {
   return { rows, calls, stalled };
 }
 
+/**
+ * When an operator last filed, and how many rows claim a date that has not
+ * happened yet.
+ *
+ * E1 IS P0 AND THIS LAYER HAD NO CLOCK AT ALL. `fetchedAt` is when the PROXY
+ * swept, which is a statement about this server and not about the register: a
+ * tenth of this file has not been touched since 2023, and a key that printed
+ * the sweep time would say "à l'instant" over a station last declared four
+ * years ago. `date_maj` is the operators' own clock, and it is the one the
+ * legend has to carry.
+ *
+ * WHY IT IS NOT `max(date_maj)`. Measured against the live register on
+ * 2026-09-10: the plain maximum is **2026-12-30**, a date three months in the
+ * future, carried by **56 rows of 227 007**. One typo'd filing would otherwise
+ * date the whole national key. Clamped to today the answer is **2026-08-31**,
+ * which is the real last filing. The excluded rows are counted and reported
+ * rather than dropped silently (A1): a date that cannot have happened is a
+ * finding about the file, not a rounding.
+ *
+ * One aggregated call, once per daily refresh. `total_count` on the clamped
+ * query is the register minus the future-dated rows, so the count of those
+ * comes free from the difference and costs no second round trip.
+ *
+ * @param {number|null} totalRows The register's own row count, if it answered.
+ * @returns {Promise<{lastFiling:?string, futureDated:?number}>}
+ */
+async function fetchIrveLastFiling(totalRows) {
+  const today = new Date().toISOString().slice(0, 10);
+  const params = new URLSearchParams({
+    where: `date_maj <= date'${today}'`,
+    select: 'max(date_maj) as last_filing',
+    limit: '1',
+  });
+  try {
+    const payload = await fetchIrveJson(`${IRVE_RECORDS_URL}?${params}`);
+    const raw = payload?.results?.[0]?.last_filing;
+    const lastFiling = typeof raw === 'string' && raw.length >= 10 ? raw.slice(0, 10) : null;
+    const dated = Number(payload?.total_count);
+    const futureDated = Number.isFinite(dated) && Number.isFinite(totalRows)
+      ? Math.max(0, totalRows - dated)
+      : null;
+    return { lastFiling, futureDated };
+  } catch (error) {
+    // A key with no clock is a key that says so — never one that falls back to
+    // the sweep time and calls it a filing date.
+    console.warn('[IRVE Proxy] last filing unavailable:', error?.message || error);
+    return { lastFiling: null, futureDated: null };
+  }
+}
+
 /** Build the national rollup: sweep, verify, then fold onto the polygons. */
 async function refreshIrveNational() {
   const started = Date.now();
@@ -4495,6 +4545,9 @@ async function refreshIrveNational() {
       }),
     sweepIrveNational(),
   ]);
+  const filing = await fetchIrveLastFiling(
+    Number.isFinite(Number(counted?.total_count)) ? Number(counted.total_count) : null,
+  );
 
   const projected = projectIrveDepartements({
     groups: swept.rows,
@@ -4515,6 +4568,11 @@ async function refreshIrveNational() {
   return {
     rollup: {
       ...rollup,
+      // The OPERATORS' clock, on both documents: the two regimes draw the same
+      // register and a key that dated one and not the other would be two
+      // clocks for one file (E4).
+      lastFiling: filing.lastFiling,
+      futureDatedRows: filing.futureDated,
       stalledStripes: swept.stalled.length,
       upstreamCalls: swept.calls,
       sweptInMs: Date.now() - started,
@@ -4526,6 +4584,8 @@ async function refreshIrveNational() {
       siteCount: mesh.length,
       pdc: rollup.pdcAssigned,
       bands: IRVE_BAND_KEYS,
+      lastFiling: filing.lastFiling,
+      futureDatedRows: filing.futureDated,
       dataset: IRVE_DATASET,
       source: IRVE_SOURCE,
     },
