@@ -53,7 +53,7 @@ test('the artwork is WHITE and the casing BLACK, so the tint is the band colour'
   assert.match(solid, /rgba\(0,0,0,/);
   // No band ink anywhere in the artwork, for any variant.
   for (const opts of [{}, { hollow: true }, { punched: false }]) {
-    assert.doesNotMatch(svgOf(irveMarkGlyph(opts)), /#3b3f8f|#3f6fd8|#2ba2c2|#5ec962|#c6d94a/i);
+    assert.doesNotMatch(svgOf(irveMarkGlyph(opts)), /#0482ed|#08a5d9|#00c6be|#7ee17a|#f3e967/i);
   }
 });
 

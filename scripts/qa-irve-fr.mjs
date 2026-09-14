@@ -565,8 +565,11 @@ async function main() {
       colorOf['Puissance non exploitable'] === '#7a8493'
       && String(glyphOf['Puissance non exploitable'] || '').startsWith('data:image/svg+xml'),
       `${colorOf['Puissance non exploitable']} / ${String(glyphOf['Puissance non exploitable']).slice(0, 30)}`);
+    // AND IT CLIMBS IN THE LIGHT HALF. The first version ran from L* 30.6, and
+    // a reader called those plates too dark to pick out on imagery — 46 % of a
+    // French city's sites sat on the two bottom rungs.
     check('and the ramp climbs in lightness to the fast end',
-      colorOf['Lente (≤ 7,4 kW)'] === '#3b3f8f' && colorOf['Haute puissance (> 150 kW)'] === '#c6d94a',
+      colorOf['Lente (≤ 7,4 kW)'] === '#0482ed' && colorOf['Haute puissance (> 150 kW)'] === '#f3e967',
       `${colorOf['Lente (≤ 7,4 kW)']} → ${colorOf['Haute puissance (> 150 kW)']}`);
 
     // ── iv. the legend counts charge points, by band, low to high ──────────
