@@ -11,7 +11,7 @@ Source: https://github.com/google/material-design-icons
         symbols/web/<name>/materialsymbolsrounded/<name>_fill1_24px.svg
         (Material Symbols Rounded, filled, weight 400)
 
-WHAT WAS TAKEN. Twenty-eight glyphs, across four modules.
+WHAT WAS TAKEN. Twenty-nine glyphs, across five modules.
 
 `src/data/transitVehicleIcons.js` draws live French transit vehicles by class
 (retrieved 2026-08-31): airport_shuttle, directions_boat, directions_bus,
@@ -34,8 +34,16 @@ is Temaki's `cooling_tower_radiation` and carries no claim under this notice —
 Material has no nuclear glyph, and its `bolt` says electricity, which is what
 all three of them make.
 
-Both are PUNCHED out of a tinted plate through an SVG `<mask>` rather than drawn
-as ink: a power station marks a PLACE on a photograph of places, and a bare
+`src/data/irveMarkIcons.js` draws the mark of a French charge point (retrieved
+2026-09-14 at the same commit): bolt, and nothing else. `ev_station` is
+literally the subject and was REJECTED — it is a pump body with a small bolt
+inside it, and punched into a disc of radius 40/96 at the sizes that layer draws
+the bolt closes up and what survives is a picture of a petrol station. The bolt
+alone says *electricity here*, which is the whole of what a charge point claims,
+and it is the sign that layer's own cards already print.
+
+All of these are PUNCHED out of a tinted plate through an SVG `<mask>` rather
+than drawn as ink: a power station marks a PLACE on a photograph of places, and a bare
 silhouette is unfindable below 18 px, which is where more than half this fleet
 draws. The transform that fits Material's 960-unit box into a 96-unit plate is a
 transform and not a rewrite — the coordinates reach the SVG renderer untouched.

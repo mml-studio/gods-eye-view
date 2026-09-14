@@ -9,6 +9,7 @@
 // answer is refused rather than cropped.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { IRVE_MARK_PUNCH_MIN_PX } from './irveMarkIcons.js';
 import * as Cesium from 'cesium';
 import irveFranceLayer, {
   buildIrveDepartementLabel,
@@ -22,7 +23,10 @@ import irveFranceLayer, {
   irveDensityColor,
   irveDepartementPrism,
   irveNationalPrismRows,
-  irvePointSize,
+  irveMarkSizePx,
+  irveMarkImage,
+  IRVE_MARK_SPARSE_PX,
+  IRVE_MARK_DENSE_PX,
   irveBandClearsFloor,
   irveFilingDate,
   irveFutureFilings,
@@ -115,9 +119,9 @@ function siteRecord(overrides = {}) {
     id: site.id,
     site,
     position: Cesium.Cartesian3.fromDegrees(site.lon, site.lat, 12),
-    point: { color: null, pixelSize: 0, show: true },
+    point: { color: null, width: 0, height: 0, show: true },
     baseColor: irveBandColor(site.topBand),
-    baseSize: irvePointSize(false),
+    baseSize: IRVE_MARK_SPARSE_PX,
   };
 }
 
@@ -358,13 +362,83 @@ test('no rung is an ink another layer already spends on a measured class', () =>
   }
 });
 
-test('the dot is a position and nothing else — one size per regime', () => {
-  // It used to be a size channel worth 0.44 px between a 2-plug car park and a
-  // 6-plug one, which is a channel spent rather than a channel used (A3). The
-  // count moved to the beam; the disc asserts only "a mark is here".
-  assert.equal(irvePointSize(false), irvePointSize(false));
-  assert.ok(irvePointSize(true) < irvePointSize(false),
-    'a maillage mark stands for a cell and must not be read as a counted site');
+test('the mark is a position and nothing else, at a size a reader can find', () => {
+  // The first attempt pinned it at 7 px and put the seeing on the beam. Over
+  // Bordeaux at 12 653 m that drew 318 marks nobody could find — the beam is a
+  // WORLD vertical, and at the nadir the shortest one on screen was 1.1 px.
+  // The plate carries legibility now, and it says WHERE, never HOW MANY.
+  assert.ok(IRVE_MARK_DENSE_PX >= 16, 'the densest view still has to be findable');
+  assert.ok(IRVE_MARK_SPARSE_PX > IRVE_MARK_DENSE_PX);
+
+  // Monotonic decreasing, so a busier view can never draw a bigger plate.
+  let previous = Infinity;
+  for (let n = 0; n <= 5000; n += 25) {
+    const px = irveMarkSizePx(n);
+    assert.ok(px <= previous + 1e-9, `${n} marks went back up: ${px} after ${previous}`);
+    assert.ok(px >= IRVE_MARK_DENSE_PX && px <= IRVE_MARK_SPARSE_PX, `${n} → ${px}px`);
+    previous = px;
+  }
+  for (const bad of [0, -5, NaN, null, undefined, 'lots']) {
+    assert.equal(irveMarkSizePx(bad), IRVE_MARK_SPARSE_PX, String(bad));
+  }
+
+  // THE BUDGET IS AREA, NOT COUNT, and that is what the first curve got wrong:
+  // linear in the count it overshot in the middle of the range, where most
+  // views live. Coverage is flat from the ceiling down to the floor.
+  const cover = (n) => (n * irveMarkSizePx(n) ** 2) / (1440 * 900);
+  assert.ok(Math.abs(cover(300) - cover(600)) < 0.005, `${cover(300)} vs ${cover(600)}`);
+  // Flat all the way to where the legibility floor takes over, at 792 marks.
+  assert.ok(Math.abs(cover(300) - cover(790)) < 0.005, `${cover(300)} vs ${cover(790)}`);
+  assert.ok(irveMarkSizePx(790) > IRVE_MARK_DENSE_PX);
+  assert.equal(irveMarkSizePx(800), IRVE_MARK_DENSE_PX);
+  assert.ok(cover(300) < 0.17, `the ceiling already spends ${Math.round(cover(300) * 100)} %`);
+  // A quiet view is not padded out to the budget: it just draws the ceiling.
+  assert.equal(irveMarkSizePx(50), IRVE_MARK_SPARSE_PX);
+  assert.ok(cover(50) < 0.04);
+
+  // A smaller window gets smaller plates rather than a solid mat — and it
+  // reaches the floor sooner, which is the honest consequence: a 800 × 600
+  // frame simply cannot hold as many legible marks.
+  assert.ok(irveMarkSizePx(200, 800 * 600) < irveMarkSizePx(200, 1440 * 900));
+  for (const n of [100, 300, 800, 2000]) {
+    assert.ok(irveMarkSizePx(n, 800 * 600) <= irveMarkSizePx(n, 1440 * 900), String(n));
+  }
+  assert.equal(irveMarkSizePx(900, 0), irveMarkSizePx(900));
+  assert.equal(irveMarkSizePx(900, NaN), irveMarkSizePx(900));
+
+  // Below the floor the answer is the FILTER, not a smaller plate: the densest
+  // real viewport in France stays at the floor and simply reads as full.
+  assert.equal(irveMarkSizePx(2575), IRVE_MARK_DENSE_PX);
+});
+
+test('the refusal is a hollow plate, and a measured band is a solid one (D3)', () => {
+  // Four rasters for the whole fleet, whatever the mix: the band colour rides
+  // on `billboard.color` and is never baked into the artwork.
+  const solid = irveMarkImage('hpc', IRVE_MARK_SPARSE_PX);
+  const hollow = irveMarkImage('inconnue', IRVE_MARK_SPARSE_PX);
+  assert.notEqual(solid, hollow, 'a refusal must not draw the same mark as a measurement');
+  assert.equal(irveMarkImage('lente', IRVE_MARK_SPARSE_PX), solid, 'one raster serves every band');
+  for (const uri of [solid, hollow]) assert.match(uri, /^data:image\/svg\+xml;base64,/);
+
+  const svg = (uri) => Buffer.from(uri.split(',')[1], 'base64').toString('utf8');
+  assert.match(svg(hollow), /stroke-width/, 'the refusal is a rim, so its middle is empty');
+  assert.doesNotMatch(svg(solid), /stroke-width/);
+  // Tint-safe: the artwork is WHITE, so `billboard.color` is the band colour
+  // exactly. A baked hue would multiply into something else entirely.
+  assert.match(svg(solid), /#ffffff/);
+  for (const band of IRVE_BAND_KEYS) {
+    assert.doesNotMatch(svg(irveMarkImage(band, IRVE_MARK_SPARSE_PX)), /#3b3f8f|#c6d94a/);
+  }
+
+  // Below the punch floor the bolt is dropped rather than smudged: one channel
+  // narrows, the colour still names the power, and the key still decodes it.
+  const punched = svg(irveMarkImage('hpc', IRVE_MARK_PUNCH_MIN_PX));
+  const bare = svg(irveMarkImage('hpc', IRVE_MARK_PUNCH_MIN_PX - 1));
+  assert.match(punched, /<path/);
+  assert.doesNotMatch(bare, /<path/);
+  // And the shipped floor never falls below the punch floor, so in production
+  // every mark keeps its bolt.
+  assert.ok(IRVE_MARK_DENSE_PX >= IRVE_MARK_PUNCH_MIN_PX);
 });
 
 test('the beam height carries the charge points, on a frozen sqrt domain', () => {
@@ -425,7 +499,7 @@ test('an entry without a position is refused rather than placed at the origin', 
 
 // ── Selection round-trip through the production path ────────────────────────
 
-test('selecting a site publishes one protected overlay entry and restyles the dot', () => {
+test('selecting a site publishes one protected overlay entry and restyles the mark', () => {
   const calls = [];
   const host = {
     setEntries: (id, entries, options) => calls.push(['set', id, entries, options]),
@@ -441,11 +515,16 @@ test('selecting a site publishes one protected overlay entry and restyles the do
   assert.equal(set[1], IRVE_FR_OVERLAY_SOURCE_ID);
   assert.equal(set[2].length, 1);
   assert.deepEqual(set[3], IRVE_FR_OVERLAY_SOURCE_OPTIONS);
-  assert.equal(record.point.pixelSize, 17);
+  // A billboard has no outline to thicken, so the selection is the cyan tint
+  // AND a size bonus — a colour change alone inside a field of 300 plates is
+  // not a selection anyone can find.
+  assert.equal(record.point.width, record.baseSize + 9);
+  assert.equal(record.point.height, record.point.width);
 
   _clearIrveSelectionForTest();
   assert.ok(calls.some(([kind, id]) => kind === 'clear' && id === IRVE_FR_OVERLAY_SOURCE_ID));
-  assert.equal(record.point.pixelSize, record.baseSize);
+  assert.equal(record.point.width, record.baseSize);
+  assert.equal(record.point.height, record.baseSize);
 });
 
 test('selecting an id the layer does not hold is a no-op, not a throw', () => {

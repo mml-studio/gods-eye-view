@@ -3,6 +3,56 @@
 This changelog records public product changes. For the authoritative description
 of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md).
 
+## [Unreleased] — 2026-09-14
+
+### Fixed
+- **318 bornes étaient dessinées sur Bordeaux, et personne ne les trouvait — y
+  compris celui qui les avait dessinées.** Un lecteur a regardé la ville depuis
+  12 653 m, à la verticale, sur l'imagerie photoréaliste, et a dit que les
+  points de charge se voyaient à peine. La preuve qu'il en a donnée est le
+  constat lui-même : personne d'autre ne les a retrouvés dans sa capture non
+  plus. Comptées dans cette vue exacte : **318 marques, chacune un disque de
+  7 px** avec un filet d'un pixel, sur une ville de toits rouges, de rues
+  grises et d'un fleuve brun.
+
+  **LE FAISCEAU NE POUVAIT PAS COUVRIR POUR LA PASTILLE, et la raison est
+  géométrique.** Le faisceau porte l'effectif, et c'est un vrai canal — mais
+  c'est une verticale MONDE, donc ce qui arrive à l'écran vaut
+  `L · cos(tangage)`. Mesuré dans cette même vue : le plus court faisceau à
+  l'écran faisait **1,1 px**. Les faisceaux survivent sur les bords du cadre, où
+  la verticale locale s'écarte de l'axe de visée, et meurent au milieu, là où
+  l'œil se pose. Un canal de quantité qui disparaît à l'attitude de lecture la
+  plus courante ne peut pas être en plus le canal de lisibilité.
+
+  **LE DISQUE DEVIENT UNE PLAQUE AVEC UN ÉCLAIR POINÇONNÉ DEDANS.** C'est le
+  traitement auquel ce dépôt est déjà arrivé deux fois contre ses propres
+  mesures — une silhouette nue est introuvable sous 18 px sur une orthophoto,
+  là où une pastille reste une pastille à 10 — et la distinction qui tranche est
+  celle que `plantFiliereIcons.js` écrit : *un véhicule est un objet mobile
+  qu'on suit, une centrale est un LIEU sur une photographie de lieux, qui se
+  bat pour les mêmes pixels que les toits et les champs. Les marques de lieux
+  portent une pastille.* Une borne est un lieu. `ev_station` — le sujet
+  littéral — a été écarté : c'est un corps de pompe avec un petit éclair
+  dedans, et poinçonné dans un disque à la taille où cette couche dessine,
+  l'éclair se referme et ce qui survit est l'image d'une station-service.
+
+  **ET SA TAILLE TIENT UN BUDGET D'ENCRE, EN AIRE.** Une plaque de 26 px est
+  juste pour un bourg et fausse pour une ville. La première courbe décroissait
+  linéairement avec le NOMBRE de marques, et c'était la mauvaise variable : le
+  coût d'une plaque est son aire, donc une règle linéaire en effectif déborde
+  au milieu de la plage, là où vivent la plupart des vues — mesuré sur
+  Bordeaux, **602 marques couvraient 28,1 % du cadre**. La taille suit
+  maintenant `√(budget / marques)`, bornée entre 16 et 26 px : la couverture
+  est **plate à 15,6 %** du plafond jusqu'au plancher, et le cadre est mesuré
+  plutôt que supposé, donc une petite fenêtre reçoit de plus petites plaques au
+  lieu d'un tapis. Sous le plancher — 792 marques — la réponse est le **filtre
+  de puissance**, pas une plaque illisible.
+
+  Dans la vue exacte de la capture : **380 plaques de 23 px**, 15,6 % du cadre,
+  contre 318 disques de 7 px et 1,2 %. Quatre rasters servent toute la flotte,
+  la couleur de bande voyageant sur `billboard.color` — 4 000 marques coûtent
+  quatre entrées d'atlas, pas 4 000.
+
 ## [Unreleased] — 2026-09-10
 
 ### Changed
