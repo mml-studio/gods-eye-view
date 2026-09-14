@@ -117,11 +117,42 @@ export const MAP_ICON_HALO_COLOR = 'rgba(0,0,0,0.62)';
 
 /**
  * Maki — https://github.com/mapbox/maki (CC0 1.0).
- * Retrieved 2026-09-02 at commit 28e2a3602e4b from `icons/<name>.svg`.
+ * Retrieved 2026-09-02 (aerialway, harbor) and 2026-09-14 (bicycle,
+ * scooter, car, charging-station) at commit 28e2a3602e4b from `icons/<name>.svg`.
  *
  * @see licenses/maki/NOTICE
  */
 export const MAKI_PATHS = Object.freeze({
+  // A lightning bolt, alone in the box. Maki publishes it as the sign of a
+  // charging point; `sharedMobilityIcons.js` uses it as the ELECTRIC badge that
+  // separates an e-bike from a pedal bike, which is the one pair of form
+  // factors a reader has to tell apart at a glance. A badge rather than a
+  // second bicycle drawing on purpose: the two vehicles ARE the same object
+  // plus a motor, and Material's `electric_bike` says so the same way.
+  'charging-station': 'M2.64585 7.80112L7.75248 0.837532C7.90807 0.625354 8.15545 0.5 8.41856 0.5C8.9632 0.5 9.35876 1.01788 9.21546 1.54333L8.08612 5.68422C8.04275 5.84326 8.16247 6 8.32731 6H11.7466C12.1627 6 12.5 6.3373 12.5 6.75337C12.5 6.91361 12.4489 7.06967 12.3542 7.19888L7.24752 14.1625C7.09193 14.3746 6.84455 14.5 6.58144 14.5C6.0368 14.5 5.64124 13.9821 5.78454 13.4567L6.91388 9.31578C6.95725 9.15674 6.83753 9 6.67269 9H3.25337C2.83729 9 2.5 8.66271 2.5 8.24663C2.5 8.08639 2.55109 7.93033 2.64585 7.80112Z',
+  // A bicycle in side view, frame and two wheels, no rider. Used by
+  // `sharedMobilityIcons.js` for the `bike` and `ebike` form factors, where it
+  // replaced Material Symbols' `pedal_bike` on a measurement rather than a
+  // preference: at the 13-20 CSS px that layer actually draws, Material's
+  // heavier frame CLOSES its own counters and the glyph collapses into a solid
+  // blob — 86 px^2 of colour out of 88, in one contiguous patch. That is what
+  // made four operators read as "the same shape in another colour". Maki draws
+  // the same object in a 15-unit box with open counters, and it still reads as
+  // a bicycle at 17.
+  bicycle: 'M7.5,2c-0.6761-0.01-0.6761,1.0096,0,1H9v1.2656l-2.8027,2.334L5.2226,4H5.5c0.6761,0.01,0.6761-1.0096,0-1h-2 c-0.6761-0.01-0.6761,1.0096,0,1h0.6523L5.043,6.375C4.5752,6.1424,4.0559,6,3.5,6C1.5729,6,0,7.5729,0,9.5S1.5729,13,3.5,13 S7,11.4271,7,9.5c0-0.6699-0.2003-1.2911-0.5293-1.8242L9.291,5.3262l0.4629,1.1602C8.7114,7.0937,8,8.2112,8,9.5 c0,1.9271,1.5729,3.5,3.5,3.5S15,11.4271,15,9.5S13.4271,6,11.5,6c-0.2831,0-0.5544,0.0434-0.8184,0.1074L10,4.4023V2.5 c0-0.2761-0.2239-0.5-0.5-0.5H7.5z M3.5,7c0.5923,0,1.1276,0.2119,1.5547,0.5527l-1.875,1.5625 c-0.5109,0.4273,0.1278,1.1945,0.6406,0.7695l1.875-1.5625C5.8835,8.674,6,9.0711,6,9.5C6,10.8866,4.8866,12,3.5,12S1,10.8866,1,9.5 S2.1133,7,3.5,7L3.5,7z M11.5,7C12.8866,7,14,8.1134,14,9.5S12.8866,12,11.5,12S9,10.8866,9,9.5c0-0.877,0.4468-1.6421,1.125-2.0879 l0.9102,2.2734c0.246,0.6231,1.1804,0.2501,0.9297-0.3711l-0.9082-2.2695C11.2009,7.0193,11.3481,7,11.5,7L11.5,7z',
+  // A Vespa-type scooter in side view: step-through frame, leg shield, small
+  // wheels. Used by `sharedMobilityIcons.js` for the `moped` form factor, which
+  // in France is exactly this machine — every moped row in every reachable
+  // French `vehicle_types.json` is an electric scooter of this shape.
+  //
+  // NOT used for `scooter` (the kick scooter / trottinette): neither Maki nor
+  // Temaki publishes one, checked across all 557 Temaki icons on 2026-09-14, so
+  // that kind keeps Material's `electric_scooter`.
+  scooter: 'M4.908,12a1.5,1.5,0,1,1-2.816,0Zm8.65-6C13.539,6,13,6,13,6V3h.351a.282.282,0,0,0,.223-.148l.268-.536a.334.334,0,0,0,.009-.066A.25.25,0,0,0,13.6,2H13V1.7a.215.215,0,0,0-.2-.2H9.25a.25.25,0,0,0,0,.5H12V6.6L7.6,10H6V7.5A.5.5,0,0,0,5.5,7H5V5H6.75a.25.25,0,0,0,0-.5L2.266,4.034c-.006,0-.01-.007-.016-.007a.25.25,0,0,0-.25.25V4.75A.25.25,0,0,0,2.25,5H3V7H2.5A1.538,1.538,0,0,0,1,8.5v2a.472.472,0,0,0,.442.5C1.461,11,7.5,11,7.5,11L10,10h3.5a.472.472,0,0,0,.5-.442C14,9.539,14,6.5,14,6.5A.472.472,0,0,0,13.558,6ZM12.5,11A1.5,1.5,0,1,0,14,12.5,1.538,1.538,0,0,0,12.5,11Z',
+  // A car in three-quarter-free side view, drawn as one mass with the glazing
+  // punched. Used by `sharedMobilityIcons.js` for the `car` form factor
+  // (Citiz, Leo&Go and the municipal carsharing networks).
+  car: 'M13.84,6.852,12.6,5.7,11.5,3.5a1.05,1.05,0,0,0-.9-.5H4.4a1.05,1.05,0,0,0-.9.5L2.4,5.7,1.16,6.852A.5.5,0,0,0,1,7.219V11.5a.5.5,0,0,0,.5.5h2c.2,0,.5-.2.5-.4V11h7v.5c0,.2.2.5.4.5h2.1a.5.5,0,0,0,.5-.5V7.219A.5.5,0,0,0,13.84,6.852ZM4.5,4h6l1,2h-8ZM5,8.6c0,.2-.3.4-.5.4H2.4C2.2,9,2,8.7,2,8.5V7.4c.1-.3.3-.5.6-.4l2,.4c.2,0,.4.3.4.5Zm8-.1c0,.2-.2.5-.4.5H10.5c-.2,0-.5-.2-.5-.4V7.9c0-.2.2-.5.4-.5l2-.4c.3-.1.5.1.6.4Z',
   // A cabin hanging from its cable, drawn as a cabin. Used by
   // `transitVehicleIcons.js` for the `aerial` class; the note there records
   // what it replaced and why.

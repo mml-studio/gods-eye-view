@@ -10,13 +10,22 @@ Source: https://github.com/google/fonts
         ofl/inter/Inter[opsz,wght].ttf
         Retrieved 2026-09-02 at google/fonts commit f6b2b7e8545e.
 
-WHAT WAS TAKEN. Eight glyph outlines, in one module.
+WHAT WAS TAKEN. Thirty-four glyph outlines, across two modules.
 
 `src/data/addressMarkerIcons.js` draws the ADEME energy-performance grade of a
 building as a letter in a frame. The letters are Inter's:
 
     A B C D E F G   — the seven grades of the official DPE ladder
     ?               — the case the register publishes with no grade at all
+
+`src/data/interCapitals.js` holds the twenty-six Latin capitals A–Z, punched as
+an operator monogram into the shared-mobility plate by
+`src/data/sharedMobilityIcons.js` (added 2026-09-14, retrieved that day at the
+same named instance). The whole alphabet rather than the nineteen initials the
+current French catalogue produces: a new operator appears whenever a network
+opens, and a missing outline would draw no badge at all without saying so. Its
+`A` is byte-identical to the one in `addressMarkerIcons.js`, which is how the
+two extractions are known to agree.
 
 Extracted with fontkit from the variable font at the named instance
 **wght 700, opsz 14**. The optical-size axis is set to 14 rather than 32 on
@@ -50,7 +59,7 @@ filled white (so Cesium's per-billboard colour multiply can tint it to the
 official DPE scale). The halo is deliberately narrower than the rest of the
 pack's, because a stroke on an outline grows inward as well as outward.
 
-NO FONT FILE IS REDISTRIBUTED. Only outline data for eight glyphs is vendored,
+NO FONT FILE IS REDISTRIBUTED. Only outline data for those glyphs is vendored,
 as path strings inside a JavaScript module. OFL 1.1 §1 permits this; the
 reserved-font-name clause (§5) is not engaged, because nothing here is
 distributed as a font or under the name Inter.
@@ -79,5 +88,6 @@ there. The variable weight axis (300-600) is Google's subsetting, not ours.
 OFL 1.1 permits this redistribution as part of a larger work. The reserved-font
 -name clause (§5) is not engaged: the font is not modified, and it is served
 under its own name. The paragraph above headed NO FONT FILE IS REDISTRIBUTED
-describes the glyph-outline vendoring in `addressMarkerIcons.js` and remains
-true of it — this section is the other, separate use.
+describes the glyph-outline vendoring in `addressMarkerIcons.js` and
+`interCapitals.js` and remains true of both — this section is the other,
+separate use.

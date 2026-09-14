@@ -239,7 +239,7 @@ function probe(page) {
       systems: module.getSystemSummaries(),
       legend: module.getRowControls().legend.map((item) => [item.label, item.count]),
       legendRows: module.getRowControls().legend.map((item) => ({
-        label: item.label, color: item.color, glyph: item.glyph || null,
+        label: item.label, color: item.color, glyph: item.glyph || null, channel: item.channel,
       })),
       detections: module.getDetectableObjects({ maxCount: 100000 }).map((entry) => entry.id),
       rendered: module.getDetectableObjects({ maxCount: 100000 }).length,
@@ -376,17 +376,23 @@ async function main() {
     console.log('[qa] iv. merged bays are declared');
     const suppressed = loaded.systems.reduce((sum, system) => sum + (system.stationsSuppressed || 0), 0);
     check('the layer reports the shared bays it did not draw', suppressed === 2480, `${suppressed}`);
+    // The control row has been French since the layer's screens were
+    // translated (#173); this harness still asserted the English it shipped
+    // with, so it had been failing on a healthy base.
     check('and says so in the control row',
-      /shared bays merged out/.test(loaded.stats.loadingLabel || ''), loaded.stats.loadingLabel);
+      // `\s` on purpose: `Intl.NumberFormat('fr-FR')` groups with a NARROW
+      // NO-BREAK SPACE (U+202F), not a plain one, so "2 480" typed by hand
+      // never matches what the row actually prints.
+      /2\s480 stations mutualisées fusionnées/.test(loaded.stats.loadingLabel || ''), loaded.stats.loadingLabel);
     const emptyBays = loaded.systems.reduce((sum, system) => sum + (system.baysHidden || 0), 0);
     check('the layer reports the empty painted bays the proxy dropped', emptyBays === 392, `${emptyBays}`);
     check('and says that in the control row too',
-      /392 empty bays hidden/.test(loaded.stats.loadingLabel || ''), loaded.stats.loadingLabel);
+      /392 aires vides masquées/.test(loaded.stats.loadingLabel || ''), loaded.stats.loadingLabel);
     // The screen-facing half of the same fix: a bay whose feed published an
     // identifier instead of a name is labelled by its operator, and no HUD
     // label anywhere is a raw GBFS `station_id`.
     check('a nameless bay is labelled by its operator, not by its station_id',
-      loaded.detections.includes('PONY BAY'), loaded.detections.slice(0, 6).join(' | '));
+      loaded.detections.includes('AIRE PONY'), loaded.detections.slice(0, 6).join(' | '));
     check('and no detection label is a raw feed identifier',
       !loaded.detections.some((id) => /_ZID[A-Z0-9]{6,}|_PARKING_/.test(id)),
       loaded.detections.filter((id) => /_ZID|_PARKING_/.test(id)).join(' | '));
@@ -403,9 +409,13 @@ async function main() {
       byKind.size === 4, `${byKind.size} distinct image(s)`);
     check('and five of each, so no kind borrowed another\'s shape',
       [...byKind.values()].every((count) => count === 5), JSON.stringify([...byKind.values()]));
-    const kindRows = loaded.legendRows.filter((row) => row.glyph);
+    // Discriminated by CHANNEL, not by carrying a glyph: since 2026-09-14 the
+    // operator rows carry their monogram too, so both halves of the key have
+    // one and `row.glyph` no longer tells them apart.
+    const kindRows = loaded.legendRows.filter((row) => row.channel === 'forme = quoi');
     check('the legend shows the same silhouettes it draws',
-      kindRows.length === 5 && new Set(kindRows.map((row) => row.glyph)).size === 5,
+      kindRows.length === 5 && kindRows.every((row) => row.glyph)
+        && new Set(kindRows.map((row) => row.glyph)).size === 5,
       `${kindRows.length} shape row(s)`);
 
     // ── vi. COLOUR says who runs it ────────────────────────────────────────
@@ -433,6 +443,11 @@ async function main() {
     check('while its FILL still answers availability, not ownership',
       new Set(dockDots.map((dot) => dot.color)).size >= 3,
       JSON.stringify([...new Set(dockDots.map((dot) => dot.color))]));
+    const operatorRows = loaded.legendRows.filter((row) => row.channel === 'couleur + lettre = qui');
+    check('every named operator row carries its monogram, and no two share a letter',
+      operatorRows.length >= 3 && operatorRows.every((row) => row.glyph)
+        && new Set(operatorRows.map((row) => row.glyph)).size === operatorRows.length,
+      JSON.stringify(operatorRows.map((row) => row.label)));
     check('the legend names every operator in view',
       ['Naolib', 'Pony', 'Lime'].every((name) => loaded.legendRows.some((row) => row.label === name)),
       JSON.stringify(loaded.legendRows.map((row) => row.label)));

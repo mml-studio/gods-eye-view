@@ -11,7 +11,7 @@ Source: https://github.com/google/material-design-icons
         symbols/web/<name>/materialsymbolsrounded/<name>_fill1_24px.svg
         (Material Symbols Rounded, filled, weight 400)
 
-WHAT WAS TAKEN. Twenty-nine glyphs, across five modules.
+WHAT WAS TAKEN. Twenty-five glyphs, across five modules.
 
 `src/data/transitVehicleIcons.js` draws live French transit vehicles by class
 (retrieved 2026-08-31): airport_shuttle, directions_boat, directions_bus,
@@ -23,9 +23,22 @@ left unused: the `aerial` class now draws Maki's `aerialway` instead, for the
 legibility reason `src/data/transitVehicleIcons.js` records. Its path data is
 gone from this project, so nothing under this notice is claimed for it.
 
-`src/data/sharedMobilityIcons.js` draws shared vehicles by form factor
-(retrieved 2026-09-01): pedal_bike, electric_bike, electric_scooter,
-electric_moped, directions_car.
+`src/data/sharedMobilityIcons.js` draws ONE shared-vehicle form factor
+(retrieved 2026-09-01): electric_scooter.
+
+`pedal_bike`, `electric_bike`, `electric_moped` and `directions_car` were taken
+on the same date and have since been REMOVED, not merely left unused. Their path
+data is gone from this project, so nothing under this notice is claimed for
+them. They were replaced on 2026-09-14 by Maki's `bicycle`, `scooter` and `car`,
+for a measured reason: at the 7-24 CSS px that layer draws, Material's heavier
+frames close their own counters and collapse into solid blobs — the bicycle puts
+86 px² of ink out of 88 into one contiguous patch at 17 px. Material is an
+INTERFACE set drawn for 24 px in a menu; Maki authors in a 15-unit box for a
+label laid over imagery, which is the band this layer lives in.
+
+`electric_scooter` stayed because it has no cartographic equivalent: no kick
+scooter is published by Maki, nor by any of the 557 Temaki icons, checked on
+2026-09-14.
 
 `src/data/plantFiliereIcons.js` draws two of the three filières of the EDF
 generating fleet (retrieved 2026-09-10 at commit 0cbb08816df0): water_drop for
@@ -64,15 +77,21 @@ WHAT WAS CHANGED. Nothing, in the artwork.
 
 Only the single `d` path string of each glyph is vendored, verbatim and
 unmodified, into those modules — the surrounding SVG document is not, and the
-coordinates are NOT rescaled: all three modules carry Material's own
-`0 -960 960 960` viewBox precisely so that this paragraph stays true.
+coordinates are NOT rescaled. `transitVehicleIcons.js` and `roadEventGlyphs.js`
+carry Material's own `0 -960 960 960` viewBox precisely so that this paragraph
+stays true; the three plate packs — `plantFiliereIcons.js`, `irveMarkIcons.js`
+and `sharedMobilityIcons.js` — place that same 960-unit box inside their own
+96-unit plate with an SVG `transform`, which moves no coordinate and is what the
+paragraph above already claims for the punch.
 
 At render time each path is drawn TWICE by this project: once as a wide dark
 stroke (a halo, so the glyph stays readable over pale terrain) and once as a
 white fill (so Cesium's per-billboard colour multiply can tint it — by vehicle
-class in the transit layer, by operator in the shared-mobility one, by filière
-in the EDF fleet, by nothing at all in the road-event one, which draws every
-category in a single ink). The path geometry itself is untouched.
+class in the transit layer, by nothing at all in the road-event one, which draws
+every category in a single ink). In the three plate packs it is punched as a
+HOLE instead and drawn once — the tint then reaches the plate around it, by
+filière in the EDF fleet and by operator in the shared-mobility one. The path
+geometry itself is untouched either way.
 
 `roadEventGlyphs.js` emits each path a THIRD way, for the map key: the same `d`
 string, with no halo and no fill colour, used as a CSS mask so the panel can
