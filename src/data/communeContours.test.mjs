@@ -19,7 +19,9 @@ import {
   decimateCommuneRing,
   hasArrondissements,
   projectCommuneContours,
+  projectSingleCommuneContour,
   ringAnchor,
+  singleCommuneContourUrl,
 } from './communeContours.js';
 
 const load = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8'));
@@ -101,4 +103,60 @@ test('a card anchor is the mean of a drawn ring, never of an undrawn one', () =>
   assert.ok(lat > 48.7 && lat < 49, `lat ${lat}`);
   assert.equal(ringAnchor([1, 2]), null);
   assert.equal(ringAnchor(null), null);
+});
+
+test('one commune is fetched by code, and the geometry is asked for explicitly', () => {
+  const url = singleCommuneContourUrl('33063');
+  assert.equal(
+    url,
+    'https://geo.api.gouv.fr/communes/33063?format=geojson&geometry=contour&fields=code,nom,population',
+  );
+  // THE FAILURE THIS PINS IS SILENT. Without `geometry=contour` the endpoint
+  // answers 200, `"type":"Feature"`, with a **Point** — the commune centre —
+  // in 125 bytes. Nothing throws and nothing is empty; the caller just draws a
+  // dot where it asked for a boundary. Measured on 33063, 75113 and 75056.
+  assert.match(url, /geometry=contour/);
+  // An arrondissement municipal answers on this route without the `type`
+  // filter the département route needs, which is what lets a caller holding a
+  // BAN-resolved 75113 ask for the arrondissement and not for Paris.
+  assert.match(singleCommuneContourUrl('75113'), /communes\/75113\?/);
+  assert.match(singleCommuneContourUrl('2A004'), /communes\/2A004\?/);
+  assert.equal(singleCommuneContourUrl('2a004'), singleCommuneContourUrl('2A004'));
+});
+
+test('a code this API cannot accept throws rather than building a bad URL', () => {
+  // The caller decides what to do with it — the Géorisques proxy catches and
+  // drops the outline so one optional upstream cannot fail a whole scan.
+  for (const bad of ['', null, undefined, '750', '750566', 'PARIS', '7505A']) {
+    assert.throws(() => singleCommuneContourUrl(bad), /invalid commune code/, String(bad));
+  }
+  // Surrounding whitespace is trimmed rather than rejected: it comes from a
+  // query string, and a caller that typed a space meant the code.
+  assert.equal(singleCommuneContourUrl(' 75056 '), singleCommuneContourUrl('75056'));
+  assert.throws(() => singleCommuneContourUrl('33063', { fields: 'code,nom;drop' }), /invalid fields/);
+});
+
+test('the single-Feature reply projects through the SAME decimator as the pack', () => {
+  const feature = load('geoapi-commune-75113-contour.json');
+  const one = projectSingleCommuneContour(feature);
+  assert.equal(one.code, '75113');
+  assert.equal(one.name, 'Paris 13e Arrondissement');
+  assert.equal(one.population, 181271);
+  assert.equal(one.parts.length, 1);
+  // Flat [lon, lat, …] pairs, closed and drawable, decimated to the same
+  // ceiling one of 887 communes gets. 114 source vertices become 64.
+  assert.ok(one.parts[0].length % 2 === 0);
+  assert.equal(one.parts[0].length / 2 <= COMMUNE_MAX_RING_VERTICES + 1, true);
+  assert.equal(one.simplified, true);
+  const [lon, lat] = ringAnchor(one.parts[0]);
+  assert.ok(lon > 2.3 && lon < 2.42, `lon ${lon}`);
+  assert.ok(lat > 48.8 && lat < 48.86, `lat ${lat}`);
+});
+
+test('a centre-only reply projects to nothing, rather than to a one-point commune', () => {
+  // What the endpoint sends when `geometry=contour` was forgotten. It must
+  // surface as "no outline", never as a polygon with one vertex.
+  assert.equal(projectSingleCommuneContour(load('geoapi-commune-75113-centre.json')), null);
+  assert.equal(projectSingleCommuneContour(null), null);
+  assert.equal(projectSingleCommuneContour({ properties: { code: '75113' }, geometry: null }), null);
 });

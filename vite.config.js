@@ -144,6 +144,10 @@ import {
   projectGeorisques,
 } from './src/data/georisquesFeed.js';
 import {
+  projectSingleCommuneContour,
+  singleCommuneContourUrl,
+} from './src/data/communeContours.js';
+import {
   DVF_FIRST_YEAR,
   buildDvfUrl,
   clampDvfRadius,
@@ -22931,6 +22935,27 @@ async function resolveCommuneCode(lon, lat) {
  * @returns {import('vite').Plugin}
  */
 function georisquesProxy() {
+  /**
+   * The commune-outline URL, or null when the resolved code is not one this
+   * API accepts.
+   *
+   * `singleCommuneContourUrl` THROWS on a bad code, which is right for a
+   * caller that built the code itself and wrong here: this one comes from the
+   * BAN, and a scan over the sea or across a border resolves to nothing
+   * usable. A throw inside the `load` would fail the whole scan — report,
+   * ICPE and radon included — over the one upstream nobody asked for.
+   *
+   * @param {string} inseeCode
+   * @returns {?string}
+   */
+  function safeCommuneContourUrl(inseeCode) {
+    try {
+      return singleCommuneContourUrl(inseeCode);
+    } catch {
+      return null;
+    }
+  }
+
   function install(middlewares) {
     installAddressRoute(middlewares, '/api/georisques', (url) => {
       const point = addressPoint(url.searchParams);
@@ -22948,14 +22973,30 @@ function georisquesProxy() {
           // reachable from a bare coordinate.
           const inseeCode = givenInsee ?? (await resolveCommuneCode(point.lon, point.lat))?.code ?? null;
           const urls = buildGeorisquesUrls({ ...point, radiusM, inseeCode });
-          const [report, icpe, radon] = await Promise.all([
+          // The commune OUTLINE, from the same BAN-resolved code radon is keyed
+          // by. A fourth upstream and a fourth way to fail: it is the only one
+          // of the four whose absence costs the reader nothing but a stroke, so
+          // it degrades to `null` like the rest and is never awaited alone.
+          const contourUrl = inseeCode ? safeCommuneContourUrl(inseeCode) : null;
+          const [report, icpe, radon, contour] = await Promise.all([
             fetchAddressSource(urls.report),
             fetchAddressSource(urls.icpe),
             urls.radon ? fetchAddressSource(urls.radon) : Promise.resolve(null),
+            contourUrl ? fetchAddressSource(contourUrl) : Promise.resolve(null),
           ]);
-          // All three failing is an outage; any one answering is a scan.
+          // All three failing is an outage; any one answering is a scan. The
+          // outline is NOT in that test: an outline with no verdicts to explain
+          // is a shape with nothing to say.
           if (!report && !icpe && !radon) return null;
-          return projectGeorisques({ report, icpe, radon, origin: point, radiusM });
+          return projectGeorisques({
+            report,
+            icpe,
+            radon,
+            contour: projectSingleCommuneContour(contour),
+            inseeCode,
+            origin: point,
+            radiusM,
+          });
         },
       };
     });

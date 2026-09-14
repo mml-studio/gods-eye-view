@@ -4736,6 +4736,42 @@ export class StyleManager {
       });
     }
     this._installCoverageWatch();
+    this._installLayerDrawWatch();
+  }
+
+  /**
+   * Repaint the panel when a layer's DRAW changes on its own.
+   *
+   * The one case, today, is an address layer crossing its altitude ceiling:
+   * the scene empties in a frame and the layer's next scheduled repaint is its
+   * update interval away — five minutes for Géorisques, whose register moves
+   * in weeks. Measured on 2026-09-14: 13 legend entries left on screen over a
+   * scene with zero entities in it.
+   *
+   * NOT FOLDED INTO `_installCoverageWatch`, though both are camera-driven.
+   * That one repaints from `moveEnd`, and its listener is installed before the
+   * layers install theirs — so it rebuilds the key from the state the layer is
+   * about to leave. The signal has to come from whoever knows the draw changed,
+   * which is the layer, and this is the end that turns it into a repaint.
+   * @returns {void}
+   */
+  _installLayerDrawWatch() {
+    this._layerDrawWatchRemover?.();
+    this._layerDrawWatchRemover = null;
+    if (typeof window === 'undefined' || !this._dataManager?.refreshControls) return;
+    const onDrawChanged = () => {
+      if (this._disposed) return;
+      this._dataManager?.refreshControls?.();
+    };
+    // The name is a LITERAL on both ends, as `gev:map-stack-changed` already
+    // is: importing the constant would pull `addressScanLayer.js` — and with
+    // it Cesium and the world overlay — into the entry chunk to read a string.
+    // `addressScanLayer.js` exports it as `LAYER_DRAW_CHANGED_EVENT`, and
+    // `ui.layerDrawWatch.test.mjs` fails if the two ever drift apart.
+    window.addEventListener('gev:layer-draw-changed', onDrawChanged);
+    this._layerDrawWatchRemover = () => {
+      window.removeEventListener('gev:layer-draw-changed', onDrawChanged);
+    };
   }
 
   /**
@@ -10618,6 +10654,8 @@ export class StyleManager {
     // listener. `destroy()` settles the first and removes the second.
     this._coverageWatchRemover?.();
     this._coverageWatchRemover = null;
+    this._layerDrawWatchRemover?.();
+    this._layerDrawWatchRemover = null;
     this._coverageBriefing?.destroy();
     this._coverageBriefing = null;
     // Revoke persistence/hash authority before teardown can emit manager changes.

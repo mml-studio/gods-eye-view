@@ -52,6 +52,29 @@ import { deriveFetchCenter, greatCircleKm } from './trafficBounds.js';
 export const ADDRESS_SCAN_MAX_ALTITUDE_M = 12_000;
 
 /**
+ * The event these layers fire when their DRAW changes without their data
+ * changing — which is what going dormant is.
+ *
+ * WHY A SIGNAL IS NEEDED AT ALL. The manager repaints the panel and the on-map
+ * key on its own tick, and for these layers that tick is the update interval:
+ * five minutes for Géorisques, because the register moves in weeks. Crossing
+ * the altitude ceiling empties the scene in one frame and leaves the key
+ * describing it for the rest of those five minutes — measured on 2026-09-14,
+ * 13 legend entries still on screen over a scene with zero entities in it,
+ * clearing instantly when `_refreshTogglePanel()` was called by hand.
+ *
+ * WHY `moveEnd` IS NOT ENOUGH, though the shell already repaints on it. Both
+ * the panel watcher and these layers listen to the same camera event, and the
+ * panel's listener is installed first — so the key is rebuilt from the layer's
+ * PREVIOUS state and the layer goes dormant immediately after. The repaint has
+ * to be triggered by whatever knows the draw has changed, and that is the
+ * layer.
+ *
+ * @see `ui.js` `_installLayerDrawWatch`, which turns this into a repaint.
+ */
+export const LAYER_DRAW_CHANGED_EVENT = 'gev:layer-draw-changed';
+
+/**
  * Distance the look-at point must move before a scan is repeated, in km.
  * Below this the previous answer still describes the same block.
  */
@@ -620,6 +643,21 @@ export function createAddressScanLayer(config) {
    * ceiling generous enough to allow from the camera could do safely.
    */
   let _pin = null;
+
+  /**
+   * Announce that this layer's draw changed on its own — dormancy, and nothing
+   * else. Called on the TRANSITION only: a layer that is dormant and stays
+   * dormant has nothing new to say, and firing every camera stop would repaint
+   * the panel across a whole flight.
+   *
+   * @param {boolean} dormant The state just entered.
+   * @returns {void}
+   */
+  function announceDrawChanged(dormant) {
+    mapStackEventTarget?.dispatchEvent?.(new CustomEvent(LAYER_DRAW_CHANGED_EVENT, {
+      detail: { layerId: id, dormant },
+    }));
+  }
   /**
    * The drawn answer's query WITHOUT its coordinate, for change detection.
    *
@@ -1035,12 +1073,22 @@ export function createAddressScanLayer(config) {
           _lastPoint = null;
           _lastParamsSignature = null;
           _seatPending = false;
+          // AFTER the state is consistent, never before: a listener that
+          // repaints the key reads `getRowControls()`, and that has to see the
+          // cleared layer rather than the one it is about to become.
+          announceDrawChanged(true);
         }
         _lastError = null;
         governorRequestRender(`${id}-dormant`);
         return true;
       }
-      _dormant = false;
+      // Waking is announced too. The draw does not come back with it — the scan
+      // below does that — but the ceiling notice the key may be carrying is
+      // wrong the moment the layer is under the ceiling again.
+      if (_dormant) {
+        _dormant = false;
+        announceDrawChanged(false);
+      }
 
       const extraParams = params(point, _viewer, { ..._runtime });
       const paramsSignature = String(new URLSearchParams(extraParams));
@@ -1098,6 +1146,14 @@ export function createAddressScanLayer(config) {
         // is on screen — `getStats()` inside it must not describe the previous
         // answer.
         runAfterDraw(payload, point);
+        // A NEW DRAW IS A DRAW CHANGE TOO, and this is the half that was
+        // missing when the signal only covered dormancy. Nothing else repaints
+        // the panel when a scan LANDS: the manager's tick is the update
+        // interval away, and the shell's `moveEnd` repaint has already run —
+        // the camera settled before the request came back. So a reader who
+        // flew somewhere new got the draw and an empty key, or worse, the key
+        // of the block they left.
+        announceDrawChanged(false);
         // The render governor runs in requestRenderMode: a redraw nobody asks
         // to paint simply never appears on screen.
         governorRequestRender(`${id}-scan`);
