@@ -9,12 +9,17 @@
  *    and never throws on a broken predicate.
  *  - isWorldPick answers "nobody could select this", which is what the
  *    photorealistic globe took away from `!picked`.
+ *  - registerPickDecoration lets a layer keep that answer true for geometry
+ *    that DOES carry a pick id — a ground-classified wash the size of a
+ *    commune, which is pickable and is not an object.
  */
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  registerPickDecoration,
   registerPickOwner,
+  unregisterPickDecoration,
   unregisterPickOwner,
   isOwnedByOtherLayer,
   isWorldPick,
@@ -132,4 +137,56 @@ test('isWorldPick: anything selectable is not the world', () => {
   assert.equal(isWorldPick({ id: 25544 }), false, 'a NORAD number is an id');
   assert.equal(isWorldPick({ id: { mmsi: '227123456' } }), false, 'an AIS record is an id');
   assert.equal(isWorldPick({ id: undefined, primitive: { id: 'irve-fr:42' } }), false);
+});
+
+// ---------------------------------------------------------------------------
+// registerPickDecoration — a pickable surface that is still the map
+// ---------------------------------------------------------------------------
+
+test('decorations: a declared wash is the world, even though it has an id', () => {
+  // The case: `georisques.js` tints a whole commune with a ground-classified
+  // polygon. Those ARE pickable — `delinquanceFrance.js` selects a commune by
+  // clicking one — so without this the wash would have made every sibling's
+  // ground click and every card dismissal inside that commune resolve to
+  // `ignore`, over an area kilometres wide.
+  registerPickDecoration('georisques', (id) => id.includes(':wash:'));
+  try {
+    assert.equal(isWorldPick({ id: { id: 'georisques:commune:64099:wash:0' } }), true);
+    assert.equal(isWorldPick({ id: 'georisques:commune:64099:wash:0' }), true);
+    // Its neighbour, the stroke, carries the commune's card and stays an
+    // object. One substring apart, and the two must not be confused.
+    assert.equal(isWorldPick({ id: { id: 'georisques:commune:64099:0' } }), false);
+    // And a decoration is not an OWNERSHIP claim: the two registries are
+    // opposites, and declaring one must not make siblings back off a pick.
+    assert.equal(isOwnedByOtherLayer('urbanisme-gpu', 'georisques:commune:64099:wash:0'), false);
+  } finally {
+    unregisterPickDecoration('georisques');
+  }
+  // Unregistered, the wash goes back to being an object — which is the state
+  // the rest of this file asserts in.
+  assert.equal(isWorldPick({ id: { id: 'georisques:commune:64099:wash:0' } }), false);
+});
+
+test('decorations: a throwing predicate never decides a click', () => {
+  registerPickDecoration('broken', () => { throw new Error('boom'); });
+  registerPickDecoration('washes', (id) => id.endsWith(':wash'));
+  try {
+    assert.equal(isWorldPick({ id: 'a:wash' }), true);
+    assert.equal(isWorldPick({ id: 'a:marker' }), false);
+  } finally {
+    unregisterPickDecoration('broken');
+    unregisterPickDecoration('washes');
+  }
+});
+
+test('decorations: the empty pick still short-circuits before any predicate', () => {
+  let asked = 0;
+  registerPickDecoration('counter', () => { asked += 1; return false; });
+  try {
+    assert.equal(isWorldPick(null), true);
+    assert.equal(isWorldPick({ primitive: { isCesium3DTileset: true } }), true);
+    assert.equal(asked, 0, 'a pick with no id is the world without asking anybody');
+  } finally {
+    unregisterPickDecoration('counter');
+  }
 });

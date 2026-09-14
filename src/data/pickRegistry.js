@@ -7,6 +7,10 @@
  * marker alone, and {@link isWorldPick}, so a layer can still recognise a
  * click on the map itself now that the map is a 3D Tiles surface.
  *
+ * {@link registerPickDecoration} serves the second of those: a layer declares
+ * the geometry of its own that NOBODY can select, so a wash the size of a
+ * commune stops reading as an object in front of the map.
+ *
  * Problem solved: each entity layer (commercial flights, military flights)
  * receives every LEFT_CLICK. When the user clicks a military aircraft while
  * a commercial flight is tracked, the commercial handler used to classify
@@ -18,6 +22,13 @@
 
 /** @type {Map<string, (pickedId: string) => boolean>} layerId -> ownership predicate */
 const _owners = new Map();
+
+/**
+ * @type {Map<string, (pickedId: string) => boolean>} layerId -> decoration
+ * predicate. Geometry that carries a pick id and still is not an object — see
+ * {@link registerPickDecoration}.
+ */
+const _decorations = new Map();
 
 /**
  * Resolves a scene.pick() result to a String pick id for the ownership scan.
@@ -73,11 +84,32 @@ export function resolvePickId(picked) {
  * next to its own handler; it is here so the next handler inherits it instead
  * of rediscovering it.
  *
+ * ── AND A THIRD SURFACE THAT NOBODY CAN SELECT: THE DECORATIONS ───────────
+ * The test above reads "carries no pick id", which is a proxy for "nobody
+ * could own this" and not the statement itself. A ground-classified WASH
+ * breaks the proxy: it is built by the Entity API, so it carries the entity's
+ * id, and it is pickable — `delinquanceFrance.js` selects a commune by
+ * clicking exactly that kind of fill. A wash that is decoration rather than
+ * object therefore has to say so, or a layer that tints a whole commune makes
+ * every sibling's ground click and every card dismissal inside that commune
+ * resolve to `ignore`. See {@link registerPickDecoration}.
+ *
  * @param {object|null|undefined} picked - Result of `scene.pick()`.
- * @returns {boolean} True for the empty pick and for anything with no pick id.
+ * @returns {boolean} True for the empty pick, for anything with no pick id,
+ *   and for geometry a layer has declared unselectable.
  */
 export function isWorldPick(picked) {
-  return !picked || resolvePickId(picked) === null;
+  if (!picked) return true;
+  const id = resolvePickId(picked);
+  if (id === null) return true;
+  for (const predicate of _decorations.values()) {
+    try {
+      if (predicate(id) === true) return true;
+    } catch {
+      // A layer's own predicate must never decide a click for the others.
+    }
+  }
+  return false;
 }
 
 /**
@@ -99,6 +131,40 @@ export function registerPickOwner(layerId, predicate) {
  */
 export function unregisterPickOwner(layerId) {
   _owners.delete(layerId);
+}
+
+/**
+ * Declares geometry of one layer that is DECORATION: it can be hit, and it can
+ * never be selected, by anybody.
+ *
+ * The contract is narrow on purpose, because the consequence is that clicks
+ * pass through: a decoration must carry no card, no name and no description,
+ * so there is nothing a reader could have meant by clicking it. A mark that
+ * answers a click is not a decoration, and registering one here would take its
+ * card away.
+ *
+ * This is the OPPOSITE of {@link registerPickOwner}: an owner claims a pick so
+ * siblings leave it alone, a decoration disclaims it so siblings treat it as
+ * the map. Registering at module scope is safe and is what `georisques.js`
+ * does — the predicate only matches ids that exist while that layer draws.
+ *
+ * @param {string} layerId - Declaring layer id.
+ * @param {(pickedId: string) => boolean} predicate - True for that layer's own
+ *   unselectable geometry.
+ * @returns {void}
+ */
+export function registerPickDecoration(layerId, predicate) {
+  if (!layerId || typeof predicate !== 'function') return;
+  _decorations.set(layerId, predicate);
+}
+
+/**
+ * Removes a layer's decoration predicate.
+ * @param {string} layerId - Declaring layer id.
+ * @returns {void}
+ */
+export function unregisterPickDecoration(layerId) {
+  _decorations.delete(layerId);
 }
 
 /**

@@ -24,6 +24,15 @@
  * end — bare silhouettes unfindable below 18 px, and a plate still a plate at
  * 10.
  *
+ * ── AND 10 PX IS A READING FLOOR, NOT A FINDING ONE ─────────────────────────
+ *
+ * That last figure is about a mark the eye has already landed on. This same
+ * plate at 16 px — one of one, somewhere in a frame of roofs and gardens over
+ * Bassussarry — came back as "quasiment invisible", and correctly. Searching a
+ * photorealistic mesh is a different task from reading a glyph, and its floor
+ * is two to three times higher; `georisques.js` now sizes for the search.
+ * Nothing measured above is wrong, it was answering the other question.
+ *
  * ── WHY A TRIANGLE AND NOT THE MILITARY PACK'S DISC ─────────────────────────
  *
  * The disc is right where the SHAPE has to name a class, because a disc is a
@@ -125,8 +134,11 @@ const BANG = '<path d="M48,39 L48,57" stroke="#000000" stroke-width="9.5" stroke
  * Raster size.
  *
  * Cesium's billboard atlas has no mipmaps, so a texture much larger than its
- * on-screen footprint is minified into mush. 88 covers the 14–30 CSS px band
- * this layer draws at — the same figure the three sibling packs record.
+ * on-screen footprint is minified into mush. 88 covers the 22–40 CSS px band
+ * this layer draws at — the same figure the three sibling packs record, and it
+ * still covers the largest of them at a device pixel ratio of 2 (40 × 2 = 80).
+ * The band moved up from 14–30 when the mark was measured on screen at 15.9 px
+ * and found; see the size constants in `georisques.js`.
  */
 export const HAZARD_GLYPH_RASTER_PX = 88;
 
