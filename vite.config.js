@@ -413,31 +413,27 @@ import {
 import {
   AMENITIES_MAX_BOX_DEG,
   AMENITY_FAMILIES,
-  BPE_COLUMN_COUNT,
-  BPE_DATAGOUV_URL,
   BPE_EDITION_FLOOR,
-  BPE_LANDING_URL,
   BPE_ROW_FLOOR,
-  FINESS_COLUMN_COUNT,
-  FINESS_CSV_URL,
   FINESS_ROW_FLOOR,
-  buildAmenityMeshRows,
-  bpeArchiveFromHtml,
-  bpeLandingFromDataset,
-  bpeSubPagesFromHtml,
-  csvHeaderIndex,
-  foldAmenitySites,
-  newAmenityTally,
-  newestBpeArchive,
   orderAmenitySites,
-  readBpeRow,
-  readFinessRow,
-  splitSemicolonRow,
-  sumByFamily,
-  tallyAmenityOutcome,
   trimAmenityRecord,
 } from './src/data/amenitiesFeed.js';
-import { projectAmenitiesDepartements } from './src/data/amenitiesDepartements.js';
+import { readResponseJsonCapped, readResponseTextCapped } from './src/data/httpCapped.js';
+import {
+  AMENITIES_CACHE_VERSION,
+  AMENITIES_SITE_CAP,
+  AMENITIES_STALE_MS,
+  AMENITIES_TTL_MS,
+  amenitiesPackPath,
+  amenitySitesInBox,
+  buildAmenitiesPack,
+  clearAmenitiesShardCache,
+  readAmenitiesPack,
+  writeAmenitiesPack,
+} from './src/data/amenitiesPack.js';
+
+export { readResponseJsonCapped, readResponseTextCapped };
 // Add to the top import block of vite.config.js, beside the other src/data feed
 // imports. Nothing else is needed: this proxy reuses `makeRateLimiter`,
 // `clientKey`, `readResponseJsonCapped`, `coalesceProxyRequest`,
@@ -1609,55 +1605,9 @@ async function readRequestBodyCapped(req, maxBytes) {
   return Buffer.concat(chunks);
 }
 
-/**
- * Read a fetch() Response body as text with a hard byte cap. Rejects early on an
- * oversized Content-Length, then streams with a running cap so a chunked or
- * length-omitted response cannot blow past the limit. Throws { code:'RESPONSE_TOO_LARGE' }.
- */
-export async function readResponseTextCapped(response, maxBytes) {
-  const declared = Number(response.headers.get('content-length'));
-  if (Number.isFinite(declared) && declared > maxBytes) {
-    // Release the socket. Refusing on the header and then walking away leaves
-    // undici holding an open connection until GC gets to it, which is the
-    // resource this cap exists to protect.
-    try { await response.body?.cancel?.(); } catch { /* no-op */ }
-    const err = new Error('Upstream response too large');
-    err.code = 'RESPONSE_TOO_LARGE';
-    throw err;
-  }
-  const reader = response.body?.getReader?.();
-  if (!reader) {
-    const text = await response.text();
-    if (Buffer.byteLength(text) > maxBytes) {
-      const err = new Error('Upstream response too large');
-      err.code = 'RESPONSE_TOO_LARGE';
-      throw err;
-    }
-    return text;
-  }
-  const decoder = new TextDecoder();
-  let out = '';
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > maxBytes) {
-      try { await reader.cancel(); } catch { /* no-op */ }
-      const err = new Error('Upstream response too large');
-      err.code = 'RESPONSE_TOO_LARGE';
-      throw err;
-    }
-    out += decoder.decode(value, { stream: true });
-  }
-  out += decoder.decode();
-  return out;
-}
-
-/** Parse a fetch() JSON response only after enforcing a hard byte cap. */
-export async function readResponseJsonCapped(response, maxBytes) {
-  return JSON.parse(await readResponseTextCapped(response, maxBytes));
-}
+// `readResponseTextCapped` and `readResponseJsonCapped` moved to
+// `src/data/httpCapped.js` so the amenity pack build script can read one JSON
+// document without importing this config. Re-exported above, unchanged.
 
 /**
  * Append every element of `items` to `target`, in place.
@@ -10445,11 +10395,11 @@ function bruitFranceProxy() {
 // Everyday amenities (FR) — INSEE BPE 2025 + FINESS
 // ---------------------------------------------------------------------------
 /**
- * Keyless national amenity proxy.
+ * Keyless national amenity proxy — it reads a pack, it does not make one.
  *
  *   GET /api/amenities-fr/status       — provenance, discovered edition, tallies
- *   GET /api/amenities-fr/departements — 96-département rollup, ~21 KB
- *   GET /api/amenities-fr/mesh         — the national tuple pack, 640 980 B gzipped
+ *   GET /api/amenities-fr/departements — 96-département rollup, ~33 KB
+ *   GET /api/amenities-fr/mesh         — the national tuple pack, ~10 MB
  *   GET /api/amenities-fr/sites?bbox   — named amenities inside a 0.35° box
  *
  * WHY A PROXY, and it is not the usual reason. Measured twice on 2026-09-02:
@@ -10459,360 +10409,76 @@ function bruitFranceProxy() {
  * ignores `Range` — `curl -r 0-2000` gets 200, not 206, and starts streaming the
  * whole file. A browser cannot fetch this at all, ever, and no key changes that.
  *
- * WHAT THE BUILD COSTS, measured end to end against the live upstreams on
- * 2026-09-02: **52.9 s**, of which 51 s is the 142 884 474-byte download.
- * Inflating that to 1 515 251 530 bytes of semicolon CSV and reading all
- * 2 921 770 rows takes **8.7 s**; FINESS is 44 053 043 bytes in 2.7 s and
- * 103 032 rows; the fold, the mesh and the 34 778-commune point-in-polygon
- * rollup are the rest. It happens once per month and is written to
- * `.gev-cache/amenities-fr/`. That is still why `/status` is the deployment
- * probe and `/departements` is not: a health check meant to answer in
- * milliseconds should not be the thing that triggers a minute of work.
+ * WHERE THE PACK COMES FROM: `scripts/build-amenities-pack.mjs`, out of process,
+ * monthly. Everything about the fold — the ZIP streaming, the edition discovery,
+ * the shard layout and the measurements behind all three — is in
+ * `src/data/amenitiesPack.js`. The in-process build below is a fallback for a
+ * clone that has no pack yet, and `GEV_AMENITIES_INPROCESS_BUILD=0` turns it
+ * off wherever the process cannot afford it.
  *
- * WHY THE ARCHIVE IS STREAMED AND NEVER BUFFERED: 1.5 GB does not belong in a
- * Buffer. The single member's local header is read, the rest is piped through
- * `zlib.createInflateRaw`, and lines are handed to `readBpeRow` one at a time.
- * Nothing larger than one line is held except the 126 859 selected rows.
- *
- * WHY THE EDITION IS DISCOVERED: BPE gains an edition every August at a NEW
- * INSEE page id, and the only stable pointer to it is INSEE's own data.gouv
- * entry, whose single resource url is the current landing page. Three hops
- * (data.gouv → landing → sub-pages), floored at BPE25 — a discovery older than
- * the floor is a malformed answer, not a new fact, and is refused.
+ * WHAT THIS FILE HOLDS AT REST: `mesh` and `rollup`, about 10 MB. The 445 380
+ * records are on disk in 0.5° shards and `/sites` reads at most four of them per
+ * request — measured 2026-09-14, that is 405 MB of RSS with the layer live
+ * against 644 MB of heap for the single-document pack it replaced, which is the
+ * difference between fitting in the container and aborting it.
  */
-const AMENITIES_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const AMENITIES_STALE_MS = 120 * 24 * 60 * 60 * 1000;
-const AMENITIES_META_TIMEOUT_MS = 30_000;
-const AMENITIES_BULK_TIMEOUT_MS = 15 * 60_000;
-const AMENITIES_META_MAX_BYTES = 4 * 1024 * 1024;
-const AMENITIES_BPE_MAX_BYTES = 400 * 1024 * 1024;
-const AMENITIES_FINESS_MAX_BYTES = 160 * 1024 * 1024;
-const AMENITIES_SITE_CAP = 12_000;
-const AMENITIES_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'amenities-fr');
-const AMENITIES_CACHE_PATH = path.join(AMENITIES_DISK_DIR, 'pack.json');
+const AMENITIES_CACHE_PATH = amenitiesPackPath();
 /**
- * Shape version of the cached pack. BUMP IT whenever `readBpeRow`,
- * `readFinessRow`, `foldAmenitySites`, `buildAmenityMeshRows` or
- * `projectAmenitiesDepartements` changes what it returns: the cache lives for a
- * MONTH on disk and costs ninety seconds to rebuild, so without a bump a
- * projection edit stays invisible until October.
+ * Whether this process may build a pack itself.
+ *
+ * On by default, because a fresh clone has to get a pack somehow and a laptop
+ * has the memory to make one. Set `GEV_AMENITIES_INPROCESS_BUILD=0` wherever the
+ * process is memory-capped: the fold peaked at 1.27 GB of RSS on 2026-09-14, and
+ * inside the staging container's 768 MB ceiling it did not fail, it aborted the
+ * process. A 503 naming the build command is a better answer than a restart.
  */
-// 2 — the Cityscan catch-up widened `BPE_CODE_FAMILY` from ten codes to
-// twenty-four and `AMENITY_FAMILIES` from seven to fourteen, so a version-1
-// pack holds neither the new records nor the new family indices in its mesh.
-const AMENITIES_CACHE_VERSION = 2;
+const AMENITIES_INPROCESS_BUILD = process.env.GEV_AMENITIES_INPROCESS_BUILD !== '0';
 
 let _amenities = null;
 let _amenitiesInFlight = new Map();
 let _amenitiesDiskChecked = false;
 const _amenitiesRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 60, globalMax: 180 });
 
-/** One small JSON document (data.gouv). */
-async function fetchAmenitiesJson(url) {
-  const response = await fetch(url, {
-    headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(AMENITIES_META_TIMEOUT_MS),
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
-  return readResponseJsonCapped(response, AMENITIES_META_MAX_BYTES);
-}
-
-/** One INSEE HTML page. No Origin header is sent, which is the whole point. */
-async function fetchAmenitiesHtml(url) {
-  const response = await fetch(url, {
-    headers: { Accept: 'text/html' },
-    signal: AbortSignal.timeout(AMENITIES_META_TIMEOUT_MS),
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
-  return readResponseTextCapped(response, AMENITIES_META_MAX_BYTES);
-}
-
-/**
- * Resolve the current BPE archive URL.
- *
- * data.gouv is the stable root and the two INSEE hops are what actually name
- * the file. If data.gouv is unreachable the landing page measured against is
- * used instead, which is a degradation and not a guess: it is the edition every
- * number in `amenitiesFeed.js` was measured on.
- */
-async function discoverBpeArchive() {
-  let landing = BPE_LANDING_URL;
-  let discovered = false;
-  try {
-    const dataset = await fetchAmenitiesJson(BPE_DATAGOUV_URL);
-    const fromDataset = bpeLandingFromDataset(dataset);
-    if (fromDataset) {
-      landing = fromDataset;
-      discovered = true;
-    }
-  } catch (error) {
-    console.warn('[Amenities Proxy] data.gouv landing lookup failed:', error?.message || error);
-  }
-  const html = await fetchAmenitiesHtml(landing);
-  const base = landing.replace(/\/fr\/statistiques\/\d+.*$/, '');
-  const pages = bpeSubPagesFromHtml(html);
-  const candidates = [bpeArchiveFromHtml(html)];
-  for (const page of pages) {
-    try {
-      candidates.push(bpeArchiveFromHtml(await fetchAmenitiesHtml(`${base}/fr/statistiques/${page}`)));
-    } catch (error) {
-      console.warn(`[Amenities Proxy] BPE sub-page ${page} unreadable:`, error?.message || error);
-    }
-  }
-  const newest = newestBpeArchive(candidates, BPE_EDITION_FLOOR);
-  if (!newest) {
-    throw new Error(`no BPE archive at or above edition ${BPE_EDITION_FLOOR} on ${landing}`);
-  }
-  return { ...newest, landing, discovered };
-}
-
-/**
- * Stream one line at a time out of a fetch body, optionally through the single
- * member of a ZIP.
- *
- * The archive's local file header is 30 fixed bytes plus a name and an extra
- * field; everything after it is the raw deflate stream, which `inflateRaw`
- * consumes without ever materialising the 1.5 GB it expands to. Nothing bigger
- * than one inflate chunk is ever held.
- *
- * TWO THINGS HERE ARE PERFORMANCE AND NOT STYLE, both measured on the real
- * 1 515 251 530-byte member. Splitting each decoded chunk with `split('\n')`
- * rather than walking `indexOf` and re-slicing the carry took the parse from
- * **340 s to 8.7 s** — a 500-byte line inside a 1 MB chunk makes the
- * slice-per-line version copy the chunk's tail two thousand times, and there
- * are 2 921 770 lines. The inflate is also given a 1 MB `chunkSize`, because
- * the 16 KB default turns the same archive into ninety thousand generator
- * round-trips.
- */
-async function* amenitiesCsvLines(response, { zipped, maxBytes }) {
-  let downloaded = 0;
-  const source = (async function* pull() {
-    const reader = response.body.getReader();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) return;
-      downloaded += value.byteLength;
-      if (downloaded > maxBytes) {
-        try { await reader.cancel(); } catch { /* already closed */ }
-        throw new Error('Upstream response too large');
-      }
-      yield Buffer.from(value.buffer, value.byteOffset, value.byteLength);
-    }
-  })();
-
-  let stream = source;
-  if (zipped) {
-    stream = (async function* unzip() {
-      const inflate = zlib.createInflateRaw({ chunkSize: 1024 * 1024 });
-      const pending = [];
-      let failure = null;
-      let header = Buffer.alloc(0);
-      let started = false;
-      inflate.on('data', (chunk) => pending.push(chunk));
-      inflate.on('error', (error) => { failure = error; });
-      for await (const chunk of source) {
-        let body = chunk;
-        if (!started) {
-          header = header.length ? Buffer.concat([header, chunk]) : chunk;
-          if (header.length < 30) continue;
-          if (header.readUInt32LE(0) !== 0x04034b50) throw new Error('not a ZIP local header');
-          const method = header.readUInt16LE(8);
-          if (method !== 8) throw new Error(`unsupported ZIP compression method ${method}`);
-          const offset = 30 + header.readUInt16LE(26) + header.readUInt16LE(28);
-          if (header.length < offset) continue;
-          body = header.subarray(offset);
-          started = true;
-        }
-        if (failure) throw failure;
-        if (!inflate.write(body)) {
-          await new Promise((resolve) => inflate.once('drain', resolve));
-        }
-        while (pending.length) yield pending.shift();
-      }
-      await new Promise((resolve) => inflate.end(resolve));
-      if (failure) throw failure;
-      while (pending.length) yield pending.shift();
-    })();
-  }
-
-  const decoder = new TextDecoder('utf-8');
-  let carry = '';
-  for await (const chunk of stream) {
-    const parts = (carry + decoder.decode(chunk, { stream: true })).split('\n');
-    carry = parts.pop();
-    for (const part of parts) {
-      yield part.charCodeAt(part.length - 1) === 13 ? part.slice(0, -1) : part;
-    }
-  }
-  if (carry) yield carry;
-}
-
-/** Fold the whole BPE archive: the drawn rows, and one point per commune. */
-async function refreshAmenitiesBpe(tally) {
-  const archive = await discoverBpeArchive();
-  const response = await fetch(archive.url, {
-    headers: { Accept: 'application/zip' },
-    signal: AbortSignal.timeout(AMENITIES_BULK_TIMEOUT_MS),
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status} for ${archive.url}`);
-
-  const sites = [];
-  const communes = new Map();
-  let index = null;
-  let scanned = 0;
-  for await (const line of amenitiesCsvLines(response, { zipped: true, maxBytes: AMENITIES_BPE_MAX_BYTES })) {
-    if (!index) {
-      index = csvHeaderIndex(line);
-      if (Object.keys(index).length !== BPE_COLUMN_COUNT) {
-        throw new Error(`BPE header has ${Object.keys(index).length} columns, expected ${BPE_COLUMN_COUNT}`);
-      }
-      continue;
-    }
-    if (!line) continue;
-    scanned += 1;
-    const fields = splitSemicolonRow(line);
-    const outcome = readBpeRow(fields, index);
-    tallyAmenityOutcome(tally, outcome);
-    const depcom = String(fields[index.DEPCOM] ?? '').replace(/^"|"$/g, '').trim();
-    if (depcom) {
-      let commune = communes.get(depcom);
-      if (!commune) {
-        commune = { depcom, lat: undefined, lon: undefined, covered: false };
-        communes.set(depcom, commune);
-      }
-      if (outcome.kind === 'site') {
-        commune.covered = true;
-        if (commune.lat === undefined) {
-          commune.lat = outcome.site.lat;
-          commune.lon = outcome.site.lon;
-        }
-      } else if (commune.lat === undefined) {
-        const lat = Number(String(fields[index.LATITUDE] ?? '').replace(/^"|"$/g, ''));
-        const lon = Number(String(fields[index.LONGITUDE] ?? '').replace(/^"|"$/g, ''));
-        if (Number.isFinite(lat) && Number.isFinite(lon)) {
-          commune.lat = Number(lat.toFixed(5));
-          commune.lon = Number(lon.toFixed(5));
-        }
-      }
-    }
-    if (outcome.kind === 'site') sites.push(outcome.site);
-  }
-  if (scanned < BPE_ROW_FLOOR * 0.9) {
-    throw new Error(`BPE read only ${scanned} rows against a floor of ${BPE_ROW_FLOOR}`);
-  }
-  if (scanned !== BPE_ROW_FLOOR) {
-    console.warn(`[Amenities Proxy] BPE drifted: ${scanned} rows against the measured ${BPE_ROW_FLOOR}`);
-  }
-  return { archive, sites, communes: [...communes.values()], scanned };
-}
-
-/** Fold the FINESS establishment extract. */
-async function refreshAmenitiesFiness(tally) {
-  const response = await fetch(FINESS_CSV_URL, {
-    headers: { Accept: 'text/csv' },
-    signal: AbortSignal.timeout(AMENITIES_BULK_TIMEOUT_MS),
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status} for ${FINESS_CSV_URL}`);
-  const updated = response.headers.get('last-modified') || null;
-  const sites = [];
-  let index = null;
-  let scanned = 0;
-  for await (const line of amenitiesCsvLines(response, { zipped: false, maxBytes: AMENITIES_FINESS_MAX_BYTES })) {
-    if (!index) {
-      index = csvHeaderIndex(line);
-      if (Object.keys(index).length !== FINESS_COLUMN_COUNT) {
-        throw new Error(`FINESS header has ${Object.keys(index).length} columns, expected ${FINESS_COLUMN_COUNT}`);
-      }
-      continue;
-    }
-    if (!line) continue;
-    scanned += 1;
-    const outcome = readFinessRow(splitSemicolonRow(line), index);
-    tallyAmenityOutcome(tally, outcome);
-    if (outcome.kind === 'site') sites.push(outcome.site);
-  }
-  if (scanned < FINESS_ROW_FLOOR * 0.9) {
-    throw new Error(`FINESS read only ${scanned} rows against a floor of ${FINESS_ROW_FLOOR}`);
-  }
-  return { sites, scanned, updated };
-}
-
-/**
- * The whole national build.
- *
- * FINESS is fetched in parallel with the BPE archive but is NOT allowed to fail
- * silently: it is the only register behind two of the seven families, so losing
- * it would quietly delete every pharmacy and every hospital in France. The
- * layer degrades on a whole failure, with a sentence, rather than on half of
- * one without.
- */
-async function refreshAmenities() {
-  const started = Date.now();
-  const index = await loadSchoolsDepartementIndex();
-  const tally = newAmenityTally();
-  const [bpe, finess] = await Promise.all([
-    refreshAmenitiesBpe(tally),
-    refreshAmenitiesFiness(tally),
-  ]);
-  const records = foldAmenitySites([...bpe.sites, ...finess.sites]);
-  const mesh = buildAmenityMeshRows(records);
-  const rollup = projectAmenitiesDepartements({ records, communes: bpe.communes, index });
-  const perFamily = Object.fromEntries(AMENITY_FAMILIES.map((family) => [family, 0]));
-  for (const record of records) perFamily[record.family] += 1;
-  return {
-    records,
-    mesh,
-    rollup,
-    provenance: {
-      edition: bpe.archive.edition,
-      year: bpe.archive.year,
-      archive: bpe.archive.url,
-      landing: bpe.archive.landing,
-      editionDiscovered: bpe.archive.discovered,
-      finessUpdated: finess.updated,
-      bpeRows: bpe.scanned,
-      finessRows: finess.scanned,
-      communes: bpe.communes.length,
-      drawn: sumByFamily(tally.drawn),
-      dots: records.length,
-      perFamily,
-      refusedNoCoordinate: tally.refusedNoCoordinate,
-      refusedInvented: tally.refusedInvented,
-      refusedCrs: tally.refusedCrs,
-      precision: tally.precision,
-      builtInMs: Date.now() - started,
-    },
-  };
-}
-
 async function readAmenitiesDisk() {
   if (_amenitiesDiskChecked) return;
   _amenitiesDiskChecked = true;
-  try {
-    const entry = JSON.parse(await fsp.readFile(AMENITIES_CACHE_PATH, 'utf8'));
-    if (entry?.version === AMENITIES_CACHE_VERSION
-      && Number.isFinite(entry.at)
-      && Array.isArray(entry.payload?.records)
-      && Array.isArray(entry.payload?.mesh)
-      && Array.isArray(entry.payload?.rollup?.departements)) {
-      _amenities = entry;
-    }
-  } catch { /* no disk cache yet */ }
+  _amenities = await readAmenitiesPack(
+    AMENITIES_CACHE_PATH,
+    (message) => console.warn(`[Amenities Proxy] ${message}`),
+  );
 }
 
-function writeAmenitiesDisk(entry) {
-  fsp.mkdir(AMENITIES_DISK_DIR, { recursive: true })
-    .then(() => fsp.writeFile(AMENITIES_CACHE_PATH, JSON.stringify(entry)))
-    .catch((error) => console.warn('[Amenities Proxy] cache write failed:', error?.message || error));
-}
-
-/** Single-flight: `/departements`, `/mesh` and `/sites` all share one build. */
+/**
+ * Single-flight: `/departements`, `/mesh` and `/sites` all share one build.
+ *
+ * This is the FALLBACK, not the way a deployment is meant to get a pack. It
+ * exists so a fresh clone can draw the layer without a separate step; on a
+ * memory-capped host it is the thing that kills the process, which is why
+ * `npm run amenities:pack` exists and why `docs/DEPLOY.md` says to run it.
+ */
 function ensureAmenities() {
+  if (!AMENITIES_INPROCESS_BUILD) {
+    return Promise.reject(new Error(
+      'in-process amenity builds are disabled (GEV_AMENITIES_INPROCESS_BUILD=0);'
+      + ' build the pack with `npm run amenities:pack`',
+    ));
+  }
   const { promise } = coalesceProxyRequest(_amenitiesInFlight, 'national', async () => {
-    const payload = await refreshAmenities();
+    const payload = await buildAmenitiesPack({
+      warn: (message) => console.warn(`[Amenities Proxy] ${message}`),
+    });
     const entry = { version: AMENITIES_CACHE_VERSION, at: Date.now(), payload };
     _amenities = entry;
-    writeAmenitiesDisk(entry);
+    writeAmenitiesPack(AMENITIES_CACHE_PATH, entry)
+      .then(() => {
+        clearAmenitiesShardCache();
+        // The records were kept only to answer from memory while the shards did
+        // not exist yet. They do now, so drop 152 MB and read four cells a
+        // request like every other boot does.
+        delete entry.payload.records;
+        entry.dir = path.dirname(AMENITIES_CACHE_PATH);
+      })
+      .catch((error) => console.warn('[Amenities Proxy] cache write failed:', error?.message || error));
     return entry;
   });
   return promise;
@@ -10852,8 +10518,13 @@ function amenitiesFranceProxy() {
           ttlMs: AMENITIES_TTL_MS,
           staleMs: AMENITIES_STALE_MS,
           building: _amenitiesInFlight.size > 0,
+          canBuild: AMENITIES_INPROCESS_BUILD,
           pack: _amenities
-            ? { at: _amenities.at, ..._amenities.payload.provenance }
+            ? {
+              at: _amenities.at,
+              shards: Object.keys(_amenities.payload.shards?.cells || {}).length,
+              ..._amenities.payload.provenance,
+            }
             : null,
         }, { 'Cache-Control': 'public, max-age=60' });
         return;
@@ -10881,7 +10552,7 @@ function amenitiesFranceProxy() {
         }
       }
 
-      const answer = (entry, cacheState, stale) => {
+      const answer = async (entry, cacheState, stale) => {
         const payload = entry.payload;
         if (route === '/departements') {
           json(200, {
@@ -10903,14 +10574,12 @@ function amenitiesFranceProxy() {
           }, { 'X-AMENITIES-FR': cacheState });
           return;
         }
-        const inBox = [];
+        // Four shards off the disk, not a scan of 445 380 national records: see
+        // `amenitySitesInBox`. The whole reason the pack no longer lives in one
+        // document is that this route is the only one that wants a record.
+        const inBox = await amenitySitesInBox(entry, box);
         let rows = 0;
-        for (const record of payload.records) {
-          if (record.lat < box.south || record.lat > box.north) continue;
-          if (record.lon < box.west || record.lon > box.east) continue;
-          inBox.push(record);
-          rows += record.count;
-        }
+        for (const record of inBox) rows += record.count;
         // Rarest family first, so the cap below drops médecins généralistes and
         // never the hôpitaux a reader is most likely to be looking for.
         const ordered = orderAmenitySites(inBox);
@@ -10930,21 +10599,24 @@ function amenitiesFranceProxy() {
       await readAmenitiesDisk();
       const now = Date.now();
       if (_amenities && now - _amenities.at <= AMENITIES_TTL_MS) {
-        answer(_amenities, 'HIT', false);
+        await answer(_amenities, 'HIT', false);
         return;
       }
       try {
-        answer(await ensureAmenities(), 'MISS', false);
+        await answer(await ensureAmenities(), 'MISS', false);
       } catch (error) {
         console.warn('[Amenities Proxy] national build unavailable:', error?.message || error);
         // A pack a month old is still this edition of a register published once
         // a year — serving it beats blanking every amenity in France.
         if (_amenities && now - _amenities.at <= AMENITIES_STALE_MS) {
-          answer(_amenities, 'STALE', true);
+          await answer(_amenities, 'STALE', true);
           return;
         }
         json(503, {
           error: 'La base permanente des équipements et le registre FINESS sont momentanément indisponibles ; le pack national n’a pas pu être construit.',
+          // Named because on a memory-capped host this is not a weather report:
+          // the pack has to be built out of process and nothing else will do it.
+          build: 'npm run amenities:pack',
         });
       }
     });
