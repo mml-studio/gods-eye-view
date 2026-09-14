@@ -9,6 +9,7 @@ import { LOCATIONS, CITY_POIS, GLOBE_VIEW, PILL_CITY_IDS, flyToGlobeView, flyToP
 import { locationMiniStatus } from './locationStatus.js';
 import { interruptCameraMotion } from './cameraVerbs.js';
 import { cameraViewBox } from './data/viewGate.js';
+import { isLayerModuleUnavailable } from './data/lazyLayer.js';
 import { initCoverageBriefing } from './coverageBriefing.js';
 import {
   aircraftTrackingTarget,
@@ -5355,6 +5356,35 @@ export class StyleManager {
     }
   }
 
+  /**
+   * What a failed layer transition tells the reader.
+   *
+   * TWO FAILURES, TWO SENTENCES. "could not start cleanly" describes a layer
+   * that ran and did not settle — there is nothing the reader can do about it
+   * and the wording says so. A layer whose CHUNK never arrived is a different
+   * event with a known cure: staging rebuilds under open tabs, so a page left
+   * open across a deploy asks for hashed chunk names the origin no longer
+   * serves, and the browser remembers that failure for the tab's lifetime —
+   * clicking again cannot work, and reloading always does. Saying "could not
+   * start cleanly" there sends the reader to retry the one thing that is
+   * guaranteed not to help (reported 2026-09-14: two sessions lost to it).
+   *
+   * The name is the row's own French label rather than the internal id, so
+   * "CAMÉRAS PUBLIQUES" names the line the reader just clicked instead of
+   * `cctv`, which appears nowhere on screen.
+   *
+   * @param {object} change A `visibility-failed` manager event.
+   * @returns {string} Toast copy for that failure.
+   */
+  _layerFailureMessage(change) {
+    if (isLayerModuleUnavailable(change?.error)) {
+      const label = (this._dataManager?.getAll?.() || [])
+        .find((layer) => layer.id === change.layerId)?.label || change.layerId;
+      return `${label} : code non chargé — recharge la page`;
+    }
+    return `${change.layerId} could not ${change.enabled ? 'start' : 'stop'} cleanly`;
+  }
+
   _handleContextLayerChange(change) {
     // The first enable of CCTV or radio is what brings its module — and with it
     // the `subscribe` the HUD needs. Cheap and idempotent once bound.
@@ -5435,7 +5465,7 @@ export class StyleManager {
       return;
     }
     if (change?.type === 'visibility-failed') {
-      const failureMessage = `${change.layerId} could not ${change.enabled ? 'start' : 'stop'} cleanly`;
+      const failureMessage = this._layerFailureMessage(change);
       // A failed direct Context-shell START has already had its siblings
       // cleared by the visibility guard. Wait outside the synchronous manager
       // notification for this queue to settle, then reconcile the complete

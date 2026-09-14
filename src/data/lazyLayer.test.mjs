@@ -12,6 +12,7 @@ import {
   LAZY_LAYER_CAPABILITIES,
   LAZY_LAYER_REQUIRED_METHODS,
   createLazyLayer,
+  isLayerModuleUnavailable,
 } from './lazyLayer.js';
 
 /** A layer module with a recording surface, plus the loader that yields it. */
@@ -131,6 +132,49 @@ test('destroy() on an unloaded layer is a no-op that fetches nothing', async () 
   await layer.init('viewer');
   assert.equal(layer.destroy('viewer'), true);
   assert.deepEqual(calls.at(-1), ['destroy']);
+});
+
+test('disable() on an unloaded layer is a no-op that fetches nothing', async () => {
+  const { module, calls } = fakeLayer();
+  let loads = 0;
+  const layer = createLazyLayer(descriptorFor(module, {
+    load: async () => { loads += 1; return module; },
+  }));
+  // The manager reads `!== false` as "cleanup confirmed", and it IS confirmed:
+  // a module that was never loaded cannot be drawing, polling or holding
+  // anything. Fetching the chunk to run a teardown on it is the one download
+  // this file exists to avoid — and when the chunk is what failed, that fetch
+  // re-raises the error being cleaned up after and strands the layer UNCERTAIN.
+  assert.equal(await layer.disable('viewer'), true);
+  assert.equal(loads, 0);
+  assert.deepEqual(calls, []);
+  await layer.init('viewer');
+  assert.equal(await layer.disable('viewer'), true);
+  assert.deepEqual(calls.at(-1), ['disable', 'viewer']);
+});
+
+test('a chunk that never arrives is reported as a missing MODULE', async () => {
+  const { module } = fakeLayer();
+  const layer = createLazyLayer(descriptorFor(module, {
+    load: async () => { throw new Error('chunk 404'); },
+  }));
+  const error = await layer.init('viewer').then(() => null, (thrown) => thrown);
+  assert.equal(isLayerModuleUnavailable(error), true);
+  assert.equal(error.layerId, 'test-layer');
+  assert.match(error.message, /chunk 404/);
+  // And the teardown that follows it does not go looking for the same chunk.
+  assert.equal(await layer.disable('viewer'), true);
+});
+
+test('a module that loads but answers wrong is NOT a missing chunk', async () => {
+  const { module } = fakeLayer();
+  const layer = createLazyLayer(descriptorFor(module, {
+    load: async () => ({ ...module, id: 'someone-else' }),
+  }));
+  const error = await layer.init('viewer').then(() => null, (thrown) => thrown);
+  // Reloading the page cannot cure a build that ships the wrong module, so this
+  // failure must not borrow the advice that goes with a stale tab.
+  assert.equal(isLayerModuleUnavailable(error), false);
 });
 
 test('getStats() reads empty before load and the module after', async () => {

@@ -13,7 +13,18 @@
  *      is the failure mode a stale manifest would produce silently;
  *   3. switching one on fetches exactly its chunk, and the module lands;
  *   4. switching it off and on again does NOT fetch a second time;
- *   5. a layer nobody touched is still unloaded at the end.
+ *   5. a layer nobody touched is still unloaded at the end;
+ *   6. a chunk that CANNOT arrive leaves its row switchable and says what to
+ *      do about it.
+ *
+ * Six is the other side of the deal this file exists to defend. Code splitting
+ * means a page can outlive the build behind it: staging rebuilds under open
+ * tabs, so the first toggle of a layer the tab had not already loaded asks for
+ * a hashed name the origin no longer serves. Reported 2026-09-14, twice, on
+ * `Caméras publiques` — the row answered "CCTV COULD NOT STOP CLEANLY" and sat
+ * on UNCERTAIN, where every further click reproduced it, because the manager
+ * fails closed on a teardown it cannot confirm and the stub was fetching the
+ * missing chunk again in order to run one.
  *
  * `earthquakes` is the layer switched on because its chunk is small and its
  * feed is keyless. Whether the USGS fetch itself succeeds is deliberately NOT
@@ -34,6 +45,9 @@ const url = argv.includes('--url') ? argv[argv.indexOf('--url') + 1] : 'http://1
 const PROBE_LAYER = 'earthquakes';
 /** A layer nobody touches, to prove nothing warmed the whole registry. */
 const UNTOUCHED_LAYER = 'traffic';
+/** The layer whose chunk is refused in check 7, and the name its row prints. */
+const LOST_CHUNK_LAYER = 'cctv';
+const LOST_CHUNK_LABEL = 'Caméras publiques';
 /** Past the boot burst, so a late chunk still counts against check 1. */
 const BOOT_WATCH_MS = 15_000;
 
@@ -223,6 +237,92 @@ try {
     `${UNTOUCHED_LAYER} is still unloaded after all of that`,
     untouched === false,
     { loaded: untouched },
+  );
+
+  // ── 7. a chunk that never arrives ─────────────────────────────────────────
+  // A second page, because the block has to be installed before the app boots
+  // and the first page has already loaded the module under test.
+  const stale = await newQaPage(browser);
+  await stale.setViewport({ width: 1366, height: 768 });
+  const refused = [];
+  await stale.setRequestInterception(true);
+  stale.on('request', (req) => {
+    if (new RegExp(`/assets/${LOST_CHUNK_LAYER}-[^/?]+\\.js`).test(req.url())) {
+      refused.push(req.url().split('/').pop());
+      req.respond({ status: 404, contentType: 'text/plain', body: 'gone' }).catch(() => {});
+      return;
+    }
+    req.continue().catch(() => {});
+  });
+  await stale.goto(url, { waitUntil: 'domcontentloaded', timeout: 120_000 });
+  await stale.waitForFunction(() => !!window.__godsEyeView?.dataManager, { timeout: 120_000 });
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+  // The toast lives two seconds, so it is recorded as it appears.
+  await stale.evaluate(() => {
+    window.__toasts = [];
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+    new MutationObserver(() => {
+      const text = toast.textContent?.trim();
+      if (text && window.__toasts.at(-1) !== text) window.__toasts.push(text);
+    }).observe(toast, { childList: true, subtree: true, characterData: true });
+  });
+
+  /** The row as a reader sees it, clicked the way a reader clicks it. */
+  const clickRow = (layerId) => stale.evaluate((id) => {
+    const row = [...document.querySelectorAll('#data-toggles [data-layer-id]')]
+      .find((node) => node.dataset.layerId === id);
+    const button = row?.querySelector('.data-toggle-btn');
+    const asked = button?.textContent ?? null;
+    button?.click();
+    return asked;
+  }, layerId);
+  const readRow = (layerId) => stale.evaluate((id) => {
+    const row = [...document.querySelectorAll('#data-toggles [data-layer-id]')]
+      .find((node) => node.dataset.layerId === id);
+    const button = row?.querySelector('.data-toggle-btn');
+    return {
+      ...(window.__godsEyeView.dataManager.getLayerLifecycleState(id) || {}),
+      button: button?.textContent ?? null,
+      buttonDisabled: button?.disabled ?? null,
+      meta: row?.querySelector('.data-toggle-meta')?.textContent ?? null,
+      toasts: [...(window.__toasts || [])],
+    };
+  }, layerId);
+
+  const askedFirst = await clickRow(LOST_CHUNK_LAYER);
+  await stale.waitForFunction(
+    (id) => window.__godsEyeView.dataManager.getLayerLifecycleState(id)?.lifecycleState === 'disabled',
+    { timeout: 60_000, polling: 200 },
+    LOST_CHUNK_LAYER,
+  ).catch(() => {});
+  const lostFirst = await readRow(LOST_CHUNK_LAYER);
+  check(
+    'a layer whose chunk 404s falls back to OFF, not to UNCERTAIN',
+    askedFirst === 'OFF' && lostFirst.button === 'OFF' && lostFirst.uncertain === false
+      && lostFirst.enabled === false && !/UNCERTAIN|reconciliation/.test(lostFirst.meta || ''),
+    { asked: askedFirst, ...lostFirst, refused },
+  );
+  check(
+    'and the toast names the ROW and sends the reader to a reload',
+    lostFirst.toasts.some((text) => text.includes(LOST_CHUNK_LABEL) && /recharge la page/i.test(text))
+      && !lostFirst.toasts.some((text) => /could not stop cleanly/i.test(text)),
+    { toasts: lostFirst.toasts },
+  );
+
+  // The second click must still mean ON. It cannot succeed — Chrome remembers a
+  // failed module specifier for the life of the tab, which is why the copy above
+  // says reload rather than retry — but it must not ask to STOP a layer that
+  // never started, which is the message the report came in with.
+  const askedSecond = await clickRow(LOST_CHUNK_LAYER);
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+  const lostSecond = await readRow(LOST_CHUNK_LAYER);
+  check(
+    'the row stays clickable, and the next click still asks for ON',
+    askedSecond === 'OFF' && lostFirst.buttonDisabled === false
+      && lostSecond.button === 'OFF' && lostSecond.uncertain === false
+      && !lostSecond.toasts.some((text) => /could not stop cleanly/i.test(text)),
+    { asked: askedSecond, ...lostSecond },
   );
 
 } finally {
