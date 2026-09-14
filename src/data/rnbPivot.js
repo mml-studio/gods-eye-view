@@ -317,9 +317,17 @@ export function projectRnbBuilding(body) {
 
   const status = String(body.status ?? '').trim() || null;
   const point = Array.isArray(body.point?.coordinates) ? body.point.coordinates : null;
+  // THE FOOTPRINT, WHICH THE REGISTER PUBLISHES AND NOTHING HERE USED TO READ.
+  // `shape` is a GeoJSON Polygon or MultiPolygon on every endpoint measured —
+  // `/buildings/{id}/`, `closest`, the bbox list — and it is what lets a layer
+  // outline the building a record names WITHOUT the BD TOPO tiles being loaded.
+  // Carried raw: `geometryParts` in `dpeSites.js` owns the cleaning, and a
+  // projection that pre-cleaned would make the two disagree about a ring.
+  const shape = body?.shape?.type && Array.isArray(body.shape.coordinates) ? body.shape : null;
   return {
     rnbId,
     status,
+    shape,
     statusLabel: status ? (RNB_STATUS_LABELS[status] || status) : null,
     // `is_active` is absent from the `closest` and bbox shapes and present on
     // the single-building one. Absent is not "inactive".

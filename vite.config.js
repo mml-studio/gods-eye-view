@@ -161,6 +161,14 @@ import {
   projectAvisValeur,
 } from './src/data/avisValeurFeed.js';
 import { buildDpeUrl, clampDpeRadius, projectDpe } from './src/data/dpeFeed.js';
+import {
+  DPE_SITE_MAX,
+  geometryParts,
+  groupDpeSites,
+  partsAnchor,
+} from './src/data/dpeSites.js';
+import { projectRnbBuilding, projectRnbFirst, rnbBuildingUrl, rnbClosestUrl } from './src/data/rnbPivot.js';
+import { pointInPolygons } from './src/data/ringGeometry.js';
 import { foldToCommune } from './src/data/communeCode.js';
 import {
   LOYERS_SEGMENTS,
@@ -21847,6 +21855,53 @@ async function refreshCadastreViewport(box) {
 }
 
 /**
+ * One snapped viewport of parcels, through memory, then disk, then Api Carto.
+ *
+ * EXTRACTED FROM THE ROUTE so a second caller can share the cache rather than
+ * open a second one. The DPE proxy needs the parcel under each building it
+ * outlines, and a box of parcels this reader may already be looking at — the
+ * cadastre layer asks for exactly this, snapped to exactly this grid — is a
+ * 0.9 s upstream call that must be paid once. A per-site point query was
+ * measured as the alternative and refused: ten of them over one Paris block
+ * took 7.2 s of wall clock at six in flight, against one box call for the same
+ * ground, and they share nothing with the layer beside them.
+ *
+ * Throws on an upstream failure, exactly as `refreshCadastreViewport` does; the
+ * route falls back to a stale entry and the DPE proxy drops its parcels.
+ *
+ * @param {{south:number, west:number, north:number, east:number}} requested
+ * @returns {Promise<{at:number, payload:object, via:string}>}
+ */
+async function cadastreViewport(requested) {
+  // Snapped OUTWARD, so the box sent upstream is up to two grid steps wider
+  // than the one that was asked for — that widening is the cache doing its job.
+  const box = snapBoxOutward(requested, CADASTRE_BOX_STEP_DEG);
+  const key = boxKey(box, 3);
+  const cached = _cadastreViewportCache.get(key);
+  if (cached && Date.now() - cached.at <= CADASTRE_TTL_MS) return { ...cached, via: 'HIT' };
+  const onDisk = await readCadastreDisk(key, CADASTRE_TTL_MS);
+  if (onDisk) {
+    _cadastreViewportCache.set(key, onDisk);
+    trimCadastreViewportCache();
+    return { ...onDisk, via: 'DISK' };
+  }
+  const request = coalesceProxyRequest(_cadastreViewportInFlight, key, async () => {
+    const payload = await refreshCadastreViewport(box);
+    const entry = { at: Date.now(), payload };
+    _cadastreViewportCache.set(key, entry);
+    trimCadastreViewportCache();
+    // A refusal is cached like any other answer. It is not an error and it is
+    // not going to change until the operator zooms: re-asking Api Carto for
+    // 15 977 parcels it will not send is a round trip spent to be told the
+    // same thing twice.
+    writeCadastreDisk(key, entry);
+    return entry;
+  });
+  const entry = await request.promise;
+  return { ...entry, via: request.shared ? 'INFLIGHT' : 'MISS', key, box };
+}
+
+/**
  * Vite plugin: French cadastral parcels through IGN's Api Carto.
  *
  *   GET /api/cadastre-fr/parcelles?south&west&north&east — parcels in one box
@@ -21924,50 +21979,25 @@ function cadastreFranceProxy() {
         return;
       }
 
-      // Snapped OUTWARD, so the box sent upstream is up to two grid steps wider
-      // than the one that was validated — 0.024° against a 0.02° ceiling, worst
-      // case. That widening is the cache doing its job and is NOT re-checked
-      // against the ceiling here: an outward snap of a box that only just
-      // passed always lands over it, so re-checking would 400 every request at
-      // the layer's own maximum zoom. The upstream bound is `validBox` above
-      // plus this known, constant margin.
-      const box = snapBoxOutward(requested, CADASTRE_BOX_STEP_DEG);
-      const key = boxKey(box, 3);
-      const now = Date.now();
-
-      const cached = _cadastreViewportCache.get(key);
-      if (cached && now - cached.at <= CADASTRE_TTL_MS) {
-        json(200, { ...cached.payload, fetchedAt: cached.at, stale: false }, { 'X-Cadastre-FR': 'HIT' });
-        return;
-      }
-      const onDisk = await readCadastreDisk(key, CADASTRE_TTL_MS);
-      if (onDisk) {
-        _cadastreViewportCache.set(key, onDisk);
-        trimCadastreViewportCache();
-        json(200, { ...onDisk.payload, fetchedAt: onDisk.at, stale: false }, { 'X-Cadastre-FR': 'DISK' });
-        return;
-      }
-
-      const request = coalesceProxyRequest(_cadastreViewportInFlight, key, async () => {
-        const payload = await refreshCadastreViewport(box);
-        const entry = { at: Date.now(), payload };
-        _cadastreViewportCache.set(key, entry);
-        trimCadastreViewportCache();
-        // A refusal is cached like any other answer. It is not an error and it
-        // is not going to change until the operator zooms: re-asking Api Carto
-        // for 15 977 parcels it will not send is a round trip spent to be told
-        // the same thing twice.
-        writeCadastreDisk(key, entry);
-        return entry;
-      });
+      // The snap, the two caches and the coalescing all live in
+      // `cadastreViewport` — see its own note for why they were taken out of
+      // this handler. The outward snap means the box sent upstream is up to two
+      // grid steps wider than the one that was validated — 0.024° against a
+      // 0.02° ceiling, worst case — and that widening is NOT re-checked against
+      // the ceiling: an outward snap of a box that only just passed always
+      // lands over it, so re-checking would 400 every request at the layer's
+      // own maximum zoom. The upstream bound is `validBox` above plus this
+      // known, constant margin.
       try {
-        const entry = await request.promise;
+        const entry = await cadastreViewport(requested);
         json(200, { ...entry.payload, fetchedAt: entry.at, stale: false }, {
-          'X-Cadastre-FR': request.shared ? 'INFLIGHT' : 'MISS',
+          'X-Cadastre-FR': entry.via,
         });
       } catch (error) {
         console.warn('[Cadastre Proxy] viewport unavailable:', error?.message || error);
-        const stale = cached || await readCadastreDisk(key, CADASTRE_STALE_MS);
+        const key = boxKey(snapBoxOutward(requested, CADASTRE_BOX_STEP_DEG), 3);
+        const stale = _cadastreViewportCache.get(key)
+          || await readCadastreDisk(key, CADASTRE_STALE_MS);
         if (stale) {
           json(200, { ...stale.payload, fetchedAt: stale.at, stale: true }, { 'X-Cadastre-FR': 'STALE' });
           return;
@@ -23315,6 +23345,250 @@ function dvfProxy() {
   };
 }
 
+// ---------------------------------------------------------------------------
+// DPE sites — the ground a diagnostic is actually about
+// ---------------------------------------------------------------------------
+/**
+ * Upstream calls the site resolution may have in flight at once.
+ *
+ * The RNB is a free public service answering in ~170 ms, and a densely scanned
+ * box produces 13 sites. Six at a time finishes that in three rounds without
+ * ever presenting the register with a burst, which is the same restraint the
+ * cadastre proxy's own rate limiter buys on the other upstream here.
+ */
+const DPE_RNB_CONCURRENCY = 6;
+/** Radius, in metres, the RNB is asked to find a building for a BAN point in. */
+const DPE_RNB_CLOSEST_RADIUS_M = 30;
+/** Per-call timeout for the RNB, in ms. Its measured p50 is ~170 ms. */
+const DPE_RNB_TIMEOUT_MS = 8_000;
+/**
+ * Wall-clock ceiling on the whole site resolution, in ms.
+ *
+ * The ground is context for the diagnostics and must never be able to hold them
+ * back. Ten sites over Paris 13e resolve in 0.39 s once the cadastre box is
+ * warm and 5.9 s cold; the arithmetic that needs a bound is the other end —
+ * `DPE_SITE_MAX` sites against a degraded RNB at `DPE_RNB_TIMEOUT_MS` each is
+ * ten rounds of eight seconds, and a reader would be looking at an empty layer
+ * for eighty of them. Past this the remaining sites simply keep their badge and
+ * their card, exactly like a site the RNB does not know, and `siteCoverage`
+ * counts them as not outlined.
+ */
+const DPE_SITES_DEADLINE_MS = 12_000;
+
+/**
+ * The building one site stands on, from the RNB.
+ *
+ * TWO QUESTIONS, AND THE ANSWER SAYS WHICH ONE IT ANSWERED. A site the
+ * register named is looked up BY IDENTIFIER — that is a record, and `via: id`.
+ * A site with no identifier is resolved from its BAN point, and the RNB's own
+ * `distance` decides which claim comes back: `0` means the geocode falls INSIDE
+ * that footprint (`via: inside`, a resolution), anything else means this is the
+ * nearest building and the distance is printed on the card (`via: closest`, a
+ * deduction). `dpeSites.js` turns the three into three different sentences,
+ * because a reader must never have to guess which one they are looking at.
+ *
+ * A failure is a `null`, never a throw: the RNB being down costs the outlines
+ * and nothing else, and the layer draws its badges exactly as it did before.
+ *
+ * @param {object} site One entry of {@link groupDpeSites}.
+ * @returns {Promise<?object>} `{via, rnbId, parts, anchor, areaM2, plots,
+ *   distanceM, status}` or null.
+ */
+async function resolveDpeSiteBuilding(site) {
+  const byId = Boolean(site.rnb);
+  const url = byId
+    ? rnbBuildingUrl(site.rnb, { withPlots: true })
+    : rnbClosestUrl({ lat: site.lat, lon: site.lon, radiusM: DPE_RNB_CLOSEST_RADIUS_M });
+  if (!url) return null;
+  const body = await fetchAddressSource(url, { timeoutMs: DPE_RNB_TIMEOUT_MS });
+  if (!body) return null;
+  const building = byId ? projectRnbBuilding(body) : projectRnbFirst(body);
+  if (!building) return null;
+  const parts = geometryParts(building.shape);
+  if (!parts.length) return null;
+  const anchor = partsAnchor(parts);
+  const distanceM = Number.isFinite(building.distanceM) ? building.distanceM : null;
+  return {
+    via: byId ? 'id' : (distanceM === 0 ? 'inside' : 'closest'),
+    rnbId: building.rnbId,
+    status: building.statusLabel,
+    distanceM: byId ? null : distanceM,
+    parts,
+    anchor: anchor ? { lon: anchor.lon, lat: anchor.lat } : null,
+    areaM2: anchor ? anchor.areaM2 : null,
+    // The `closest` endpoint does not honour `withPlots`, so a site resolved
+    // that way carries no parcel key and is matched geometrically below.
+    plotIds: (building.plots || []).map((plot) => plot.id),
+  };
+}
+
+/**
+ * The parcel each resolved site stands on, from the cadastre already proxied.
+ *
+ * ONE upstream call for the whole scan box, not one per site: Api Carto answers
+ * a 0.005° box in ~0.9 s and 139 parcels, and thirteen point queries against
+ * the same service would be thirteen round trips for a subset of it.
+ *
+ * The join is by IDU where the RNB published one, and by point-in-polygon on
+ * the site's anchor otherwise. Both are recorded on the site (`via`), because
+ * "the register says this building is on this parcel" and "this building's
+ * anchor falls inside this parcel" are not the same claim — the second is what
+ * a building straddling two parcels answers arbitrarily.
+ *
+ * @param {Array<object>} sites Sites with a `shape`, in place.
+ * @param {{south:number, west:number, north:number, east:number}} box
+ * @returns {Promise<number>} Sites given a parcel.
+ */
+async function attachDpeParcels(sites, box) {
+  const wanted = sites.filter((site) => site.shape);
+  if (!wanted.length) return 0;
+  let entry;
+  try {
+    entry = await cadastreViewport(box);
+  } catch (error) {
+    // The parcel is context for the building, not the subject. Losing it costs
+    // one line on the card and one outline; the buildings still draw.
+    console.warn('[dpe-proxy] cadastre unavailable:', error?.message || error);
+    return 0;
+  }
+  // `projectCadastreParcels` already cleaned, deduplicated and shortened these:
+  // `u` is the published IDU, `g` the rings, `c` the fiscal contenance and `a`
+  // the area measured off the polygon. Reading its output rather than raw
+  // GeoJSON is what makes the two callers share one cache entry.
+  const parcels = [];
+  const byIdu = new Map();
+  for (const record of entry.payload?.parcels || []) {
+    const idu = String(record?.u ?? '').trim();
+    const parts = Array.isArray(record?.g) ? record.g : null;
+    if (!idu || !parts?.length) continue;
+    const row = {
+      idu,
+      parts,
+      contenanceM2: Number.isFinite(record.c) ? record.c : null,
+      areaM2: Number.isFinite(record.a) ? Math.round(record.a) : null,
+    };
+    parcels.push(row);
+    if (!byIdu.has(idu)) byIdu.set(idu, row);
+  }
+  if (!parcels.length) return 0;
+  let placed = 0;
+  for (const site of wanted) {
+    let record = null;
+    let via = null;
+    for (const idu of site.shape.plotIds || []) {
+      const hit = byIdu.get(idu);
+      if (hit) { record = hit; via = 'idu'; break; }
+    }
+    if (!record) {
+      const anchor = site.shape.anchor;
+      if (!anchor) continue;
+      for (const candidate of parcels) {
+        if (!pointInPolygons(candidate.parts, anchor.lon, anchor.lat)) continue;
+        record = candidate;
+        via = 'point';
+        break;
+      }
+    }
+    if (!record) continue;
+    site.parcel = {
+      idu: record.idu,
+      via,
+      contenanceM2: record.contenanceM2,
+      parts: record.parts,
+      areaM2: record.areaM2,
+    };
+    placed += 1;
+  }
+  return placed;
+}
+
+/**
+ * Group one DPE answer into sites and give each one its ground.
+ *
+ * WHY THE SERVER DOES THIS AND NOT THE BROWSER. Three reasons, and the third
+ * is the one that decides it. The two upstreams are shared across clients and
+ * across restarts, so one reader's scan of a block pays for the next reader's;
+ * the client would otherwise fire fourteen cross-origin calls per camera
+ * settle and hold a half-drawn layer while they landed; and `render()` in
+ * `addressScanLayer.js` is SYNCHRONOUS, so a shape that arrives later than the
+ * payload has nowhere to be drawn from without a second draw path. One cached
+ * payload carries everything, exactly as the permit layer's emprises do.
+ *
+ * @param {object} projected `projectDpe` output.
+ * @param {{lat:number, lon:number}} point Scan centre.
+ * @param {number} radiusM Scan radius.
+ * @returns {Promise<object>} `projected`, plus `sites` and `siteCoverage`.
+ */
+async function resolveDpeSites(projected, point, radiusM) {
+  const sites = groupDpeSites(projected.entries);
+  const placeable = sites.filter((site) => Number.isFinite(site.lon) && Number.isFinite(site.lat));
+  const budgeted = placeable.slice(0, DPE_SITE_MAX);
+  const deadline = Date.now() + DPE_SITES_DEADLINE_MS;
+  const shapes = await mapWithConcurrency(budgeted, DPE_RNB_CONCURRENCY, async (site) => {
+    if (Date.now() > deadline) return null;
+    try {
+      return await resolveDpeSiteBuilding(site);
+    } catch (error) {
+      console.warn('[dpe-proxy] RNB site unresolved:', error?.message || error);
+      return null;
+    }
+  });
+  let outlined = 0;
+  for (const [index, shape] of shapes.entries()) {
+    if (!shape) continue;
+    budgeted[index].shape = shape;
+    // The badge moves onto the building's own anchor. The BAN point stays on
+    // the row and is still what the distance was measured from; what changes is
+    // where the LETTER stands, which is now inside the outline it describes.
+    if (shape.anchor) {
+      budgeted[index].lon = shape.anchor.lon;
+      budgeted[index].lat = shape.anchor.lat;
+    }
+    outlined += 1;
+  }
+  // Degrees of latitude for the scan radius, and the same span in longitude
+  // widened by the cosine — the box the cadastre is asked for has to contain
+  // every site, not every site's own cell.
+  //
+  // CLAMPED TO THE CADASTRE'S OWN CEILING, which is not the same number as this
+  // layer's. A 1 000 m DPE scan spans 0.021° of latitude and Api Carto caps one
+  // answer at 5 000 parcels with nothing but `totalFeatures` to say so, which
+  // `projectCadastreParcels` refuses WHOLE rather than draw with scattered
+  // holes. Half of `CADASTRE_MAX_BOX_DEG` each way keeps this inside the box
+  // the cadastre layer itself is allowed to ask for, so the two callers land on
+  // the same snapped key and share the answer. A wide scan then gets parcels
+  // for its middle and none for its rim, which is the same degradation the
+  // cadastre layer shows at the same zoom.
+  const half = CADASTRE_MAX_BOX_DEG / 2;
+  const dLat = Math.min(half, (radiusM / 111_320) * 1.15);
+  const dLon = Math.min(half, dLat / Math.max(0.2, Math.cos((point.lat * Math.PI) / 180)));
+  // The cadastre gets whatever is left of the budget and is skipped outright
+  // when the RNB has already spent it. A parcel with no building to sit under
+  // would be a line around nothing.
+  const parcelled = (outlined && Date.now() < deadline)
+    ? await attachDpeParcels(budgeted, {
+      south: point.lat - dLat,
+      north: point.lat + dLat,
+      west: point.lon - dLon,
+      east: point.lon + dLon,
+    })
+    : 0;
+  return {
+    ...projected,
+    sites,
+    siteCoverage: {
+      sites: sites.length,
+      // Sites past the budget, and sites the register could not place at all.
+      // Both draw a badge and neither draws an outline, and a row saying "14 of
+      // 14 outlined" must not hide either of them.
+      unplaceable: sites.length - placeable.length,
+      overBudget: Math.max(0, placeable.length - budgeted.length),
+      outlined,
+      parcelled,
+    },
+  };
+}
+
 /**
  * ADEME DPE — the energy label of a building and of its neighbours.
  * `GET /api/dpe?lat=&lon=&radius=&limit=`
@@ -23331,7 +23605,16 @@ function dpeProxy() {
         key: addressCacheKey('dpe', point, radiusM, limit),
         load: async () => {
           const payload = await fetchAddressSource(buildDpeUrl({ ...point, radiusM, limit }));
-          return payload ? projectDpe(payload, { radiusM }) : null;
+          if (!payload) return null;
+          const projected = projectDpe(payload, { radiusM });
+          // The diagnostics are the answer; the ground under them is a second
+          // pair of upstreams that must never be able to withhold it.
+          try {
+            return await resolveDpeSites(projected, point, radiusM);
+          } catch (error) {
+            console.warn('[dpe-proxy] sites unresolved:', error?.message || error);
+            return projected;
+          }
         },
       };
     });

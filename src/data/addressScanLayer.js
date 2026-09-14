@@ -582,6 +582,10 @@ export function createAddressScanLayer(config) {
     groundClick = null,
     afterDraw = null,
     cardAnchor = null,
+    // "A click on this entity is a click on that one." For a layer that draws
+    // several marks for one subject — see `selectEntity`. Null for the four
+    // layers where one mark is one subject.
+    selectionFor = null,
     maxAltitudeM = ADDRESS_SCAN_MAX_ALTITUDE_M,
     // How far the answer actually reaches, in metres. Declared rather than
     // inferred, because only the layer knows: the ceiling says when a scan
@@ -777,13 +781,31 @@ export function createAddressScanLayer(config) {
     return true;
   }
 
+  /**
+   * Open the card for one entity, or for the entity that speaks for it.
+   *
+   * `selectionFor` exists because a layer may draw SEVERAL marks for ONE
+   * subject. The DPE layer draws three per building — a washed footprint, the
+   * parcel line under it and the letter badge standing on it — and a click on
+   * any of them is the same question. Without the redirect the reader gets the
+   * right card and no selection they can see: `emphasiseAddressMarker` returns
+   * null for a clamped polygon, which is correct (a ground wash has no size to
+   * grow), so the building simply opened a card and stayed exactly as it was.
+   *
+   * The redirect is checked against `_cards` and falls back to the entity that
+   * was actually clicked, so a layer that returns a stale or unknown id loses
+   * the emphasis rather than the card.
+   */
   function selectEntity(entityId) {
-    const card = _cards.get(entityId);
+    const redirected = typeof selectionFor === 'function' ? selectionFor(entityId) : null;
+    const targetId = (typeof redirected === 'string' && _cards.has(redirected))
+      ? redirected : entityId;
+    const card = _cards.get(targetId);
     if (!card) return false;
-    if (_selectedId === entityId) return true;
+    if (_selectedId === targetId) return true;
     clearSelection();
-    _selectedBase = emphasiseAddressMarker(_dataSource?.entities?.getById(entityId));
-    _selectedId = entityId;
+    _selectedBase = emphasiseAddressMarker(_dataSource?.entities?.getById(targetId));
+    _selectedId = targetId;
     paintCard(card);
     governorRequestRender(`${id}-select`);
     return true;

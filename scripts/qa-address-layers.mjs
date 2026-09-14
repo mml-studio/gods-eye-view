@@ -673,18 +673,32 @@ const note = (ok, message) => {
         // the 3D tiles and this layer's OWN overlapping markers can still take
         // the pick — and a click that lands on none of them would be reported
         // as a broken handler rather than as a bad guess by the harness.
-        const ownsPixel = (screenX, screenY) => {
+        // WHAT OWNS THE PIXEL, not whether SOMETHING of ours does. The two are
+        // different and the difference cost a false failure: a layer that
+        // draws a 1.2 px clamped line reports that line as the candidate while
+        // the pick at its own projected coordinate answers with the wash
+        // beside it, and `page.mouse.click` then rounds to an integer pixel and
+        // misses the line entirely — read back as "the click selected
+        // nothing". Aiming at whatever the pick ACTUALLY returns makes the
+        // check about the handler again rather than about sub-pixel geometry.
+        const ownerAt = (screenX, screenY) => {
           const picked = scene.pick({ x: screenX, y: screenY });
           const pickedId = typeof picked?.id === 'string' ? picked.id : picked?.id?.id;
-          return typeof pickedId === 'string'
-            && Boolean(source?.entities?.getById?.(pickedId));
+          if (typeof pickedId !== 'string') return null;
+          return source?.entities?.getById?.(pickedId) ? pickedId : null;
         };
+        // A visible pixel nobody could be proved to own. Kept as a last resort
+        // rather than reported as "nothing to click": a layer whose only marks
+        // are hair-thin clamped lines would otherwise go untested entirely.
+        let fallback = null;
         for (const entity of source?.entities?.values || []) {
           const position = entity.position?.getValue?.(time);
           const point = onScreen(position);
           if (point) {
             const screen = scene.cartesianToCanvasCoordinates(position);
-            if (ownsPixel(screen.x, screen.y)) return { entityId: entity.id, ...point };
+            const owner = ownerAt(screen.x, screen.y);
+            if (owner) return { entityId: owner, ...point };
+            fallback = fallback || { entityId: entity.id, ...point };
             continue;
           }
           // A zoning ring can be kilometres across while the camera sees a
@@ -695,10 +709,14 @@ const note = (ok, message) => {
           if (!Array.isArray(ring)) continue;
           for (const vertex of ring) {
             const hit = onScreen(vertex);
-            if (hit) return { entityId: entity.id, ...hit };
+            if (!hit) continue;
+            const screen = scene.cartesianToCanvasCoordinates(vertex);
+            const owner = ownerAt(screen.x, screen.y);
+            if (owner) return { entityId: owner, ...hit };
+            fallback = fallback || { entityId: entity.id, ...hit };
           }
         }
-        return null;
+        return fallback;
       }, id);
       if (!target) { clicked[id] = { attempted: false }; continue; }
       await page.mouse.click(target.x, target.y);

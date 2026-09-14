@@ -26,12 +26,14 @@ import {
   _resetDpeThemeForTest,
   _seedDpeThemeForTest,
   dpeBuildingSummary,
-  dpeCardDescription,
   dpeMarkerSizePx,
   dpeRowControls,
+  dpeSiteCardDescription,
+  dpeSiteTitle,
   dpeSummarize,
   dpeThemeLegend,
 } from './dpeFrance.js';
+import { groupDpeSites } from './dpeSites.js';
 import { DPE_LABELS } from './dpeFeed.js';
 import {
   BUILDING_THEME_MIN_DELTA_E,
@@ -90,7 +92,13 @@ function inside(footprint, nudge = 0) {
   };
 }
 
-/** One ADEME row as `projectDpe` shapes it. */
+/**
+ * One ADEME row as `projectDpe` shapes it.
+ *
+ * `ban` is what GROUPS it. Since sites replaced per-diagnostic badges these
+ * fixtures have to carry an address, because that is what the register carries
+ * and what decides which badge a row ends up under.
+ */
 function dpe(id, letter, footprint, index = 0, extra = {}) {
   const point = footprint ? inside(footprint, index) : { lon: null, lat: null };
   return {
@@ -99,6 +107,7 @@ function dpe(id, letter, footprint, index = 0, extra = {}) {
     etiquetteGes: null,
     address: `${id} rue de la Mesure`,
     banId: null,
+    rnb: null,
     builtYear: null,
     surfaceM2: null,
     annualCostEur: null,
@@ -112,25 +121,44 @@ function dpe(id, letter, footprint, index = 0, extra = {}) {
 }
 
 /**
- * The payload of one scan: block A is a mixed block whose mode is D, block B is
- * a tie between C and E, block C has no diagnostic at all, and three rows fail
- * to reach a volume in each of the three ways the seam counts separately.
+ * The payload of one scan.
+ *
+ * Four addresses, three blocks, and the disagreement the badge rule exists for:
+ *
+ *   - `ban-A`, five diagnostics inside BLOCK_A, mode **D**, one of them
+ *     ungraded;
+ *   - `ban-A2`, four diagnostics ALSO inside BLOCK_A — a courtyard address
+ *     whose geocode lands on the same footprint — all **G**. The FOOTPRINT
+ *     therefore holds 4 G against 3 D and the theme paints it G, while the
+ *     `ban-A` site's own mode stays D. That is the real case the quiet rule has
+ *     to keep telling apart, and it is no longer hypothetical: it is what the
+ *     BAN geocode does for a building behind a building;
+ *   - `ban-B`, four diagnostics in BLOCK_B, a tie between C and E;
+ *   - BLOCK_C has no diagnostic at all;
+ *
+ * and two rows that fail to reach a volume in the two ways the seam counts
+ * separately.
  */
 function scanEntries() {
+  const ban = (key) => ({ banId: key, address: `${key} rue de la Mesure` });
   return [
-    dpe('a1', 'D', BLOCK_A, 0),
-    dpe('a2', 'D', BLOCK_A, 1),
-    dpe('a3', 'D', BLOCK_A, 2),
-    dpe('a4', 'F', BLOCK_A, 3),
-    dpe('a5', null, BLOCK_A, 4),
-    dpe('b1', 'C', BLOCK_B, 0),
-    dpe('b2', 'C', BLOCK_B, 1),
-    dpe('b3', 'E', BLOCK_B, 2),
-    dpe('b4', 'E', BLOCK_B, 3),
+    dpe('a1', 'D', BLOCK_A, 0, ban('ban-A')),
+    dpe('a2', 'D', BLOCK_A, 1, ban('ban-A')),
+    dpe('a3', 'D', BLOCK_A, 2, ban('ban-A')),
+    dpe('a4', 'F', BLOCK_A, 3, ban('ban-A')),
+    dpe('a5', null, BLOCK_A, 4, ban('ban-A')),
+    dpe('c1', 'G', BLOCK_A, 5, ban('ban-A2')),
+    dpe('c2', 'G', BLOCK_A, 6, ban('ban-A2')),
+    dpe('c3', 'G', BLOCK_A, 7, ban('ban-A2')),
+    dpe('c4', 'G', BLOCK_A, 8, ban('ban-A2')),
+    dpe('b1', 'C', BLOCK_B, 0, ban('ban-B')),
+    dpe('b2', 'C', BLOCK_B, 1, ban('ban-B')),
+    dpe('b3', 'E', BLOCK_B, 2, ban('ban-B')),
+    dpe('b4', 'E', BLOCK_B, 3, ban('ban-B')),
     // Geocoded to the middle of the street: a real diagnostic on no building.
-    dpe('street', 'G', null, 0, { lon: 4.9, lat: 45.75 }),
+    dpe('street', 'G', null, 0, { lon: 4.9, lat: 45.75, ...ban('ban-street') }),
     // No coordinate at all, which is a different admission.
-    dpe('nowhere', 'G', null),
+    dpe('nowhere', 'G', null, 0, ban('ban-nowhere')),
   ];
 }
 
@@ -141,23 +169,26 @@ function seedBuildings(footprints = [BLOCK_A, BLOCK_B, BLOCK_C]) {
   _setBdtopoStateForTest({ records });
 }
 
-/** A data source that answers `getById` the way Cesium's does. */
+/**
+ * A data source that answers `getById` the way Cesium's does, holding ONE
+ * badge per site — which is what the layer now draws.
+ */
 function fakeDataSource(entries) {
   const byId = new Map();
-  for (const entry of entries) {
-    if (!Number.isFinite(entry.lon)) continue;
-    const size = entry.etiquetteDpe ? 20 : 16;
-    byId.set(`dpe:${entry.id}`, new Cesium.Entity({
-      id: `dpe:${entry.id}`,
+  for (const site of groupDpeSites(entries)) {
+    if (!Number.isFinite(site.lon)) continue;
+    const size = site.summary.grade ? 20 : 16;
+    byId.set(`dpe:${site.key}`, new Cesium.Entity({
+      id: `dpe:${site.key}`,
       billboard: { width: size, height: size },
     }));
   }
   return { byId, entities: { getById: (id) => byId.get(id) || undefined } };
 }
 
-/** The width a badge is currently drawn at. */
-function widthOf(source, id) {
-  const billboard = source.byId.get(`dpe:${id}`)?.billboard;
+/** The width the badge of one BAN address is currently drawn at. */
+function widthOf(source, ban) {
+  const billboard = source.byId.get(`dpe:ban:${ban}`)?.billboard;
   return Number(billboard?.width?.getValue?.(Cesium.JulianDate.now()) ?? billboard?.width);
 }
 
@@ -330,7 +361,10 @@ test('the volumes take the letter, and the ones nobody diagnosed do not', (t) =>
 
   const { paint } = _applyBdtopoThemeForTest();
   assert.equal(paint.themeId, DPE_THEME_ID);
-  assert.equal(paint.colorById.get('A'), DPE_COLORS.D, 'the mode of block A');
+  assert.equal(
+    paint.colorById.get('A'), DPE_COLORS.G,
+    'the mode of block A — four G from the courtyard address against three D from the street',
+  );
   assert.equal(paint.colorById.get('B'), DPE_COLORS.E, 'the tie, resolved pessimistically');
   assert.equal(paint.colorById.has('C'), false, 'no diagnostic, no grade');
   assert.equal(paint.painted, 2);
@@ -347,8 +381,8 @@ test('the legend carries all seven rungs, counted, even the empty ones', (t) => 
 
   const rows = paint.legend.filter((row) => DPE_LABELS.includes(row.label));
   assert.equal(rows.length, 7, 'a frozen domain scale is published whole (C1)');
-  assert.equal(rows.find((row) => row.label === 'D').count, 1);
-  assert.equal(rows.find((row) => row.label === 'E').count, 1);
+  assert.equal(rows.find((row) => row.label === 'G').count, 1, 'block A');
+  assert.equal(rows.find((row) => row.label === 'E').count, 1, 'block B');
   assert.equal(rows.find((row) => row.label === 'A').count, 0, 'an empty rung stays on the ladder');
 
   // What the reader actually sees: the volume layer's own row, which replaces
@@ -396,6 +430,27 @@ test('switching the layer off takes the paint with it', (t) => {
 
 /* ── 4. the badge is a supplement, not a replacement ───────────────────── */
 
+test('one address draws one badge, however many diagnostics stand behind it', (t) => {
+  t.after(reset);
+  reset();
+  const entries = scanEntries();
+  const source = fakeDataSource(entries);
+  _seedDpeThemeForTest(entries, { dataSource: source });
+
+  // 15 diagnostics, 5 addresses, 4 of them placed — and `ban-nowhere` has no
+  // coordinate, so it gets no badge at all. Before the grouping this was 14
+  // billboards on 14 coordinates, nine of them inside one block.
+  assert.equal(entries.length, 15);
+  assert.equal(source.byId.size, 4, 'one badge per placed address');
+  assert.equal(widthOf(source, 'ban-A'), 20);
+  assert.equal(source.byId.has('dpe:ban:ban-nowhere'), false, 'nothing is sent to sea');
+  // The rows are all still there: grouping draws fewer marks, it never drops a
+  // diagnostic. Nine of the fifteen are inside BLOCK_A alone.
+  const sites = groupDpeSites(entries);
+  assert.equal(sites.reduce((sum, site) => sum + site.points.length, 0), 15);
+  assert.equal(sites.find((site) => site.key === 'ban:ban-A2').points.length, 4);
+});
+
 test('with the volumes off, every badge keeps the size it always had', (t) => {
   t.after(reset);
   reset();
@@ -406,8 +461,22 @@ test('with the volumes off, every badge keeps the size it always had', (t) => {
   _applyDpeBadgesForTest();
 
   assert.equal(join.buildings, 0);
-  assert.equal(widthOf(source, 'a1'), 20, 'a published letter still draws at 20 px');
-  assert.equal(widthOf(source, 'a5'), 16, 'and an unpublished one at 16');
+  assert.equal(widthOf(source, 'ban-A'), 20, 'a published letter still draws at 20 px');
+  assert.equal(widthOf(source, 'ban-A2'), 20, 'and so does the one that agreed with a roof');
+  assert.equal(widthOf(source, 'ban-B'), 20);
+});
+
+test('a site whose diagnostics published no letter draws the smaller grey badge', (t) => {
+  t.after(reset);
+  reset();
+  const entries = [
+    dpe('u1', null, BLOCK_A, 0, { banId: 'ban-U', address: 'ban-U rue de la Mesure' }),
+    dpe('u2', null, BLOCK_A, 1, { banId: 'ban-U', address: 'ban-U rue de la Mesure' }),
+  ];
+  const source = fakeDataSource(entries);
+  _seedDpeThemeForTest(entries, { dataSource: source });
+  _applyDpeBadgesForTest();
+  assert.equal(widthOf(source, 'ban-U'), 16, 'the one thing no paint can express');
 });
 
 test('a badge goes quiet only where the volume already says its letter', (t) => {
@@ -419,15 +488,16 @@ test('a badge goes quiet only where the volume already says its letter', (t) => 
   _seedDpeThemeForTest(entries, { dataSource: source });
   _applyDpeBadgesForTest();
 
-  // Block A is painted D.
-  assert.equal(widthOf(source, 'a1'), 12, 'agrees with the roof');
-  assert.equal(widthOf(source, 'a4'), 20, 'the F on a D block is the dispersion, and stays');
-  assert.equal(widthOf(source, 'a5'), 16, 'no letter published — the paint cannot say this');
-  // Block B is painted E.
-  assert.equal(widthOf(source, 'b1'), 20, 'the losing half of the tie keeps its badge');
-  assert.equal(widthOf(source, 'b3'), 12);
+  // BLOCK_A holds both addresses: four G against three D, so the footprint is
+  // painted G. The courtyard address agrees with it and falls silent; the
+  // street address does not and keeps every pixel it had.
+  assert.equal(widthOf(source, 'ban-A2'), 12, 'agrees with the roof');
+  assert.equal(widthOf(source, 'ban-A'), 20, 'a D site on a G volume is the disagreement');
+  // Block B is painted E — the tie, resolved pessimistically — and its one
+  // address holds exactly the rows that painted it.
+  assert.equal(widthOf(source, 'ban-B'), 12);
   // Off every footprint: the volume says nothing about it.
-  assert.equal(widthOf(source, 'street'), 20);
+  assert.equal(widthOf(source, 'ban-street'), 20);
 });
 
 test('the selected badge is left exactly as the operator enlarged it', (t) => {
@@ -437,56 +507,79 @@ test('the selected badge is left exactly as the operator enlarged it', (t) => {
   const entries = scanEntries();
   const source = fakeDataSource(entries);
   _seedDpeThemeForTest(entries, { dataSource: source });
-  source.byId.get('dpe:a1').billboard.width = 26;
-  source.byId.get('dpe:a1').billboard.height = 26;
+  source.byId.get('dpe:ban:ban-A2').billboard.width = 26;
+  source.byId.get('dpe:ban:ban-A2').billboard.height = 26;
 
-  _applyDpeBadgesForTest('dpe:a1');
-  assert.equal(widthOf(source, 'a1'), 26, 'a selection outranks the theme until Escape');
-  assert.equal(widthOf(source, 'a2'), 12, 'its neighbours are still re-sized');
+  _applyDpeBadgesForTest('dpe:ban:ban-A2');
+  assert.equal(widthOf(source, 'ban-A2'), 26, 'a selection outranks the theme until Escape');
+  assert.equal(widthOf(source, 'ban-B'), 12, 'its neighbours are still re-sized');
 });
 
 test('the size rule is one statement and reads the same everywhere', () => {
-  assert.equal(dpeMarkerSizePx({ etiquetteDpe: 'D' }, null), 20);
-  assert.equal(dpeMarkerSizePx({ etiquetteDpe: 'D' }, 'D'), 12);
-  assert.equal(dpeMarkerSizePx({ etiquetteDpe: 'F' }, 'D'), 20);
-  assert.equal(dpeMarkerSizePx({ etiquetteDpe: null }, 'D'), 16);
-  assert.equal(dpeMarkerSizePx({ etiquetteDpe: null }, null), 16);
+  assert.equal(dpeMarkerSizePx('D', null), 20);
+  assert.equal(dpeMarkerSizePx('D', 'D'), 12);
+  assert.equal(dpeMarkerSizePx('F', 'D'), 20);
+  assert.equal(dpeMarkerSizePx(null, 'D'), 16);
+  assert.equal(dpeMarkerSizePx(null, null), 16);
+  assert.equal(dpeMarkerSizePx('Z', null), 16, 'a letter outside A–G is not a grade');
 });
 
-/* ── the card carries the range the colour cannot ──────────────────────── */
+/* ── the card answers for the BUILDING, not for one flat ───────────────── */
 
-test('the card states the spread of the block, and never hides it behind the paint', (t) => {
+test('the card states the spread of the site, and never hides it behind the paint', (t) => {
   t.after(reset);
   reset();
   seedBuildings();
   const entries = scanEntries();
   const join = _seedDpeThemeForTest(entries);
+  const sites = groupDpeSites(entries);
+  const byKey = new Map(sites.map((site) => [site.key, site]));
 
-  const mixed = dpeCardDescription(entries[0], join.byPoint.get('a1'), true);
-  assert.match(mixed, /immeuble : 5 DPE, de D à F, volume peint D/);
-  // The building line sits second, so the six-line card cap cannot drop it.
-  assert.equal(mixed.split(' · ')[1].startsWith('immeuble'), true);
+  const streetSide = byKey.get('ban:ban-A');
+  const painted = join.byPoint.get('a1');
+  const card = dpeSiteCardDescription(streetSide, painted, true);
+  assert.match(card, /^5 DPE, de D à F, majorité D/, 'the range leads, as the first line');
+  assert.match(card, /1 sans étiquette publiée/);
+  assert.match(card, /1 passoire \(F ou G\)/);
+  // The volume only earns a line when it disagrees — and here it does.
+  assert.match(card, /volume Bâti 3D peint G/);
 
-  const unanimous = dpeCardDescription(
-    { etiquetteDpe: 'D', distanceM: 10 },
-    dpeBuildingSummary([{ etiquetteDpe: 'D' }, { etiquetteDpe: 'D' }]),
-    true,
-  );
-  assert.match(unanimous, /immeuble : 2 DPE, tous D/);
-
-  const partial = dpeCardDescription(
-    { etiquetteDpe: 'D', distanceM: 10 },
-    dpeBuildingSummary([{ etiquetteDpe: 'D' }, { etiquetteDpe: null }]),
-    true,
-  );
-  assert.match(partial, /1 en D, 1 sans étiquette/);
+  const unanimous = dpeSiteCardDescription({
+    points: [{ etiquetteDpe: 'D' }, { etiquetteDpe: 'D' }],
+    summary: dpeBuildingSummary([{ etiquetteDpe: 'D' }, { etiquetteDpe: 'D' }]),
+  });
+  assert.match(unanimous, /^2 DPE, tous D/);
+  assert.doesNotMatch(unanimous, /passoire/, 'a D block has none, and says nothing');
 });
 
-test('a diagnostic on no loaded footprint says so, and only when there were any', () => {
-  const entry = { etiquetteDpe: 'G', distanceM: 12 };
-  assert.match(dpeCardDescription(entry, null, true), /hors des emprises BD TOPO chargées/);
+test('the card names the ground it is drawn on, and how it got there', () => {
+  const site = {
+    address: '93 rue du Chevaleret',
+    kind: 'building',
+    distanceM: 57,
+    points: [{ etiquetteDpe: 'E', annualCostEur: 900 }, { etiquetteDpe: 'E', annualCostEur: 700 }],
+    summary: dpeBuildingSummary([{ etiquetteDpe: 'E' }, { etiquetteDpe: 'E' }]),
+    shape: { via: 'id', rnbId: 'Q3TWB1672WV4', areaM2: 143, parts: [] },
+    parcel: { idu: '75113000BI0020', via: 'idu', contenanceM2: 261 },
+  };
+  const card = dpeSiteCardDescription(site);
+  assert.match(card, /emprise 143 m² au sol/);
+  assert.match(card, /parcelle 75113000BI0020 — 261 m² cadastrés/);
+  assert.match(card, /bâtiment nommé par le diagnostic \(id RNB\)/);
+  assert.match(card, /700 €\/an estimés \(médiane du site\)/, 'a median, and it says so');
+  assert.equal(dpeSiteTitle(site), '93 rue du Chevaleret — 2 DPE');
+});
+
+test('a site on no loaded footprint says so, and only when there were any', () => {
+  const site = {
+    address: 'quelque part',
+    points: [{ etiquetteDpe: 'G' }],
+    summary: dpeBuildingSummary([{ etiquetteDpe: 'G' }]),
+    distanceM: 12,
+  };
+  assert.match(dpeSiteCardDescription(site, null, true), /hors des emprises BD TOPO chargées/);
   assert.doesNotMatch(
-    dpeCardDescription(entry, null, false),
+    dpeSiteCardDescription(site, null, false),
     /hors des emprises/,
     'with the volumes off that sentence would be about Bâti 3D, not about the DPE',
   );
@@ -500,7 +593,7 @@ test('the three ways a diagnostic misses a volume are counted apart', (t) => {
   seedBuildings();
   const join = _seedDpeThemeForTest(scanEntries());
 
-  assert.equal(join.matchedPoints, 9, 'the nine rows inside a footprint');
+  assert.equal(join.matchedPoints, 13, 'the thirteen rows inside a footprint');
   assert.equal(join.unmatchedPoints, 1, 'geocoded to the street');
   assert.equal(join.unplacedPoints, 1, 'no coordinate published at all');
   assert.equal(join.ungradedPoints, 1, 'present, and unable to paint anything');
@@ -546,11 +639,14 @@ test('the coverage line states the truncation and the paint', (t) => {
   _seedDpeThemeForTest(entries);
 
   const truncated = dpeSummarize({ entries, total: 2805, distribution: {} });
-  assert.match(truncated.coverage, /11 DPE servis sur 2\s?805 dans 200 m/);
+  assert.match(truncated.coverage, /15 DPE servis sur 2\s?805 dans 200 m/);
   assert.match(truncated.coverage, /les plus proches du centre/);
   assert.match(truncated.coverage, /2 volumes peints sur 3 chargés/);
+  // The grouping, said out loud: fifteen diagnostics, five addresses, and how
+  // many of those five the RNB could put an outline under.
+  assert.match(truncated.coverage, /5 adresses · 0 avec emprise bâtie/);
 
-  const whole = dpeSummarize({ entries, total: 11, distribution: {} });
+  const whole = dpeSummarize({ entries, total: 15, distribution: {} });
   assert.doesNotMatch(whole.coverage, /servis sur/, 'nothing was dropped, so nothing is claimed');
 });
 
