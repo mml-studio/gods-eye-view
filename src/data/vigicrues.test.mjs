@@ -89,6 +89,35 @@ test('the four level colours are the ones Vigicrues itself publishes', () => {
   assert.deepEqual(widths, [...widths].sort((a, b) => a - b));
 });
 
+test('a RAISED reach is drawn in the state own colour, to the byte', () => {
+  // The three levels that carry a warning are what a reader recognises from
+  // every other vigilance map. Repainting one of them IS the distortion the
+  // licence prohibits, so `stroke` and `color` must not diverge here.
+  for (const level of [2, 3, 4]) {
+    assert.equal(VIGICRUES_LEVELS[level].stroke, VIGICRUES_LEVELS[level].color, `level ${level}`);
+  }
+  assert.equal(VIGICRUES_UNKNOWN_LEVEL.stroke, VIGICRUES_UNKNOWN_LEVEL.color);
+});
+
+test('the calm level is painted as water, and still says what it is in words', () => {
+  const green = VIGICRUES_LEVELS[1];
+  // A dark green line on a photoreal hillside is not a quiet signal, it is an
+  // absent one — and at level 1 the hue carries no warning to distort: the
+  // layer is drawing the monitored network, not an alert.
+  assert.notEqual(green.stroke, green.color);
+  assert.match(green.stroke, /^#[0-9a-f]{6}$/);
+  // The cyan must not be mistakable for a level that means something.
+  for (const level of [2, 3, 4]) {
+    assert.notEqual(green.stroke, VIGICRUES_LEVELS[level].color, `collides with level ${level}`);
+  }
+  // The official reading survives in every channel that is not a pixel: the
+  // analyst engine and the entity properties still get 1 / 'VERT', and the
+  // legend row still carries the service's own sentence.
+  assert.equal(green.level, 1);
+  assert.equal(green.label, 'VERT');
+  assert.equal(green.meaning, 'Pas de vigilance particulière requise');
+});
+
 test('every level draws wide enough, and opaque enough, to reach the screen', () => {
   // The four hues cannot move — Licence Ouverte 2.0, see the module header — so
   // width and alpha are the only levers, and a level that is thin AND faint is
@@ -231,13 +260,13 @@ test('the row legend lists non-empty levels, most severe first', () => {
   assert.deepEqual(
     vigicruesLevelLegend({ green: 300, yellow: 27, orange: 10, red: 0, unknown: 0 })
       .map((entry) => [entry.label, entry.count]),
-    [['ORANGE', 10], ['JAUNE', 27], ['VERT', 300]],
+    [['ORANGE', 10], ['JAUNE', 27], ['SANS VIGILANCE', 300]],
   );
   // A calm day still reports the monitored network rather than an empty row.
   assert.deepEqual(
     vigicruesLevelLegend({ green: 337, yellow: 0, orange: 0, red: 0, unknown: 0 })
       .map((entry) => entry.label),
-    ['VERT'],
+    ['SANS VIGILANCE'],
   );
   assert.deepEqual(vigicruesLevelLegend({ unknown: 4 }).map((entry) => entry.label), ['INCONNU']);
   assert.deepEqual(vigicruesLevelLegend(null), []);
@@ -245,6 +274,23 @@ test('the row legend lists non-empty levels, most severe first', () => {
     assert.match(entry.color, /^#[0-9a-f]{6}$/);
     assert.ok(entry.blurb.length > 0, 'each swatch carries the level meaning');
   }
+});
+
+test('a legend swatch is the colour the map actually draws', () => {
+  // A legend is a key to the map. A green dot beside a cyan line sends a reader
+  // hunting for a line that is not on the screen.
+  const legend = vigicruesLevelLegend({ green: 1, yellow: 1, orange: 1, red: 1, unknown: 1 });
+  const byLabel = new Map(legend.map((entry) => [entry.label, entry.color]));
+  assert.equal(byLabel.get('SANS VIGILANCE'), VIGICRUES_LEVELS[1].stroke);
+  assert.equal(byLabel.get('JAUNE'), VIGICRUES_LEVELS[2].color);
+  assert.equal(byLabel.get('ORANGE'), VIGICRUES_LEVELS[3].color);
+  assert.equal(byLabel.get('ROUGE'), VIGICRUES_LEVELS[4].color);
+  // And the row whose swatch is not the official one is the row that spells the
+  // level out, with the service's own sentence underneath.
+  assert.equal(
+    legend.find((entry) => entry.label === 'SANS VIGILANCE').blurb,
+    VIGICRUES_LEVELS[1].meaning,
+  );
 });
 
 // ── Label policy ────────────────────────────────────────────────────────────
@@ -410,6 +456,21 @@ test('lifecycle draws static clamped polylines and labels only the raised reache
     const levels = new Set(entities.map((entity) => entity.properties.level.getValue()));
     assert.equal(materials.size, levels.size, 'materials are shared per level');
 
+    // What reaches the canvas is `stroke`, which for a calm reach is the cyan
+    // and for a raised one is the state's own swatch, to the byte.
+    const painted = (level) => entities
+      .find((entity) => entity.properties.level.getValue() === level)
+      .polyline.material.color.getValue()
+      .toCssHexString()
+      .slice(0, 7);
+    assert.equal(painted(1), VIGICRUES_LEVELS[1].stroke);
+    assert.notEqual(painted(1), VIGICRUES_LEVELS[1].color);
+    assert.equal(painted(3), VIGICRUES_LEVELS[3].color);
+    // The level itself is untouched — the analyst engine and every consumer of
+    // the entity properties still read 1 / 'VERT'.
+    const calm = entities.find((entity) => entity.properties.level.getValue() === 1);
+    assert.equal(calm.properties.levelLabel.getValue(), 'VERT');
+
     const publication = h.hostCalls.filter(([type]) => type === 'entries').pop();
     assert.ok(publication, 'the update must publish the overlay source');
     assert.equal(publication[2].length, 1, 'only the ORANGE reach is labelled');
@@ -432,7 +493,7 @@ test('lifecycle draws static clamped polylines and labels only the raised reache
     const controls = h.layer.getRowControls();
     assert.deepEqual(controls.chips, []);
     assert.deepEqual(controls.legend.map((entry) => [entry.label, entry.count]),
-      [['ORANGE', 1], ['VERT', 2]]);
+      [['ORANGE', 1], ['SANS VIGILANCE', 2]]);
   } finally {
     h.restore();
   }

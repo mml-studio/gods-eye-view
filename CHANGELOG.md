@@ -31,6 +31,51 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   fichier d'une couche : 14 vérifications, dont le décompte visible, la couche
   rallumée après recharge, et l'onglet qui ne reboucle pas.
 
+- **La couche Cours d'eau traçait des rivières vert foncé sur une France
+  verte.** `#009245` est le vert que Vigicrues publie lui-même, et sur le maillage
+  photoréaliste comme sur l'ortho IGN il tombe exactement dans la couleur de la
+  végétation. Un trait de 3 px qu'il faut chercher ne vaut pas mieux que pas de
+  trait, et aucune opacité ne sépare un vert sombre d'un coteau vert sombre.
+
+  Les trois couleurs qui **avertissent** — jaune, orange, rouge — ne bougent pas
+  d'un octet : ce sont elles qui portent le sens, et un test les épingle. Le
+  niveau 1 est un autre objet. Il dit *« pas de vigilance particulière
+  requise »*, c'est l'**absence** de signal, et hors épisode c'est la totalité du
+  réseau (337 tronçons sur 337 dans l'instantané de référence). Ce que la carte
+  dessine alors, c'est le réseau hydrographique surveillé de France — pas une
+  alerte. Il est donc tracé **en cyan**, dans la famille de bleus du point de
+  station Hub'Eau qui vit sur la même ligne du panneau.
+
+  Le niveau reste dit en toutes lettres partout où un lecteur le rencontre : la
+  légende affiche **SANS VIGILANCE** avec la phrase du service en infobulle, et
+  `level` / `levelLabel` portent toujours `1` / `VERT` aux propriétés d'entité
+  et au moteur d'analyse. Un tronçon que le flux élève quitte cette branche
+  immédiatement et reprend la couleur de l'État.
+
+- **La fiche d'une station de mesure dessinait une barre de progression pleine
+  au-dessus d'un chiffre qui disait 48 %.** L'hydrogramme 24 h est tracé depuis
+  ZÉRO : une rivière qui ne fait rien — la situation cinq jours sur six pour
+  l'essentiel du réseau — rend 48 barres pleines. Deux dessins qui se
+  contredisent valent moins qu'un seul qui dit quelque chose.
+
+  Une fiche ne porte plus qu'**une** barre, et c'est la comparaison qui a une
+  référence : le débit du jour contre la moyenne du même mois sur les
+  trente dernières années publiées. 40 cellules, encrées à hauteur du pourcentage, le reste laissé
+  en `░` — la part qui n'est pas là aujourd'hui. Au-dessus de la moyenne la barre
+  se remplit et porte un `▸` plutôt que de changer d'échelle : 100 % doit rester
+  le bord droit, sinon deux stations ne se comparent plus à l'œil. La ligne
+  d'amplitude (« de 5,1 m³/s à 5,5 m³/s sur 24 h ») reste — c'est là qu'était
+  vraiment l'information des 24 heures. Une station de hauteur d'eau, ou un débit
+  sans série mensuelle exploitable, garde l'hydrogramme : c'est alors la seule
+  barre disponible.
+
+- **Et la fiche n'affiche plus « ⚠ influence locale ».**
+  `influence_locale_station` est la note du producteur sur ce qui perturbe sa
+  propre courbe de tarage — un seuil, une écluse, une marée. À l'écran, c'était
+  un pictogramme d'avertissement et un mot sans référent, sur une station qui
+  mesure normalement. Retiré de la fiche **et de la requête** : rien d'autre ne
+  le consommait.
+
 - **Neuf marqueurs sur dix de la couche Stations météo n'avaient rien à
   répondre, et l'un d'eux servait un relevé vieux de cinq jours.** Le réseau
   temps réel de Météo-France compte **2 144 stations** ; **190 publient leurs

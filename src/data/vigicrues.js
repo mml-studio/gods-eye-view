@@ -64,29 +64,51 @@ export const VIGICRUES_OVERLAY_COLLISION_CAPACITY = 48;
 const UPDATE_INTERVAL_MS = 300000;
 
 /**
- * VISIBILITY WITHOUT RECOLOURING — WHICH LEAVES EXACTLY TWO LEVERS.
- * ----------------------------------------------------------------
+ * VISIBILITY — AND THE ONE LEVEL WHERE COLOUR IS NOT A SIGNAL.
+ * -----------------------------------------------------------
  * The reaches were drawn as flat 1.4–6 px lines at alphas as low as 0.5, and
  * disappeared into every basemap we ship: the dark official green over IGN
  * ortho's dark vegetation, and all four hues over Plan IGN's pale hydrography
  * — which is drawn in the same blues and greens, in the same places, because
  * it is the same rivers.
  *
- * The four colours below cannot move. They are the swatches the service itself
- * publishes, and Licence Ouverte 2.0 forbids distorting the meaning of the
- * information it covers — recolouring a public-safety signal is exactly that.
- * `vigicrues.test.mjs` pins the four hex values for this reason.
+ * Widening and un-fading (below) fixed yellow, orange and red. It did not fix
+ * green, and could not: `#009245` is a DARK green, the photoreal and IGN ortho
+ * basemaps are mostly vegetation, and no amount of alpha separates a dark green
+ * line from a dark green hillside. A 3 px stroke you have to hunt for is the
+ * same as no stroke.
  *
- * A dark casing under each reach would have been the third lever, and the gas
+ * ── Why green may be repainted and the other three may not ──────────────────
+ *
+ * Licence Ouverte 2.0 forbids distorting the MEANING of the information. The
+ * meaning of levels 2-4 is carried by their hue: yellow, orange and red are how
+ * the state says "something is happening", they are what a reader recognises
+ * from every other vigilance map, and they are pinned byte-for-byte in
+ * `vigicrues.test.mjs`. Repainting one of those would be the distortion.
+ *
+ * Level 1 says "pas de vigilance particulière requise" — it is the ABSENCE of a
+ * signal, and on an ordinary day it is 337 reaches out of 337. What the layer
+ * is actually drawing then is the monitored river network of France, which is
+ * what the module header has always said it draws. So the calm level is painted
+ * as water — a cyan no basemap and no other level uses — while the level it
+ * represents stays stated in words everywhere a reader meets it: the legend row
+ * names it and repeats the service's own sentence, and `level`/`levelLabel`
+ * still carry 1 and 'VERT' to the analyst engine and to every entity property.
+ * Nothing claims a reach is calm that the feed did not publish as calm; the
+ * moment a reach is raised it leaves this branch and gets the state's colour.
+ *
+ * The official swatch is kept on every level as `color` and is what the pinned
+ * test asserts. `stroke` is what reaches the canvas, and differs from `color`
+ * for exactly one level.
+ *
+ * A dark casing under each reach would have been another lever, and the gas
  * layer next door built and measured one first. It scored WORSE than simply
  * widening the flat stroke: `msaaSamples: 4` under Cesium's FXAA stage leaves
  * a cased core largely edge-blend, and a hue leaves a ±24 tolerance at only
- * ~10 % casing contamination. Applied here that is not merely a worse render,
- * it is a licence problem — a casing that dims a vigilance colour toward black
- * is the distortion the licence prohibits, reached through a rendering side
- * door. See the measured table in `gasFrance.js`.
- *
- * So the two levers that survive are ALPHA and WIDTH, and both are used below.
+ * ~10 % casing contamination. Applied to a raised reach that is not merely a
+ * worse render, it is a licence problem — a casing that dims a vigilance colour
+ * toward black is the distortion the licence prohibits, reached through a
+ * rendering side door. See the measured table in `gasFrance.js`.
  */
 
 /**
@@ -113,13 +135,24 @@ export const VIGICRUES_LEVELS = Object.freeze({
     level: 1,
     key: 'green',
     label: 'VERT',
+    legendLabel: 'SANS VIGILANCE',
     meaning: 'Pas de vigilance particulière requise',
     color: '#009245',
-    // Was 0.5, which halved the contrast of the darkest hue in the set
-    // against the darkest basemap we ship — a dark green at half opacity over
-    // IGN ortho is not a quiet signal, it is an absent one. Quietness is the
-    // job of the WIDTH here, which stays the narrowest on the ladder.
-    alpha: 0.88,
+    // A river drawn as water, because at this level the line is the monitored
+    // network and not a warning — see the section above. Cyan carries no
+    // vigilance meaning (the ladder is green/yellow/orange/red), it is nothing
+    // a basemap paints vegetation or built ground in, and it is saturated well
+    // past the pale unsaturated blue Plan IGN draws its own hydrography with.
+    //
+    // Close to the Hub'Eau gauge dot's `#4fc3f7` on purpose: the reaches and
+    // the stations are the same row of the panel, and one family of blues reads
+    // as one subject. Nothing is ambiguous between them — a gauge is a point
+    // with a dark outline, a reach is a clamped line.
+    stroke: '#25e2ff',
+    // Opaque, now that the stroke is no longer competing with the ground it is
+    // drawn on. Quietness is the job of the WIDTH here, which stays the
+    // narrowest on the ladder.
+    alpha: 1,
     width: 3.2,
   }),
   2: Object.freeze({
@@ -128,6 +161,7 @@ export const VIGICRUES_LEVELS = Object.freeze({
     label: 'JAUNE',
     meaning: 'Risque de crue ou de montée rapide et dangereuse des eaux',
     color: '#fcff19',
+    stroke: '#fcff19',
     alpha: 1,
     width: 5,
   }),
@@ -137,6 +171,7 @@ export const VIGICRUES_LEVELS = Object.freeze({
     label: 'ORANGE',
     meaning: 'Risque de crue génératrice de débordements importants',
     color: '#ee5e2e',
+    stroke: '#ee5e2e',
     alpha: 1,
     width: 6.2,
   }),
@@ -146,6 +181,7 @@ export const VIGICRUES_LEVELS = Object.freeze({
     label: 'ROUGE',
     meaning: 'Risque de crue majeure — menace directe et généralisée',
     color: '#ff0000',
+    stroke: '#ff0000',
     alpha: 1,
     width: 7.4,
   }),
@@ -163,6 +199,7 @@ export const VIGICRUES_UNKNOWN_LEVEL = Object.freeze({
   label: 'INCONNU',
   meaning: 'Niveau non publié',
   color: '#8a93a6',
+  stroke: '#8a93a6',
   alpha: 0.7,
   width: 2.2,
 });
@@ -398,9 +435,18 @@ export function vigicruesStateSignature(records) {
  * Build the toggle-row colour legend from a level tally.
  *
  * Follows the satellite-class legend convention: severity order, zero-count
- * levels omitted, official swatch colours, and the level's official meaning as
- * the tooltip. On a calm day this reads "VERT 337", which is the honest
- * summary — the network is monitored and nothing is raised.
+ * levels omitted, and the level's official meaning as the tooltip.
+ *
+ * The swatch is the DRAWN colour, never the official one, because a legend is a
+ * key to the map: a green dot beside a cyan line sends a reader looking for a
+ * line that is not there. That makes level 1 the one row where the swatch and
+ * the state's vocabulary part ways, so it is the one row that spells the level
+ * out — "SANS VIGILANCE", with the service's own sentence as the tooltip,
+ * rather than the bare word "VERT" beside a colour that is not green. The other
+ * three rows are the official word and the official swatch, unchanged.
+ *
+ * On a calm day this reads "SANS VIGILANCE 337", which is the honest summary —
+ * the network is monitored and nothing is raised.
  * @param {Record<string, number>} byKey Tally from `summarizeVigicruesRecords`.
  * @returns {Array<{label:string,color:string,blurb:string,count:number}>}
  */
@@ -410,13 +456,18 @@ export function vigicruesLevelLegend(byKey) {
     const spec = VIGICRUES_LEVELS[level];
     const count = byKey?.[spec.key];
     if (!(count > 0)) continue;
-    legend.push({ label: spec.label, color: spec.color, blurb: spec.meaning, count });
+    legend.push({
+      label: spec.legendLabel || spec.label,
+      color: spec.stroke,
+      blurb: spec.meaning,
+      count,
+    });
   }
   const unknown = byKey?.unknown;
   if (unknown > 0) {
     legend.push({
       label: VIGICRUES_UNKNOWN_LEVEL.label,
-      color: VIGICRUES_UNKNOWN_LEVEL.color,
+      color: VIGICRUES_UNKNOWN_LEVEL.stroke,
       blurb: VIGICRUES_UNKNOWN_LEVEL.meaning,
       count: unknown,
     });
@@ -462,7 +513,9 @@ export function createVigicruesOverlayEntry({ id, position, title, level }) {
     position,
     variant: 'label',
     title,
-    accent: level.color,
+    // The drawn colour, so the label matches its reach. Labels are published
+    // for raised reaches only, where `stroke` IS the official swatch.
+    accent: level.stroke ?? level.color,
     // Red outranks orange outranks yellow; ties break on id in the selector.
     priority: (level.level ?? 0) * 1000,
     collisionGroup: 'ambient-label',
@@ -561,7 +614,9 @@ export function createVigicruesLayer({
     const existing = levelMaterials.get(level.key);
     if (existing) return existing;
     const material = new Cesium.ColorMaterialProperty(
-      Cesium.Color.fromCssColorString(level.color).withAlpha(level.alpha),
+      // `stroke`, not `color`: the official swatch is what the level MEANS, the
+      // stroke is what the canvas gets. They differ for level 1 only.
+      Cesium.Color.fromCssColorString(level.stroke).withAlpha(level.alpha),
     );
     levelMaterials.set(level.key, material);
     return material;
