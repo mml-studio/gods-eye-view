@@ -3778,7 +3778,7 @@ function meteoFranceVigilanceProxy() {
  * station holds. Both are keyless, and both are shaped in a way a browser
  * cannot use directly.
  *
- * ── Route 1: the observations, and why 22 MB is the cheap option ────────────
+ * ── Route 1: the observations, and why 23 MB is the cheap option ────────────
  *
  * Météo-France retired `donneespubliques.meteofrance.fr` and every
  * OpenDataSoft mirror of *Données SYNOP essentielles OMM* froze on
@@ -3787,17 +3787,26 @@ function meteoFranceVigilanceProxy() {
  * Anything still reading a mirror for "current French weather" has been serving
  * a seven-month-old number since January.
  *
- * What is still written is `OBS/SYNOP/synop_<year>.csv.gz` on Météo-France's own
- * S3 — the running year in one file, refreshed hourly, 22 MB gzipped, and a
+ * What is still written is `data/OBS/SYNOP/synop_<year>.csv.gz` on
+ * Météo-France's own S3 — the running year in one file, 23 MB gzipped, and a
  * SINGLE gzip member, so no range request can reach its tail. There is no
  * smaller live product without an API key.
+ *
+ * **`data/OBS/` and not `data/synchro_ftp/OBS/`.** The bucket serves the same
+ * file under both prefixes and the second stopped being written on 2026-09-09;
+ * this proxy read it until 2026-09-14 and served a five-day-old reading the
+ * whole time. Trap 6 in `meteoStationsFrFeed.js` has the measurement, including
+ * the one that matters more: the product is a DAILY consolidation of
+ * three-hourly observations, so the freshest reading it can ever carry is 11 to
+ * 35 hours old and the card prints the observation's own time.
  *
  * So the fetch is whole, and three things make that affordable:
  *   • it is LAZY — nothing is fetched until a reader opens a station card, so a
  *     visitor who never clicks costs nothing;
- *   • it is reduced in flight — 364 444 rows are streamed through
- *     `createSynopReducer` and 190 survive, so the response is 38 kB, not 22 MB;
- *   • it is cached for an hour, which is the upstream's own write cadence.
+ *   • it is reduced in flight — 382 344 rows are streamed through
+ *     `createSynopReducer` and 190 survive, so the response is 38 kB, not 23 MB;
+ *   • it is cached for six hours, which is a quarter of the upstream's own
+ *     daily write cadence — an hourly refetch bought 23 MB of nothing.
  *
  * The archive carries **190 stations**, not the 62 Météo-France's own station
  * list names. See `meteoStationsFrFeed.js`, trap 3.

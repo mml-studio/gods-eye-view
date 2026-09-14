@@ -6,6 +6,47 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-14
 
 ### Changed
+- **Neuf marqueurs sur dix de la couche Stations météo n'avaient rien à
+  répondre, et l'un d'eux servait un relevé vieux de cinq jours.** Le réseau
+  temps réel de Météo-France compte **2 144 stations** ; **190 publient leurs
+  relevés en accès libre**. Les 1 954 autres mesurent en ce moment même et leurs
+  valeurs sont derrière une clé API. La couche les dessinait toutes : un lecteur
+  qui cliquait un point avait 91 % de chances de tomber sur une explication au
+  lieu d'une mesure.
+
+  La couche ne dessine plus que les **190**. Le fichier expédié garde les 2 144
+  — 660 Ko contre 72 Ko, payés une seule fois, à l'allumage de la couche — parce
+  que la porte est un booléen : `SHOW_ONLY_PUBLISHING`. Un déploiement qui
+  obtient une clé Météo-France le bascule et retrouve le réseau entier sans
+  reconstruire une seule donnée. `getStats()` annonce les **1 954 retenues** à
+  chaque appel : cacher des stations est un choix d'affichage, prétendre que le
+  réseau en compte 190 serait un mensonge sur la France.
+
+  Les trois puces de filtre partent avec : sur les 190 stations dessinées,
+  VENT en gardait 189, PRESSION 187 et RELEVÉS les 190. Une commande qui
+  supprime un marqueur est une décoration.
+
+- **Et le relevé « de la dernière heure » venait d'un miroir gelé depuis le 9
+  septembre.** Le bucket S3 de Météo-France sert l'archive SYNOP sous deux
+  préfixes, même produit et même nom de fichier. Mesuré le 14/09 :
+  `data/OBS/SYNOP/synop_2026.csv.gz` écrit le matin même à 07:00Z,
+  `data/synchro_ftp/OBS/SYNOP/synop_2026.csv.gz` intouché depuis cinq jours — et
+  répondant 200 pendant tout ce temps. Le proxy lisait le second. Il lit
+  maintenant le premier, et le script de construction aussi.
+
+  La même mesure corrige ce que le produit racontait de lui-même : 382 344
+  lignes pour 190 stations sur 251 jours, soit **8 relevés par station et par
+  jour** — des observations tri-horaires consolidées une fois par jour vers
+  07:00 UTC. Donc **le relevé le plus frais lisible sans clé a entre 11 et 35
+  heures**, la fiche affiche l'heure de l'observation et jamais le mot
+  « maintenant », et le cache du proxy passe d'une heure à six : rafraîchir
+  23 Mo toutes les heures pour un fichier quotidien n'achetait rien.
+
+  Ce que la clé achèterait — les 1 954 stations manquantes *et* l'heure qui
+  vient de passer — est chiffré dans `docs/meteofrance-api-access.md`, réservé
+  à la version hébergée : le dépôt open source démarre et dessine sans une
+  seule clé.
+
 - **Allumer les caméras publiques prenait une demi-minute pour refuser
   d'afficher plus de 14 vignettes, et l'essentiel de cette attente ne servait
   personne.** Mesuré sur Austin, catalogue de 815 caméras, serveur chaud, fond

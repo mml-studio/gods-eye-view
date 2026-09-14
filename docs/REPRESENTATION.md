@@ -94,7 +94,7 @@ Quatre jeux sont des **surfaces**, dessinées en points ou en aplats administrat
 
 - **APL médecins** — un indicateur d'accessibilité continu, publié **à la commune**, peint sur 96 départements.
 - **Lden bruit** — un champ acoustique, réduit à trois lettres de zone (ce qui est le découpage légal, donc défendable — mais la surface existe).
-- **Stations météo** — 2 144 instruments qui *mesurent un champ*, dessinés en points coloriés par… leur classe d'instrument.
+- **Stations météo** — des instruments qui *mesurent un champ*, dessinés en points coloriés par… leur classe d'instrument. (Depuis le 14/09/2026 la couche ne dessine plus que les **190** qui publient leurs relevés, ce qui rend la proposition ci-dessous nettement plus atteignable : la mesure est disponible pour chacun des points dessinés.)
 - **FIRMS** — déjà une grille, mais une grille en degrés (C3), corrigée par `cos(lat)` faute de mieux. H3 existe.
 
 ### Piste 5 — Sortir du département
@@ -188,7 +188,7 @@ Colonnes : **dessine** = le signe actuel · **défaut** = ce qui cloche pour la 
 | **Datacenters** | **un point de 10 px**, pour tous | Le module **le dit lui-même** : 3 517 des 4 351 objets sont des polygones, dont l'emprise couvre cinq ordres de grandeur (médiane 5 625 m², max 7 060 220 m²), *« et chacun rend le même point de 10 px. C'est la chose la plus discriminante du fichier et elle ne coûte rien à calculer »*. | **Dessiner l'emprise**, extrudée par `building:levels` quand il existe. Le diagnostic est écrit, le correctif ne l'a jamais été. | **S** |
 | **Caméras publiques** | frustum pitché + plan moniteur, cône tireté si cap non relevé | **La couche la plus 3D-native du produit**, et de loin. | Rien. C'est la preuve que le reste peut suivre. | — |
 | **Radio** | points | Une station de radio n'a pas de lieu, elle a une **aire de diffusion**. | Hors périmètre (annuaire web, pas émetteur). Laisser. | — |
-| **Stations météo** | point, couleur = **classe de la station** | 2 144 instruments qui mesurent un champ, coloriés par le type d'instrument. La mesure n'est nulle part sur la carte. | Couleur = **la mesure** (température, vent), classe en forme ou en contour. Et à terme, l'interpolation du champ, qui est ce qu'une station sert à produire. | M |
+| **Stations météo** | point, couleur = **classe de la station** | Des instruments qui mesurent un champ, coloriés par le type d'instrument. La mesure n'est nulle part sur la carte. Depuis la réduction aux **190 stations qui publient**, la classe est presque constante (182 synoptiques) : le canal couleur ne porte plus grand-chose. | Couleur = **la mesure** (température, vent), classe en forme ou en contour. Et à terme, l'interpolation du champ, qui est ce qu'une station sert à produire. | M |
 | **Antennes mobiles** | point, couleur = génération la plus récente, maillage national | Le refus du choroplèthe est **bien argumenté et juste** (59–76 % en métropole, 1 % en Nouvelle-Calédonie). | Deux ajouts gratuits : ANFR publie la **hauteur du support** (extrusion) et l'**azimut** de chaque antenne (secteurs). Un pylône dessiné en pylône, avec ses lobes. | M |
 
 ### ▤ Bâti & territoire — le plus gros gisement

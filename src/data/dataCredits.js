@@ -500,13 +500,16 @@ export const DATA_CREDITS = [
       + '<em>Informations sur les stations</em>, <em>Postes</em> and <em>Donn&eacute;es SYNOP essentielles OMM</em>, '
       + 'published by <a href="https://meteo.data.gouv.fr/" target="_blank" rel="noopener">M&eacute;t&eacute;o-France</a> '
       + '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). '
-      + '2 144 stations, rebuilt from the network list joined to M&eacute;t&eacute;o-France&rsquo;s own 191 MB per-station '
-      + 'parameter inventory &mdash; which is where the instrument classes come from: 1 254 of the 2 144 measure only '
-      + 'temperature and rain, 845 measure wind, 234 measure pressure. Live observations are the running-year SYNOP '
-      + 'archive, refreshed hourly; <strong>it carries 190 stations where M&eacute;t&eacute;o-France&rsquo;s own SYNOP '
-      + 'station list names 62</strong>, so the layer counts the archive. Station records come from each '
-      + 'poste&rsquo;s <em>fiche climatologique</em>, fetched per card. Seven stations in the real-time list are '
-      + 'recorded as closed by the same publisher and are drawn hollow rather than dropped.',
+      + 'The network holds 2 144 stations, rebuilt from the network list joined to '
+      + 'M&eacute;t&eacute;o-France&rsquo;s own 191 MB per-station parameter inventory &mdash; which is where the '
+      + 'instrument classes come from: 1 254 of the 2 144 measure only temperature and rain, 845 measure wind, '
+      + '234 measure pressure. <strong>190 of them publish their readings in the open, and those are the ones '
+      + 'drawn</strong>; the other 1 954 measure right now behind M&eacute;t&eacute;o-France&rsquo;s API key. '
+      + 'Observations come from the running-year SYNOP archive, which M&eacute;t&eacute;o-France&rsquo;s own SYNOP '
+      + 'station list claims to name and gets wrong in both directions (62 named, 190 publishing), and which is a '
+      + 'daily consolidation of three-hourly readings &mdash; so a reading is 11 to 35 hours old and every card '
+      + 'prints its own timestamp. Station records come from each poste&rsquo;s <em>fiche climatologique</em>, '
+      + 'fetched per card.',
   },
   {
     key: 'sup-fr',

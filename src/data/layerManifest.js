@@ -355,7 +355,7 @@ export const LAYER_MANIFEST = Object.freeze([
     name: 'Weather Stations (FR)',
     icon: '🌡',
     source: 'Météo-France',
-    capabilities: Object.freeze(['destroy', 'getStats', 'setParams']),
+    capabilities: Object.freeze(['destroy', 'getStats']),
     load: () => import('./meteoStationsFrance.js').then((module) => module.default),
   }),
   Object.freeze({

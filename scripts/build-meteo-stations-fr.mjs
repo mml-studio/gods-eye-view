@@ -71,6 +71,7 @@ import {
   FICHES_URL,
   POSTES_URL,
   RT_STATIONS_URL,
+  SYNOP_ARCHIVE_URL,
   SYNOP_STATIONS_URL,
   STATION_CLASSES,
   STATION_CLASS_ORDER,
@@ -247,7 +248,11 @@ async function loadFicheIndex(timeoutMs) {
  */
 async function loadSynopCoverage(timeoutMs) {
   const year = new Date().getUTCFullYear();
-  const url = `https://meteofrance.s3.sbg.io.cloud.ovh.net/data/synchro_ftp/OBS/SYNOP/synop_${year}.csv.gz`;
+  // The SAME constant the proxy reads, and for the same reason: the bucket
+  // serves this file under two prefixes and only `data/OBS/` is still being
+  // written. A build that read the frozen copy would compute `live` from a
+  // snapshot that ages a day per day. See trap 6 in `meteoStationsFrFeed.js`.
+  const url = SYNOP_ARCHIVE_URL.replace('%YEAR%', String(year));
   try {
     const response = await fetch(url, {
       headers: { 'User-Agent': USER_AGENT },
@@ -425,6 +430,12 @@ async function main() {
     // What the network holds and this file does not, stated in the file.
     excluded: {
       closedPostes: postes.size - stations.length,
+      // In the file rather than only in the layer: the pack carries all 2 144
+      // stations and the layer draws the ones that publish
+      // (`SHOW_ONLY_PUBLISHING`), so the count that separates them has to be
+      // readable without running the app.
+      unpublished: `${stats.stations - stats.live} stations mesurent sans publier `
+        + 'en accès libre — relevés derrière l’API Météo-France sur clé',
       complementary: 'stations complémentaires (type 5) — publiées séparément, hors réseau temps réel',
       infoclimat: 'réseau StatIC — 553 des 1 138 stations françaises sont CC BY-NC',
     },

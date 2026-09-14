@@ -37,6 +37,12 @@
  * that measurement turned into the layer's palette, so the map says what each
  * dot can and cannot answer instead of drawing 2 144 identical instruments.
  *
+ * Every count in this module describes the NETWORK. The layer draws the 190
+ * stations that publish (`SHOW_ONLY_PUBLISHING` in `meteoStationsFrance.js`),
+ * and among those the same split is nearly flat — 182 complete synoptic
+ * stations — which is the same fact read backwards: France publishes its best
+ * instruments.
+ *
  * ── The second trap: the live list still carries closed stations ─────────────
  * Seven rows of the real-time list are stations Météo-France's OWN metadata
  * records as closed — MARSILLARGUES on 2026-01-01, DESHAIES GENDARMERIE on
@@ -67,6 +73,34 @@
  * stations are `20xxxxxx` and no station in France carries `2A` or `2B`.
  * `departementOf` returns what the identifier says and does not invent the
  * modern code, because the identifier is the join key.
+ *
+ * ── The sixth trap: the bucket serves the archive twice, and one copy is dead ─
+ * `meteofrance.s3.sbg.io.cloud.ovh.net` publishes SYNOP under two prefixes,
+ * `data/OBS/SYNOP/` and `data/synchro_ftp/OBS/SYNOP/`, byte-for-byte the same
+ * product and the same file name. Measured 2026-09-14:
+ *
+ *   data/OBS/SYNOP/synop_2026.csv.gz            written 2026-09-14T07:00Z
+ *                                               newest observation 09-13T21:00Z
+ *   data/synchro_ftp/OBS/SYNOP/synop_2026.csv.gz written 2026-09-09T05:41Z
+ *                                               newest observation 09-08T21:00Z
+ *
+ * **The `OBS` subtree under `synchro_ftp` stopped being written on 2026-09-09**
+ * — SYNOP, BOUEES and NIVOSE all carry that same 05:41 timestamp, while the
+ * `data/OBS/` copies of the three were written this morning between 06:30 and
+ * 07:02. It is the OBS subtree and not the tree: `synchro_ftp/BASE/
+ * METADONNEES_STATION/fiches.json`, which the build reads, was updated at 05:41
+ * TODAY. This module read the frozen copy until 2026-09-14, so every "live"
+ * card served a five-day-old reading with no way for a reader to tell, and the
+ * gap grows by a day every day — exactly the shape of the OpenDataSoft failure
+ * in trap 4: a mirror that answers 200 forever.
+ *
+ * The other half of the measurement matters as much: **this product is not
+ * hourly.** 382 344 rows over 190 stations and 251 days is 8 observations per
+ * station per day — the three-hourly synoptic hours — consolidated into the
+ * yearly file once each morning. So the freshest keyless French observation is
+ * between 11 and 35 hours old depending on when it is asked for, and no cache
+ * setting can improve on that. Anything nearer to now needs the Météo-France
+ * API key — see `docs/meteofrance-api-access.md`.
  *
  * @module data/meteoStationsFrFeed
  */
@@ -119,8 +153,12 @@ export const FICHES_URL = 'https://meteofrance.s3.sbg.io.cloud.ovh.net/data/sync
  * and caches. That cost is deliberate and is why the fetch is LAZY — see
  * `SYNOP_CACHE_MS` and the `/api/meteo-stations/observations` handler. The alternative
  * was a mirror that has been seven months stale since January (trap 3).
+ *
+ * **`data/OBS/` and NOT `data/synchro_ftp/OBS/` — see trap 6.** The bucket
+ * carries the same product under two prefixes and only one of them is still
+ * being written.
  */
-export const SYNOP_ARCHIVE_URL = 'https://meteofrance.s3.sbg.io.cloud.ovh.net/data/synchro_ftp/OBS/SYNOP/synop_%YEAR%.csv.gz';
+export const SYNOP_ARCHIVE_URL = 'https://meteofrance.s3.sbg.io.cloud.ovh.net/data/OBS/SYNOP/synop_%YEAR%.csv.gz';
 
 /**
  * A station's *fiche climatologique*: 1991-2020 normals and the records held at
@@ -132,8 +170,18 @@ export const SYNOP_ARCHIVE_URL = 'https://meteofrance.s3.sbg.io.cloud.ovh.net/da
  */
 export const FICHECLIM_URL = 'https://meteofrance.s3.sbg.io.cloud.ovh.net/data/synchro_ftp/REF_STATION/FICHECLIM_%ID%.data';
 
-/** How long a fetched SYNOP tail stays warm. Upstream writes hourly. */
-export const SYNOP_CACHE_MS = 3_600_000;
+/**
+ * How long a fetched SYNOP tail stays warm.
+ *
+ * Six hours, and the number comes from the product's own cadence rather than
+ * from caution: the yearly file is a DAILY consolidation of three-hourly
+ * observations — 382 344 rows over 190 stations and 251 days is exactly 8 per
+ * station per day — written once each morning around 07:00 UTC and carrying
+ * observations through the previous evening (trap 6). Refetching 23 MB hourly
+ * bought nothing but Météo-France's bandwidth; at six hours the proxy still
+ * picks up the daily write within a quarter of the interval it lags by.
+ */
+export const SYNOP_CACHE_MS = 21_600_000;
 
 /** How long a parsed fiche climatologique stays warm. It moves once a year. */
 export const NORMALS_CACHE_MS = 86_400_000;

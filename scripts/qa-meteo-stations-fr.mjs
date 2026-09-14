@@ -4,22 +4,20 @@
  *
  * The network is a SHIPPED file, so unlike the live layers there is nothing to
  * intercept — this harness reads the same `stations.json` the browser does and
- * proves the six things only a real Cesium scene can prove:
+ * proves the five things only a real Cesium scene can prove:
  *
- *   i.   all 2 144 stations reach the globe, and the layer reports the
- *        network's own totals rather than the marker count
+ *   i.   THE GATE: the 190 stations that publish reach the globe and the 1 954
+ *        that do not are absent from the scene, while the layer keeps reporting
+ *        the network's own totals and what it withheld
  *   ii.  colour is the measured class: the palette on screen matches what each
- *        station's inventory says it can measure, and the six undocumented
- *        stations are grey rather than empty
- *   iii. the VENT chip deletes 60 % of the map — the layer's whole argument,
- *        read off the rendered primitives rather than off the model
- *   iv.  a live station is drawn with its ring and a silent one is not, and the
- *        190 rings are not the 62 the SYNOP list names
- *   v.   clicking a station opens a card, and clicking a station that does not
- *        publish still opens a full one
- *   vi.  markers stand ON the terrain — this network holds the three highest
- *        instruments in France and an unclamped point at 3 845 m slides across
- *        the map as the camera pans
+ *        station's inventory says it can measure, including the eight drawn
+ *        stations that are not complete synoptic ones
+ *   iii. every drawn marker wears the ring that promises a public reading, and
+ *        the ring count is the archive's 190 and not the list's 62
+ *   iv.  clicking a station opens a card, and the observation the proxy serves
+ *        comes from the archive prefix that is still being written
+ *   v.   markers stand ON the terrain — an unclamped point at MONT AIGOUAL's
+ *        1 567 m slides across the map as the camera pans
  *
  * Screenshots are written under the gitignored `qa-shots/meteo-stations/`.
  *
@@ -72,12 +70,18 @@ const PREFIX = 'meteo-station:';
 /** The palette, restated rather than imported: a QA harness asserts, it doesn't style. */
 const SYNOPTIC = '#7ee8fa';
 const TEMP_RAIN = '#ffd166';
-const UNKNOWN = '#5c6b7a';
 const LIVE_RING = '#e8f6ff';
 
-/** A view holding all of metropolitan France, and one holding the Mont-Blanc massif. */
+/**
+ * A view holding all of metropolitan France, and one holding the Mont Aigoual.
+ *
+ * The clamp used to be proved on the AIGUILLE DU MIDI at 3 845 m, the highest
+ * instrument in France — which does not publish, so the gate no longer draws
+ * it. MONT AIGOUAL at 1 567 m is the highest station that does, and 1 567 m of
+ * unclamped drift is still 1 567 m of drift.
+ */
 const FRANCE = { lon: 2.6, lat: 46.6, height: 2_200_000 };
-const CHAMONIX = { lon: 6.887, lat: 45.879, height: 40_000 };
+const AIGOUAL = { lon: 3.5817, lat: 44.1214, height: 40_000 };
 
 const failures = [];
 function check(label, condition, detail = '') {
@@ -229,6 +233,24 @@ async function pointerClick(page, x, y) {
 }
 
 /**
+ * Wait for a source to paint, rather than reading once and hoping.
+ *
+ * The card is painted synchronously on selection, but the overlay SOLVER runs
+ * on its own pass, so a single read right after the click races it. Measured
+ * on 2026-09-14: the same click reported 0 painted entries on one run and 1 on
+ * the next, the only difference being one extra probe's worth of delay.
+ * @returns {Promise<number>} Entries painted by that source, 0 if it never did.
+ */
+async function waitForPaint(page, source, attempts = 12) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const painted = await paintedBySource(page);
+    if ((painted[source] || 0) > 0) return painted[source];
+    await pump(page, 3, 120);
+  }
+  return 0;
+}
+
+/**
  * How many entries each overlay source actually PAINTED.
  *
  * The cards are drawn to a canvas, not to the DOM, so a browser proof can
@@ -238,13 +260,6 @@ async function pointerClick(page, x, y) {
  */
 function paintedBySource(page) {
   return page.evaluate(() => window.__gevWorldOverlay?.getDiagnostics?.()?.paintedBySource || {});
-}
-
-async function setFilter(page, filter) {
-  await page.evaluate((layerId, value) => {
-    window.__godsEyeView.dataManager.layers.get(layerId).module.setParams({ filter: value });
-  }, LAYER_ID, filter);
-  await pump(page, 4);
 }
 
 async function main() {
@@ -297,16 +312,27 @@ async function main() {
       await pump(page, 3, 60);
       await sleep(400);
       probe = await sceneProbe(page);
-      if (probe.registered && probe.collectionFound && probe.points.length > 2000) break;
+      if (probe.registered && probe.collectionFound
+        && probe.points.length >= REGISTRY.stats.live) break;
     }
     if (!probe?.registered) throw new Error(`${LAYER_ID} never registered into the data manager`);
     check('the point collection reached the scene', probe.collectionFound);
-    check(`${REGISTRY.stations.length} markers are drawn`,
-      probe.points.length === REGISTRY.stations.length, `${probe.points.length} drawn`);
-    check('the network\'s own totals are reported',
+    check(`exactly ${REGISTRY.stats.live} markers are drawn — the stations that publish`,
+      probe.points.length === REGISTRY.stats.live, `${probe.points.length} drawn`);
+    // The gate, read off the SCENE and not off the model: no marker on the
+    // globe may belong to a station whose readings are behind the key.
+    const silentIds = new Set(REGISTRY.stations.filter((s) => !s.live).map((s) => s.id));
+    const leaked = probe.points.filter((point) => silentIds.has(point.id.slice(PREFIX.length)));
+    check('no station that publishes nothing reaches the globe',
+      leaked.length === 0, `${leaked.length} leaked`);
+    check('the network\'s own totals are reported, whatever the gate hides',
       probe.stats.stations === REGISTRY.stats.stations
       && probe.stats.metropole + probe.stats.overseas === probe.stats.stations,
       `${probe.stats.stations} stations`);
+    check('and what was withheld is named rather than silently dropped',
+      probe.stats.withheld === REGISTRY.stats.stations - REGISTRY.stats.live
+      && /clé/.test(probe.stats.withheldReason || ''),
+      `${probe.stats.withheld} withheld`);
     check('what publishes and what is merely listed stay separable',
       probe.stats.live === REGISTRY.stats.live
       && probe.stats.listedSynop === REGISTRY.stats.synop
@@ -315,69 +341,73 @@ async function main() {
     await shoot(page, '01-france.png');
 
     console.log('[qa] ii. colour is the measured class');
+    const published = REGISTRY.stations.filter((s) => s.live);
     const drawn = new Map(probe.points.map((point) => [point.id.slice(PREFIX.length), point]));
     const toulouse = drawn.get(byName('TOULOUSE-BLAGNAC').id);
-    const alba = drawn.get(byName('ALBA LA ROMAINE').id);
     check('a complete synoptic station is drawn in the synoptic colour',
       toulouse?.color === SYNOPTIC, toulouse?.color);
-    check('a station with no published inventory is grey, not absent and not empty',
-      alba?.color === UNKNOWN, alba?.color);
-    const tempRain = REGISTRY.stations.filter((s) => s.klass === 'temp-rain');
-    const tempRainDrawn = tempRain.filter((s) => drawn.get(s.id)?.color === TEMP_RAIN);
-    check('every temperature-and-rain station carries that colour',
-      tempRainDrawn.length === tempRain.length,
-      `${tempRainDrawn.length} of ${tempRain.length}`);
-    check('the majority of the map is that colour — the layer\'s argument, on screen',
-      tempRain.length > REGISTRY.stations.length / 2,
-      `${tempRain.length} of ${REGISTRY.stations.length}`);
-    // Size must track the instrument count, not the altitude or the pack.
-    const richest = REGISTRY.stations.reduce(
-      (best, s) => ((s.fam?.length || 0) > (best.fam?.length || 0) ? s : best), REGISTRY.stations[0],
+    // The gate removes the grey and the hollow from the map — both belong to
+    // stations that publish nothing — so what has to be proved here is the
+    // opposite: the eight drawn stations that are NOT complete keep their own
+    // colours instead of being flattened into the majority.
+    const exceptions = published.filter((s) => s.klass !== 'synoptic');
+    const exceptionsPainted = exceptions.filter(
+      (s) => drawn.get(s.id) && drawn.get(s.id).color !== SYNOPTIC,
     );
-    check('the best-instrumented station is drawn larger than a two-instrument poste',
-      drawn.get(richest.id)?.pixelSize > drawn.get(tempRain[0].id)?.pixelSize,
-      `${drawn.get(richest.id)?.pixelSize}px vs ${drawn.get(tempRain[0].id)?.pixelSize}px`);
+    check('the stations that are not complete keep their own colour',
+      exceptions.length > 0 && exceptionsPainted.length === exceptions.length,
+      `${exceptionsPainted.length} of ${exceptions.length}`);
+    const capBear = drawn.get(byName('CAP BEAR').id);
+    check('CAP BEAR publishes and measures neither wind nor pressure — drawn as such',
+      capBear?.color === TEMP_RAIN, capBear?.color);
+    // Size must track the instrument count, not the altitude or the pack.
+    const richest = published.reduce(
+      (best, s) => ((s.fam?.length || 0) > (best.fam?.length || 0) ? s : best), published[0],
+    );
+    const poorest = published.reduce(
+      (worst, s) => ((s.fam?.length || 0) < (worst.fam?.length || 0) ? s : worst), published[0],
+    );
+    check('the best-instrumented station is drawn larger than the poorest one',
+      drawn.get(richest.id)?.pixelSize > drawn.get(poorest.id)?.pixelSize,
+      `${drawn.get(richest.id)?.pixelSize}px vs ${drawn.get(poorest.id)?.pixelSize}px`);
 
-    console.log('[qa] iii. a live station wears a ring, a silent one does not');
+    console.log('[qa] iii. every drawn marker wears the ring that promises a reading');
     const boulogne = drawn.get(byName('BOULOGNE-SEM').id);
-    const capCepet = drawn.get(byName('CAP CEPET').id);
-    check('BOULOGNE-SEM publishes hourly and is ringed, though the SYNOP list omits it',
+    check('BOULOGNE-SEM publishes and is ringed, though the SYNOP list omits it',
       boulogne?.outline === LIVE_RING, boulogne?.outline);
-    check('CAP CEPET is on that list, has written nothing all year, and gets no ring',
-      capCepet && capCepet.outline !== LIVE_RING, capCepet?.outline);
+    check('CAP CEPET is on that list, has written nothing all year, and is not on the globe',
+      !drawn.has(byName('CAP CEPET').id));
     const ringed = probe.points.filter((point) => point.outline === LIVE_RING);
-    check('the rings count the archive, not the list',
-      ringed.length === REGISTRY.stats.live, `${ringed.length} rings for ${REGISTRY.stats.live} live`);
+    check('the rings count the archive, not the list, and now they are the whole map',
+      ringed.length === REGISTRY.stats.live && ringed.length === probe.points.length,
+      `${ringed.length} rings for ${probe.points.length} markers`);
+    // The two stations the layer used to be loudest about. Neither publishes,
+    // so neither is drawn — the hollow disc and the neutral grey are dormant,
+    // and this asserts the gate rather than the absence of the rule.
+    check('MARSILLARGUES, closed and still listed by Météo-France, is not drawn',
+      !drawn.has(byName('MARSILLARGUES').id));
+    check('ALBA LA ROMAINE, in no metadata file at all, is not drawn',
+      !drawn.has(byName('ALBA LA ROMAINE').id));
 
-    console.log('[qa] iii-bis. a closed station is drawn hollow, not dropped');
-    const marsillargues = drawn.get(byName('MARSILLARGUES').id);
-    check('MARSILLARGUES closed on 2026-01-01 and is still drawn',
-      Boolean(marsillargues));
-    check('and it is drawn hollow', marsillargues && marsillargues.alpha < 0.3,
-      `alpha ${marsillargues?.alpha}`);
+    console.log('[qa] iii-bis. the row offers no chips it cannot honour');
+    const controls = await page.evaluate((layerId) => {
+      const module = window.__godsEyeView.dataManager.layers.get(layerId)?.module;
+      const value = module?.getRowControls?.() || null;
+      return {
+        chips: (value?.chips || []).length,
+        legend: (value?.legend || []).map((entry) => entry.label),
+        hasSetParams: typeof module?.setParams === 'function',
+      };
+    }, LAYER_ID);
+    check('no filter chips — the three it used to carry kept 187 to 190 of 190',
+      controls.chips === 0, `${controls.chips} chips`);
+    check('and no runtime params behind them', controls.hasSetParams === false);
+    check('the legend still names the classes on screen',
+      controls.legend.includes('Synoptique complète'), controls.legend.join(', '));
+    check('and it no longer claims a ring that every marker wears',
+      !controls.legend.includes('Anneau = relevés publics'));
 
-    console.log('[qa] iv. the VENT chip deletes most of the map');
-    await setFilter(page, 'wind');
-    const windProbe = await sceneProbe(page);
-    check('fewer than half the markers survive the wind filter',
-      windProbe.points.length < probe.points.length / 2,
-      `${windProbe.points.length} of ${probe.points.length}`);
-    check('and it is exactly the stations with an anemometer',
-      windProbe.points.length === REGISTRY.stats.byFamily.wind,
-      `${windProbe.points.length} vs ${REGISTRY.stats.byFamily.wind}`);
-    check('the network\'s totals are untouched by a display filter',
-      windProbe.stats.stations === REGISTRY.stats.stations
-      && windProbe.stats.hidden === probe.points.length - windProbe.points.length);
-    await shoot(page, '02-vent.png');
-
-    await setFilter(page, 'live');
-    const liveProbe = await sceneProbe(page);
-    check('the RELEVÉS chip leaves exactly the stations that publish',
-      liveProbe.points.length === REGISTRY.stats.live, `${liveProbe.points.length} drawn`);
-    await shoot(page, '03-releves.png');
-    await setFilter(page, 'all');
-
-    console.log('[qa] v. clicking a station opens a card');
+    console.log('[qa] iv. clicking a station opens a card');
     const observationsLive = await page.evaluate(async () => {
       try {
         const response = await fetch('/api/meteo-stations/status');
@@ -389,24 +419,18 @@ async function main() {
       console.log('  · /api/meteo-stations is a dev-server middleware — live readings not testable here');
     }
 
-    // A station that does NOT publish must still open a full card: everything
-    // that identifies it is in the shipped pack.
+    // A station that does NOT publish has no marker to click. Proved by flying
+    // to one and finding nothing: that is the whole change, and a reader who
+    // never learns such a station exists is the intended outcome.
     const silent = REGISTRY.stations.find(
       (s) => !s.live && Array.isArray(s.fam) && s.fam.length >= 2 && s.dep === '01',
     ) || REGISTRY.stations.find((s) => !s.live && Array.isArray(s.fam));
     await setView(page, silent.lon, silent.lat, 30_000);
     await pump(page, 6);
     let at = await markerAt(page, `${PREFIX}${silent.id}`);
-    check(`${silent.name} is on screen to be clicked`, Boolean(at), JSON.stringify(at));
-    if (at) {
-      await pointerClick(page, at.x, at.y);
-      await pump(page, 6);
-      const painted = await paintedBySource(page);
-      check('a station that publishes nothing still opens a card',
-        (painted['meteo-stations-fr-selected'] || 0) > 0,
-        JSON.stringify(painted['meteo-stations-fr-selected']));
-      await shoot(page, '04-carte-station-muette.png');
-    }
+    check(`${silent.name} measures and publishes nothing, so there is nothing to click`,
+      at === null || at === undefined, JSON.stringify(at));
+    await shoot(page, '04-station-muette-absente.png');
 
     if (observationsLive) {
       // The headline feature: a station that publishes gets its last hour's
@@ -422,6 +446,16 @@ async function main() {
         reading.stations === REGISTRY.stats.live, `${reading.stations} stations`);
       check('and it carries a reading for a station the SYNOP list omits',
         Boolean(reading.mine?.at), JSON.stringify(reading.mine)?.slice(0, 80));
+      // The reading must come from the prefix that is still being written. The
+      // frozen `synchro_ftp` copy answers 200 forever and its newest row ages
+      // by a day every day, so a fixed threshold is what catches it: 3 days is
+      // wider than the product's own 11-to-35-hour lag and far narrower than a
+      // mirror that has stopped. See trap 6 in `meteoStationsFrFeed.js`.
+      const lagHours = reading.newest
+        ? (Date.now() - Date.parse(reading.newest)) / 3_600_000 : Infinity;
+      check('the newest observation is days old, not weeks — the live archive prefix',
+        Number.isFinite(lagHours) && lagHours < 72,
+        `${Number.isFinite(lagHours) ? lagHours.toFixed(0) : '∞'} h old (${reading.newest})`);
 
       const live = byName('BOULOGNE-SEM');
       await setView(page, live.lon, live.lat, 30_000);
@@ -433,14 +467,13 @@ async function main() {
         await pump(page, 10, 150);
         await sleep(1500);
         await pump(page, 6);
-        const painted = await paintedBySource(page);
-        check('a station that publishes opens a card too',
-          (painted['meteo-stations-fr-selected'] || 0) > 0);
+        const painted = await waitForPaint(page, 'meteo-stations-fr-selected');
+        check('a station that publishes opens a card too', painted > 0);
         await shoot(page, '06-carte-station-live.png');
       }
     }
 
-    console.log('[qa] vi. markers stand on the terrain, not under it');
+    console.log('[qa] v. markers stand on the terrain, not under it');
     // Two different reasons the clamp can be untestable, and they are NOT the
     // same as it being broken:
     //   · `/api/terrain/heights` is a DEV SERVER middleware, so a run against
@@ -452,10 +485,10 @@ async function main() {
     // upstream outage would teach whoever reads it to ignore this check.
     const terrainProbe = async () => page.evaluate(async () => {
       try {
-        // Points inside the Mont-Blanc massif that no earlier probe warmed, so
-        // a cached hit cannot make a failing upstream look healthy.
+        // Points inside the Aigoual massif that no earlier probe warmed, so a
+        // cached hit cannot make a failing upstream look healthy.
         const response = await fetch(
-          '/api/terrain/heights?points=6.8631,45.8339;6.9219,45.9012;6.8009,45.8551',
+          '/api/terrain/heights?points=3.5431,44.1002;3.6122,44.1411;3.5019,44.1553',
         );
         const body = await response.json();
         return Array.isArray(body?.results)
@@ -467,29 +500,29 @@ async function main() {
     if (!(await terrainProbe())) {
       console.log('  · /api/terrain/heights unavailable — clamp not testable in this run');
     } else {
-      await setView(page, CHAMONIX.lon, CHAMONIX.lat, CHAMONIX.height);
-      const aiguilleId = `${PREFIX}${byName('AIGUILLE DU MIDI').id}`;
+      await setView(page, AIGOUAL.lon, AIGOUAL.lat, AIGOUAL.height);
+      const aigoualId = `${PREFIX}${byName('MONT AIGOUAL').id}`;
       let clamped = null;
       for (let attempt = 0; attempt < 25 && !clamped; attempt += 1) {
         await pump(page, 4, 100);
         await sleep(400);
         const near = await sceneProbe(page);
-        const aiguille = near.points.find((point) => point.id === aiguilleId);
-        if (aiguille && aiguille.height > 1000) clamped = aiguille;
+        const aigoual = near.points.find((point) => point.id === aigoualId);
+        if (aigoual && aigoual.height > 500) clamped = aigoual;
       }
       if (!clamped && !(await terrainProbe())) {
         // It resolved nothing AND the DEM has since started failing: that is
         // the outage, not the layer.
         console.log('  · the terrain DEM began failing mid-run — clamp not testable');
       } else {
-        // The published altitude is 3 845 m; the clamp puts the marker on the
+        // The published altitude is 1 567 m; the clamp puts the marker on the
         // terrain under it, which the DEM will not place at exactly that
-        // height. Measured 2026-09-02: 3 810,7 m ellipsoidal.
-        check('the Aiguille du Midi marker is lifted onto the terrain, not left on the ellipsoid',
-          clamped && clamped.height > 2500,
+        // height. A marker left on the ellipsoid sits near 0.
+        check('the Mont Aigoual marker is lifted onto the terrain, not left on the ellipsoid',
+          clamped && clamped.height > 1000,
           clamped ? `${clamped.height.toFixed(0)} m` : 'never clamped');
       }
-      await shoot(page, '05-aiguille-du-midi.png');
+      await shoot(page, '05-mont-aigoual.png');
     }
 
     const fatal = consoleErrors.filter(

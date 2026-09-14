@@ -10,7 +10,6 @@ import {
 } from '../overlays/worldOverlay.js';
 import { pickOverlayLabelId } from './overlayLabelPick.js';
 import {
-  FAMILY_BY_KEY,
   FAMILY_KEYS,
   POSTE_TYPES,
   STATION_CLASSES,
@@ -21,8 +20,8 @@ import {
 } from './meteoStationsFrFeed.js';
 
 /**
- * Stations météo (FR) — where France measures the weather, and what each
- * instrument can actually tell you.
+ * Stations météo (FR) — the French stations whose readings are public, and what
+ * each instrument can actually tell you.
  *
  * This layer exists because the globe already showed the weather three times —
  * Open-Meteo's conditions in the cockpit, Météo-France's vigilance colours per
@@ -30,61 +29,62 @@ import {
  * numbers come from**. A vigilance map is an interpretation of readings taken
  * somewhere; this is the somewhere.
  *
- * **2 144 stations** in Météo-France's real-time observation network, 1 818 in
- * metropolitan France and 326 overseas, from the tide line to the Aiguille du
- * Midi at 3 845 m — the highest weather station in the country, with La
- * Meije-Nivôse at 3 093 m and Bellecôte-Nivôse at 2 992 m behind it.
+ * ── What is drawn: 190 stations out of 2 144 ────────────────────────────────
+ *
+ * Météo-France's real-time network is **2 144 stations**. **190 of them publish
+ * their observations in the open. The other 1 954 are measuring right now and
+ * their readings sit behind a Météo-France API key.** This layer draws the 190.
+ *
+ * It used to draw all 2 144, with a chip to filter down to the ones that
+ * publish, and that was the wrong default: nine markers in ten answered a click
+ * with an explanation of why they had nothing to say. A dot on a map is a
+ * promise that clicking it tells you something, so the gate belongs at the data
+ * and not at the card. `SHOW_ONLY_PUBLISHING` is that gate and it is one
+ * boolean: the shipped pack still carries the whole network, so a deployment
+ * that holds a key flips it back and draws all 2 144 without a rebuild. See
+ * `docs/meteofrance-api-access.md`, which is the contract that would make that
+ * worth doing.
+ *
+ * `getStats()` reports the 1 954 it withholds, every time. Hiding stations is a
+ * display choice; pretending the network is 190 stations would be a lie about
+ * France.
+ *
+ * ── How old the readings are, which is the question this layer must answer ──
+ *
+ * The keyless observation product is the SYNOP yearly archive, and it is **not
+ * hourly**: three-hourly observations, consolidated once each morning around
+ * 07:00 UTC, carrying through the previous evening. So a card opened today
+ * shows a reading **11 to 35 hours old**, and it prints that reading's own
+ * timestamp rather than the word "now". Nothing in this project can improve on
+ * that figure — only a key can. Measured 2026-09-14; see trap 6 in
+ * `meteoStationsFrFeed.js`, which is also where the five-day-stale mirror this
+ * module read until that date is written down.
  *
  * ── What a marker means, and why they are not all the same colour ───────────
  *
- * A reader turning this layer on expects 2 144 identical instruments, each
- * knowing the temperature, the wind, the pressure and the humidity. That is not
- * what France has. Measured against Météo-France's own per-station inventory:
- *
- *   **1 254 of the 2 144 — 58 % — measure temperature and rain, and nothing
- *   else.** 565 add the wind. Only **228** measure the five parameters the word
- *   "weather station" means to a reader, and only **845 of 2 144 can tell you
- *   which way the wind is blowing at all.** 234 have a barometer.
- *
- * So colour is capability, not decoration: it is the answer to "can this dot
- * tell me what I am about to ask it". Size is the number of instrument families
- * the station carries, one to fourteen, so a station that measures the sea
- * state, the road surface and the snow depth reads as the instrument it is.
- * The card names every family in words, because colour alone must never carry
- * the meaning.
- *
- * ── The live half: 190 stations publish, and the list says 62 ───────────────
- *
- * A **ring** around a marker means that station's readings are published in the
- * open, and clicking it fetches the last hour's observation — temperature, wind,
- * gust, pressure, humidity, rain, visibility, snow. There are **190 of them**,
- * and Météo-France's own *liste des stations SYNOP* names **62**: Boulogne, Le
- * Touquet, Dunkerque, Dieppe, Beauvais-Tillé, Ouessant-Stiff and 123 others
- * publish hourly without appearing on the list that is supposed to name them.
- * The list is wrong the other way too — **CAP CEPET is named and has written
- * nothing all year** — so the layer counts what the archive contains, never what
- * the list claims. See trap 3 in `meteoStationsFrFeed.js`.
- *
- * The other 1 954 stations are measuring right now and publishing nothing a
- * visitor can read without a Météo-France API key. The card says that plainly
- * rather than showing an empty reading, because "no data here" and "this station
- * does not publish" are different sentences.
+ * Colour is capability — what the instrument can answer — and size is the
+ * number of instrument families it carries, one to fourteen. Across the whole
+ * network that split is dramatic: **1 254 of the 2 144 measure temperature and
+ * rain and nothing else**, and only 845 can say which way the wind is blowing.
+ * Across the 190 drawn here it is nearly uniform — **182 are synoptic, 189 have
+ * an anemometer, 187 a barometer** — which is the same fact read from the other
+ * end: the stations France publishes are the complete ones. The palette stays
+ * because the eight exceptions are real and a reader is entitled to see them
+ * before clicking, and the card names every family in words, because colour
+ * alone must never carry the meaning.
  *
  * ── Honesty rules this layer is built around ────────────────────────────────
  *
- * • **Seven stations in the live list are closed.** MARSILLARGUES since
- *   2026-01-01, DESHAIES GENDARMERIE since 2024-10-01, ST JOSEPH-CIRAD and TAN
- *   ROUGE-CIRAD since 2023-03-29, DEMBENI and MAMOUDZOU_SAPC since 2025-04-01,
- *   BASSE-TERRE GUILLARD since 2026-02-11. Météo-France's own metadata says so
- *   and its own real-time list still carries them. They are drawn hollow and the
- *   card leads with the closure date — dropping them would hide a fact about the
- *   network under a tidier map.
+ * • **The 1 954 withheld stations are named in `getStats()`, never drawn.** The
+ *   card for a station that does not publish is still written and still says
+ *   "API Météo-France sur clé" rather than "no data" — it is reachable the
+ *   moment the gate is flipped, and the two sentences are different facts.
  *
- * • **Six stations have no published inventory at all.** ALBA LA ROMAINE,
- *   SOULAINES, TARASCON, PIOGGIOLA, QUERCITELLO and MURAT SUR VEBRE appear in
- *   the real-time list and in no metadata file. They are drawn in the neutral
- *   grey this project uses for "the publisher did not say", never as stations
- *   that measure nothing.
+ * • **Seven stations in the real-time list are closed and six have no published
+ *   inventory.** MARSILLARGUES since 2026-01-01, ALBA LA ROMAINE in no metadata
+ *   file at all. None of the thirteen publishes, so none of them is drawn under
+ *   the gate — the hollow disc and the neutral grey that say so are dormant, not
+ *   deleted, for exactly the same reason the withheld stations stay in the pack.
  *
  * • **This is the real-time network, not the register.** France has 14 751
  *   climatological postes back to 1806, of which 2 404 are open, plus 699
@@ -170,28 +170,37 @@ export const METEO_STATIONS_SELECTED_OVERLAY_SOURCE_OPTIONS = Object.freeze({
 });
 
 /**
- * The filters the row's chips offer.
+ * The gate: draw a station only if its readings are published in the open.
  *
- * RUNTIME filters, not build ones: the shipped file always holds the whole
- * network, so a chip hides markers rather than losing them, and the stats line
- * keeps reporting what was hidden. Each one answers a question a reader
- * actually arrives with, and the counts are what makes the layer's argument
- * visible — pressing VENT deletes 60 % of the map.
+ * A RUNTIME gate over the full shipped pack, not a build-time one. The file
+ * keeps all 2 144 stations — 660 KB against 72 KB, paid once, only when the
+ * layer is switched on — so that a deployment holding a Météo-France key can
+ * flip this constant and draw the whole network with the same artifact. That
+ * is the entire cost of keeping the door open; see
+ * `docs/meteofrance-api-access.md`.
+ *
+ * What it removes, measured on the 2026-09-02 pack: 1 954 stations, among them
+ * all 7 closed ones and all 6 with no published inventory. What it leaves: 190,
+ * every one of which answers a click with a reading.
  */
-export const METEO_STATION_FILTERS = Object.freeze([
-  Object.freeze({ id: 'all', label: 'TOUT', test: null }),
-  Object.freeze({
-    id: 'wind', label: 'VENT', family: 'wind',
-    test: (station) => station.fam?.includes('wind'),
-  }),
-  Object.freeze({
-    id: 'pressure', label: 'PRESSION', family: 'pressure',
-    test: (station) => station.fam?.includes('pressure'),
-  }),
-  Object.freeze({
-    id: 'live', label: 'RELEVÉS', test: (station) => station.live === true,
-  }),
-]);
+export const SHOW_ONLY_PUBLISHING = true;
+
+/**
+ * The stations the layer may draw, out of a loaded pack.
+ *
+ * Two rejections and they are different: a row without a position cannot be
+ * placed, and a station that publishes nothing has nothing to say. Both are
+ * here rather than inline in `update()` so a test can state the gate without a
+ * viewer.
+ * @param {Array<object>|null|undefined} stations
+ * @returns {Array<object>}
+ */
+export function drawableStations(stations) {
+  const placed = (Array.isArray(stations) ? stations : []).filter(
+    (station) => Number.isFinite(station?.lat) && Number.isFinite(station?.lon),
+  );
+  return SHOW_ONLY_PUBLISHING ? placed.filter((station) => station?.live === true) : placed;
+}
 
 /**
  * Disc size in pixels, by how many instrument families the station carries.
@@ -447,12 +456,15 @@ export function stationLegend(stations) {
     const style = STATION_CLASSES[key];
     legend.push({ label: style.label, color: style.color, count, blurb: style.blurb });
   }
-  if (live) {
+  // Only when the set is MIXED. Under `SHOW_ONLY_PUBLISHING` every drawn
+  // station is ringed, and a legend row that describes all of them describes
+  // none of them.
+  if (live && live < stations.length) {
     legend.push({
       label: 'Anneau = relevés publics',
       color: LIVE_RING_COLOR,
       count: live,
-      blurb: 'Observation horaire lisible sans clé. Météo-France en liste 62 ; '
+      blurb: 'Observation lisible sans clé. Météo-France en liste 62 ; '
         + 'son archive en contient 190, et la couche compte l’archive.',
     });
   }
@@ -528,14 +540,12 @@ export function createMeteoStationsFranceLayer({
   let _clickHandler = null;
   let _registry = null;
   let _stations = [];
-  let _visible = [];
   let _records = new Map();
   let _selectedId = null;
   let _enabled = false;
   let _loading = false;
   let _lastUpdate = null;
   let _lastError = null;
-  let _filterId = 'all';
   let _rowControlsListener = null;
   let _labelEntries = [];
   let _cameraRemovers = [];
@@ -556,11 +566,6 @@ export function createMeteoStationsFranceLayer({
     );
   }
 
-  function applyFilter() {
-    const filter = METEO_STATION_FILTERS.find((entry) => entry.id === _filterId);
-    _visible = filter?.test ? _stations.filter((station) => filter.test(station)) : _stations;
-  }
-
   function repaint() {
     if (!_points) return;
     // Everything a clamp pass was about to write into belongs to the
@@ -570,7 +575,7 @@ export function createMeteoStationsFranceLayer({
     _records = new Map();
     const entries = [];
 
-    for (const station of _visible) {
+    for (const station of _stations) {
       const position = markerPosition(station.lat, station.lon);
       const id = renderId(station.id);
       const color = stationColor(station);
@@ -995,18 +1000,15 @@ export function createMeteoStationsFranceLayer({
           return false;
         }
         _registry = payload;
-        _stations = payload.stations.filter(
-          (station) => Number.isFinite(station?.lat) && Number.isFinite(station?.lon),
-        );
-        applyFilter();
+        _stations = drawableStations(payload.stations);
         _lastUpdate = Date.now();
         _lastError = null;
         repaint();
         _rowControlsListener?.();
         console.log(
-          `[Data:Stations météo] ${_stations.length} stations, `
-          + `${payload.stats?.live ?? 0} avec relevés publics, `
-          + `${payload.stats?.byFamily?.wind ?? 0} avec anémomètre`,
+          `[Data:Stations météo] ${_stations.length} stations à relevés publics, `
+          + `${(payload.stats?.stations ?? 0) - _stations.length} retenues `
+          + 'derrière la clé Météo-France',
         );
         return true;
       } catch (error) {
@@ -1036,7 +1038,6 @@ export function createMeteoStationsFranceLayer({
       _records = new Map();
       _registry = null;
       _stations = [];
-      _visible = [];
       _labelEntries = [];
       _floorToken += 1;
       _selectedId = null;
@@ -1047,54 +1048,25 @@ export function createMeteoStationsFranceLayer({
       _normals.clear();
     },
 
-    /**
-     * Runtime params. `filter` hides stations without losing them: the shipped
-     * file always carries the whole network and `getStats()` keeps reporting
-     * the totals.
-     * @param {{filter?: string}} [params]
-     * @returns {boolean}
-     */
-    setParams(params = {}) {
-      if (params.filter === undefined) return false;
-      const next = METEO_STATION_FILTERS.find((entry) => entry.id === params.filter);
-      if (!next || next.id === _filterId) return false;
-      _filterId = next.id;
-      applyFilter();
-      if (_selectedId && !_records.has(_selectedId)) clearSelection();
-      repaint();
-      _rowControlsListener?.();
-      return true;
-    },
-
     setRowControlsListener(listener) {
       _rowControlsListener = typeof listener === 'function' ? listener : null;
     },
 
+    /**
+     * No chips: the three the row used to carry — VENT, PRESSION, RELEVÉS —
+     * kept 189, 187 and 190 of the 190 stations now drawn. A control that
+     * removes one marker is decoration, and the fourth, TOUT, is the gate this
+     * layer no longer offers to open. The legend stays.
+     */
     getRowControls() {
-      const chips = METEO_STATION_FILTERS.map((filter) => {
-        const count = filter.test ? _stations.filter((s) => filter.test(s)).length : _stations.length;
-        return {
-          id: filter.id,
-          label: filter.label,
-          active: _filterId === filter.id,
-          state: _filterId === filter.id ? 'active' : 'idle',
-          title: filter.family
-            ? `${count} stations mesurent ${FAMILY_BY_KEY[filter.family].label}`
-              + ` sur ${_stations.length}`
-            : filter.id === 'live'
-              ? `${count} stations publient leurs relevés sans clé`
-              : `Tout le réseau temps réel — ${count} stations`,
-          params: { filter: filter.id },
-        };
-      });
-      return { chips, legend: stationLegend(_visible) };
+      return { chips: [], legend: stationLegend(_stations) };
     },
 
     getAnalystRecords(maxCount = 200) {
       if (!_enabled) return [];
       const limit = Number.isFinite(maxCount) ? Math.max(1, Math.floor(maxCount)) : 200;
       const out = [];
-      for (const station of _visible) {
+      for (const station of _stations) {
         if (out.length >= limit) break;
         out.push(mapStationAnalystRecord(station, out.length));
       }
@@ -1104,7 +1076,7 @@ export function createMeteoStationsFranceLayer({
     getStats() {
       const stats = _registry?.stats || null;
       return {
-        count: _visible.length,
+        count: _stations.length,
         lastUpdate: _lastUpdate,
         loading: _loading,
         error: _lastError,
@@ -1121,8 +1093,13 @@ export function createMeteoStationsFranceLayer({
         withFiche: stats?.fiche ?? null,
         byClass: stats?.byClass ?? null,
         byFamily: stats?.byFamily ?? null,
-        filter: _filterId,
-        hidden: _stations.length - _visible.length,
+        // The gate, stated every time the layer is asked. `count` is what a
+        // reader can click; `withheld` is what France measures and does not
+        // publish in the open.
+        withheld: Number.isFinite(stats?.stations) ? stats.stations - _stations.length : null,
+        withheldReason: SHOW_ONLY_PUBLISHING
+          ? 'relevés non publiés en accès libre — API Météo-France sur clé'
+          : null,
         // Licence Ouverte 2.0 obliges the producer AND the data's own date.
         generated: _registry?.generated ?? null,
         synopNewest: _registry?.synop?.newest ?? null,
