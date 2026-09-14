@@ -1,23 +1,23 @@
 // src/data/meteoStationsFrance.test.mjs
-// Covers the Stations météo LAYER: the palette that carries the layer's whole
-// argument, the card an instrument-poor station still gets, the ring that
-// promises a public reading, the filter chips, and the lifecycle — including
-// the laziness that keeps a 22 MB server-side fetch off the path of a reader
-// who never opens a card. The upstream shapes are pinned separately in
-// meteoStationsFrFeed.test.mjs.
+// Covers the Stations météo LAYER: the gate that keeps every marker clickable,
+// the palette, the card an instrument-poor station still gets, and the
+// lifecycle — including the laziness that keeps a 23 MB server-side fetch off
+// the path of a reader who never opens a card. The upstream shapes are pinned
+// separately in meteoStationsFrFeed.test.mjs.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   METEO_STATIONS_LAYER_ID,
   METEO_STATIONS_OVERLAY_SOURCE_ID,
-  METEO_STATION_FILTERS,
+  SHOW_ONLY_PUBLISHING,
   STATION_PIXEL_MAX,
   STATION_PIXEL_MIN,
   buildNormalsLines,
   buildObservationLines,
   buildStationCard,
   createMeteoStationsFranceLayer,
+  drawableStations,
   formatObservationTime,
   mapStationAnalystRecord,
   stationColor,
@@ -214,6 +214,8 @@ test('the observation time is a French hour, or nothing', () => {
 // ── Legend, analyst records, lifecycle ──────────────────────────────────────
 
 test('the legend explains the ring and the hollow disc, because colour alone cannot', () => {
+  // The WHOLE network — a mixed set, which is the only set those two rows
+  // describe. See the gated case below.
   const legend = stationLegend(REGISTRY.stations);
   const labels = legend.map((entry) => entry.label);
   assert.ok(labels.includes('Synoptique complète'));
@@ -223,6 +225,15 @@ test('the legend explains the ring and the hollow disc, because colour alone can
   assert.equal(ring.count, REGISTRY.stats.live);
   assert.match(ring.blurb, /190/);
   for (const entry of legend) assert.ok(entry.blurb && entry.color && entry.count > 0);
+});
+
+test('the ring row disappears when every drawn station is ringed', () => {
+  // A legend row that describes all 190 markers describes none of them.
+  const legend = stationLegend(drawableStations(REGISTRY.stations));
+  const labels = legend.map((entry) => entry.label);
+  assert.ok(labels.includes('Synoptique complète'));
+  assert.ok(!labels.includes('Anneau = relevés publics'));
+  assert.ok(!labels.includes('Disque creux = station fermée'));
 });
 
 test('an analyst can tell an undocumented station from an instrument-free one', () => {
@@ -290,7 +301,11 @@ test('the layer boots, loads the network and draws it', async () => {
 
   const stats = layer.getStats();
   assert.equal(stats.stations, REGISTRY.stats.stations);
-  assert.equal(stats.count, REGISTRY.stations.length);
+  // What is DRAWN is the publishing subset; what the network HOLDS is still
+  // reported, and the two numbers never merge into one.
+  assert.equal(stats.count, REGISTRY.stats.live);
+  assert.equal(stats.withheld, REGISTRY.stats.stations - REGISTRY.stats.live);
+  assert.match(stats.withheldReason, /clé/);
   assert.equal(stats.live, REGISTRY.stats.live);
   assert.equal(stats.listedSynop, REGISTRY.stats.synop);
   assert.equal(stats.error, null);
@@ -300,33 +315,35 @@ test('the layer boots, loads the network and draws it', async () => {
   assert.equal(primitives.length, 0);
 });
 
-test('a filter chip hides stations without losing the network behind them', async () => {
+test('the gate draws only the stations a click can answer', async () => {
+  assert.equal(SHOW_ONLY_PUBLISHING, true);
+
+  // Stated without a viewer first: a station with no position cannot be placed,
+  // and a station that publishes nothing has nothing to say. Different
+  // rejections, same result.
+  const drawn = drawableStations(REGISTRY.stations);
+  assert.equal(drawn.length, REGISTRY.stats.live);
+  assert.ok(drawn.every((station) => station.live === true));
+  assert.equal(drawableStations([{ lat: 1, lon: 1, live: true }]).length, 1);
+  assert.equal(drawableStations([{ lat: null, lon: 1, live: true }]).length, 0);
+  assert.equal(drawableStations(null).length, 0);
+
+  // The thirteen stations the layer is loudest about — seven closed, six with
+  // no published inventory — publish nothing, so the gate removes them all.
+  assert.equal(drawn.filter((station) => station.closed).length, 0);
+  assert.equal(drawn.filter((station) => !Array.isArray(station.fam)).length, 0);
+
   const { layer, viewer } = harness();
   layer.init(viewer);
   layer.enable(viewer);
   await layer.update();
-  const all = layer.getStats().count;
-
-  assert.equal(layer.setParams({ filter: 'wind' }), true);
-  const wind = layer.getStats();
-  // Pressing VENT deletes 60 % of the map. That IS the layer's argument.
-  assert.ok(wind.count < all / 2, `expected fewer than half, got ${wind.count} of ${all}`);
-  assert.equal(wind.count, REGISTRY.stats.byFamily.wind);
-  assert.equal(wind.hidden, all - wind.count);
-  // The network's own totals are untouched by a display filter.
-  assert.equal(wind.stations, REGISTRY.stats.stations);
-  assert.equal(wind.live, REGISTRY.stats.live);
-
-  assert.equal(layer.setParams({ filter: 'live' }), true);
   assert.equal(layer.getStats().count, REGISTRY.stats.live);
-  assert.equal(layer.setParams({ filter: 'wind' }), true);
-  assert.equal(layer.setParams({ filter: 'wind' }), false, 'a no-op filter is not a repaint');
-  assert.equal(layer.setParams({ filter: 'nonsense' }), false);
-  assert.equal(layer.setParams({}), false);
-
-  const { chips } = layer.getRowControls();
-  assert.deepEqual(chips.map((chip) => chip.id), METEO_STATION_FILTERS.map((f) => f.id));
-  assert.equal(chips.find((chip) => chip.id === 'wind').active, true);
+  // The row no longer offers chips: the three it used to carry kept 189, 187
+  // and 190 of these 190 stations.
+  const { chips, legend } = layer.getRowControls();
+  assert.deepEqual(chips, []);
+  assert.ok(legend.length > 0);
+  assert.equal(typeof layer.setParams, 'undefined');
   layer.destroy(viewer);
 });
 
@@ -337,11 +354,10 @@ test('the card has a local state and a network state, and nothing is fetched unt
   layer.enable(viewer);
   await layer.update();
 
-  // THE LAZINESS IS THE POINT. Behind the observations endpoint is a 22 MB
+  // THE LAZINESS IS THE POINT. Behind the observations endpoint is a 23 MB
   // server-side fetch of the SYNOP archive; a visitor who turns the layer on,
-  // looks at the map and never clicks must not pay for it. Booting, drawing
-  // 2 144 markers and filtering to the 190 live ones costs zero requests.
-  layer.setParams({ filter: 'live' });
+  // looks at the map and never clicks must not pay for it. Booting and drawing
+  // all 190 markers costs zero requests.
   assert.equal(layer.getStats().count, REGISTRY.stats.live);
   assert.equal(calls.observations, 0, 'drawing the network fetches no observation');
   assert.equal(calls.normals, 0, 'drawing the network fetches no fiche');

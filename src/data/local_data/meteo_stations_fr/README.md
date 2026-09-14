@@ -1,8 +1,14 @@
 # Where France measures the weather, and what each instrument can tell you
 
-`stations.json` is the network the **Stations météo (FR)** layer draws: every
-station in Météo-France's real-time observation network, joined to what each one
-actually measures.
+`stations.json` is Météo-France's whole real-time observation network — 2 144
+stations — joined to what each one actually measures.
+
+**The layer draws 190 of them: the ones that publish their readings in the
+open.** The file keeps all 2 144 anyway, because the gate is a runtime boolean
+(`SHOW_ONLY_PUBLISHING`) and a deployment holding a Météo-France API key flips it
+to draw the whole network with this same artifact. See
+`docs/meteofrance-api-access.md`. Every count below describes the FILE unless it
+says otherwise.
 
 It exists because the globe already showed the weather three times — Open-Meteo's
 conditions in the cockpit, Météo-France's vigilance colours per département,
@@ -28,7 +34,9 @@ Measured on the 2026-09-02 build:
   2 992 m behind it.
 - **696 in the RADOME reference pack**, expertised at J+1, and 1 448 in the
   extended pack.
-- **190 that publish their readings in the open**, with no API key.
+- **190 that publish their readings in the open**, with no API key — the ones
+  the layer draws. The other 1 954 measure right now and their readings sit
+  behind the Météo-France API key.
 - **1 230 with a published *fiche climatologique*** — the records held at that
   station and the period they were established over, fetched per card.
 - Fourteen instrument booleans per station, and the class derived from them.
@@ -94,7 +102,8 @@ second.
 2026-01-01, BASSE-TERRE GUILLARD on 2026-02-11, DESHAIES GENDARMERIE on
 2024-10-01, ST JOSEPH-CIRAD and TAN ROUGE-CIRAD on 2023-03-29, DEMBENI and
 MAMOUDZOU_SAPC on 2025-04-01. Météo-France's own metadata says so and its own
-real-time list still carries them. They are kept, flagged, and drawn hollow.
+real-time list still carries them. They are kept in the file and flagged; none
+of the seven publishes, so the gate keeps all seven off the globe.
 
 **Six stations exist in no metadata file at all.** ALBA LA ROMAINE, SOULAINES,
 TARASCON, PIOGGIOLA, QUERCITELLO and MURAT SUR VEBRE. `fam` is `null` for them,
@@ -104,10 +113,16 @@ facts and must stay testable apart.
 **The popular SYNOP mirrors died on 2026-01-15.** Every OpenDataSoft copy of
 *Données SYNOP essentielles OMM* — `public.opendatasoft.com` and the Toulouse
 Métropole instance data.gouv itself links to — stops at 2026-01-15T09:00Z,
-measured 2026-09-02. Météo-France's own S3 archive was written that same morning
-and carries observations to the previous hour. Anything reading a mirror for
-"current French weather" has been serving a seven-month-old reading since
-January.
+measured 2026-09-02. Anything reading a mirror for "current French weather" has
+been serving a seven-month-old reading since January.
+
+**And Météo-France's own bucket serves that archive twice, one copy frozen.**
+`data/OBS/SYNOP/synop_2026.csv.gz` was written 2026-09-14 at 07:00Z;
+`data/synchro_ftp/OBS/SYNOP/synop_2026.csv.gz`, same product and same name, has
+not been touched since 2026-09-09 at 05:41Z. This project read the frozen one
+until 2026-09-14. Measured the same day: the product is a DAILY consolidation of
+three-hourly observations — 8 rows per station per day — so even on the live
+prefix the freshest keyless French reading is **11 to 35 hours old**.
 
 ## What is NOT in this file, and why
 

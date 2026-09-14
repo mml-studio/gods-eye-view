@@ -266,7 +266,7 @@ export const LAYER_FUSIONS = Object.freeze([
       Object.freeze({
         id: 'meteo-stations-fr',
         chip: 'Stations',
-        title: 'Réseau Météo-France — 2 144 instruments et leur relevé horaire',
+        title: 'Météo-France — les 190 stations qui publient leur relevé',
       }),
     ]),
   }),
