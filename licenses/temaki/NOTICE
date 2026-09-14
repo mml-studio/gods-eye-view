@@ -17,7 +17,7 @@ the same reason `DATA_SOURCES.md` records where every feed comes from — and
 because it lets a reader audit the claims below without cloning the upstream
 repository.
 
-WHAT WAS TAKEN. Three glyphs, held in one module.
+WHAT WAS TAKEN. Four glyphs, held in one module.
 
 `src/data/mapIcons.js` holds the artwork:
 
@@ -31,13 +31,29 @@ WHAT WAS TAKEN. Three glyphs, held in one module.
                               `src/data/plantFiliereIcons.js` for the EDF fleet
                               layer (`src/data/edfPowerPlants.js`).
 
+    power_tower             — a lattice transmission pylon, drawn by
+                              `src/data/powerGrid.js` along the mapped overhead
+                              routes.
+
 Temaki is the icon set of the OpenStreetMap iD editor and covers subjects no
 interface icon set does; a wall-mounted surveillance camera is one of them, a
 combat aircraft is another, and so is a power station drawn by what it splits.
-Material Symbols has none of the three: what `security_camera` replaced was this
+Material Symbols has none of the four: what `security_camera` replaced was this
 project's own drawing, what `fighter_jet` replaced was Material's `flight` — an
 airliner, which is the right glyph for the civil aerodrome pack next door and
-the wrong one for an air base — and Material has no nuclear glyph at all.
+the wrong one for an air base — Material has no nuclear glyph at all, and its
+nearest thing to a pylon is `electric_bolt`, a lightning flash, which is a
+symbol for ELECTRICITY rather than a picture of the structure carrying it.
+
+WHY A PYLON IS DRAWN AT ALL. `power_tower` is the glyph iD puts on the tag, and
+the tag is what OpenStreetMap has mapped: a transmission line's node list IS its
+pylon list. Measured 2026-09-14 against the live proxy, 574 of 574 nodes tagged
+`power=tower` around Bayonne and 750 of 775 around Saclay are vertices of an
+overhead `power=line` way this layer draws — and every one of the 25 Saclay
+misses is a pylon of a way it deliberately does NOT draw, one of them a
+`disused:power=line` whose steel is still standing. The layer therefore draws
+the glyph on the way's own mapped vertices, at the spacing the camera can read,
+and never at a position it invented between them.
 
 WHY THE VARIANT WITH THE TREFOIL. Temaki publishes a plain `cooling_tower` as
 well, and it is the wrong glyph here: coal plants have cooling towers too, and
@@ -59,8 +75,8 @@ WHAT WAS CHANGED. No coordinate.
 
 Only the `d` path strings are vendored, in Temaki's own space, NOT rescaled.
 Temaki is not uniform about that space: `security_camera` and
-`cooling_tower_radiation` are published in `0 0 15 15` and `fighter_jet` in
-`0 0 48 48`. Each box is DECLARED (`MAP_ICON_BOX` in `src/data/mapIcons.js`)
+`cooling_tower_radiation` are published in `0 0 15 15`, as is `power_tower`, and
+`fighter_jet` in `0 0 48 48`. Each box is DECLARED (`MAP_ICON_BOX` in `src/data/mapIcons.js`)
 rather than normalised, because rescaling is a redraw and a redraw is no longer
 the artwork that was evaluated; everything downstream — the padded viewBox, the
 halo width, the transform that fits a silhouette into a 96-unit plate — is
@@ -71,7 +87,9 @@ a hood whose lens is a counter-wound subpath — and they are kept whole, in
 order, and are never merged: merging them would fill the lens. The cooling tower
 is one path carrying four counter-wound subpaths, the radiation trefoil, and is
 kept whole for the same reason: merged, the tower has no trefoil on it and is no
-longer a nuclear station — it is what a coal plant looks like.
+longer a nuclear station — it is what a coal plant looks like. The PYLON is one
+path too, carrying the three crossarm diamonds as counter-wound subpaths; merged
+it is a black obelisk, which is what a chimney looks like.
 
 THE TREFOIL IS READ HERE AS A CARTOGRAPHIC SYMBOL, the one OpenStreetMap
 renderers use for `plant:source=nuclear`, and not as a hazard notice — a claim
@@ -82,7 +100,10 @@ which touches a coordinate. The CAMERA is drawn twice — once as a wide dark
 stroke (a halo, so the glyph stays readable over pale terrain) and once as a
 white fill (so Cesium's per-billboard colour multiply can tint it) — and its
 viewBox is padded to `-1 -1 17 17` so that halo is not clipped, since the glyph
-spans the full published box from x=0 to x=15. The JET and the COOLING TOWER are
+spans the full published box from x=0 to x=15. The PYLON is drawn the same way,
+halo and white fill, so the layer's per-band voltage colour multiplies onto it
+exactly and a 400 kV pylon reads as the colour of the 400 kV line it stands on.
+The JET and the COOLING TOWER are
 instead PUNCHED out of a tinted plate through an SVG `<mask>`: they mark PLACES
 on a photograph of places, where a bare silhouette is unfindable below 18 px.
 The path geometry itself is untouched in both, and `src/data/mapIcons.test.mjs`

@@ -218,6 +218,18 @@ export const TEMAKI_PATHS = Object.freeze({
   // a hole, the trefoil is a hole in that hole, so it comes back in the plate's
   // colour inside the dark tower. Splitting or merging the subpaths fills the
   // trefoil in and leaves a bare tower, which is what a coal plant looks like.
+  // A lattice transmission pylon seen head-on: two legs, a waist, and three
+  // crossarm diamonds punched through it as counter-wound subpaths. Used by
+  // `powerGrid.js` to mark the mapped overhead routes at the rhythm the camera
+  // can read — Material Symbols has no pylon at all, and this is the glyph the
+  // OpenStreetMap iD editor puts on `power=tower`.
+  //
+  // ONE PATH, and the diamonds are counter-wound subpaths inside it. Merging or
+  // splitting them fills the lattice in and leaves a black obelisk, which is
+  // what a chimney looks like.
+  power_tower: Object.freeze([
+    'M7.5 9.8L9.59 8.41L7.5 6.74L5.41 8.41L7.5 9.8L7.5 9.8ZM8.4 10.4L10.67 11.91L10.25 9.17L8.4 10.4L8.4 10.4ZM6.6 10.4L4.75 9.17L4.33 11.91L6.6 10.4L6.6 10.4ZM5.39 5.05L5.02 7.44L6.7 6.1L5.39 5.05L5.39 5.05ZM5.55 4C5.64 4.01 5.73 4.05 5.81 4.11L7.5 5.46L9.19 4.11C9.27 4.05 9.36 4.01 9.45 4L9.45 4L5.55 4L5.55 4L5.55 4ZM9.98 7.44L9.61 5.05L8.3 6.1L9.98 7.44L9.98 7.44ZM14 3L14 5L13 5L13 4L10.46 4L12 14L7.5 11L3 14L4.54 4L2 4L2 5L1 5L1 3L4.69 3L5 1L10 1L10.31 3L14 3ZM5.7 3L9.3 3L9.14 2L5.86 2L5.7 3L5.7 3Z',
+  ]),
   cooling_tower_radiation: Object.freeze([
     'M12 1C10 6 14 12 14 14C13 15 2 15 1 14C1 12 5 6 3 1C3 0 12 0 12 1zM8.2 10.18C7.73 10.54 7.27 10.54 6.8 10.18L5.4 12.63C6.8 13.12 8.2 13.12 9.6 12.63L8.2 10.18zM7.5 8.46C7.15 8.46 6.8 8.82 6.8 9.19C6.8 9.56 7.15 9.93 7.5 9.93C7.85 9.93 8.2 9.56 8.2 9.19C8.2 8.82 7.85 8.46 7.5 8.46zM5.87 6C4.47 6.74 4 7.72 4 9.19L6.33 9.19C6.33 8.82 6.57 8.33 7.03 8.09L5.87 6zM9.13 6L7.97 8.09C8.43 8.33 8.67 8.82 8.67 9.19L11 9.19C11 7.72 10.53 6.74 9.13 6z',
   ]),

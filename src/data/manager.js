@@ -85,11 +85,16 @@ function refreshFailureFromStats(stats, label) {
  * that read like a failure — which is precisely how "Sites militaires" and
  * "Réseau électrique" came to look broken while behaving correctly.
  *
+ * `out-of-gate` is the power grid's: the camera has climbed off the box that
+ * was loaded, the geometry under it is still real and still drawn, and the only
+ * thing that expired is the layer's licence to ask for more. A layer showing
+ * what it loaded is not a layer in trouble.
+ *
  * `off-coverage` is deliberately absent: "this layer has no data for this part
  * of the world" is not something the visitor can act on by moving the camera
  * closer, and the layers that use it already word it for themselves.
  */
-const GUIDANCE_STATUSES = Object.freeze(new Set(['zoom-in', 'empty', 'idle']));
+const GUIDANCE_STATUSES = Object.freeze(new Set(['zoom-in', 'empty', 'idle', 'out-of-gate']));
 
 /**
  * Normalize a layer's declared legend SCOPE — where its classes are, and how

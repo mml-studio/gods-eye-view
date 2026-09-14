@@ -103,6 +103,25 @@ export const POWER_GRID_VOLTAGE_PREFILTER = '(^|;)([0-9]{6,}|[5-9][0-9]{4})($|;)
  * `minKv` is inclusive; a feature below the last band never reaches here because
  * of the 50 kV floor.
  */
+/**
+ * How much wider the dark casing under a stroke is drawn, in pixels.
+ *
+ * A coloured line on an orthophoto has no reliable contrast: #7ee0a8 at 1.6 px
+ * over a Landes pine plantation was, in the operator's words, "quasi
+ * invisible". Cartography has one answer for that and it is not a brighter
+ * colour — it is a CASING: the same geometry drawn once wider and near-black
+ * underneath, so the coloured core always sits against a known background.
+ *
+ * `PolylineOutline` would do it in one pass and cannot be used here:
+ * Cesium's ground-polyline fragment shader
+ * (`PolylineShadowVolumeFS`) never declares the `v_width` varying that
+ * material's GLSL reads, so a `GroundPolylinePrimitive` carrying it fails to
+ * link. Two batches — casing first, core second — is the version that compiles.
+ */
+export const POWER_GRID_CASING_PX = 3.2;
+/** Casing colour. Near-black rather than black, so it reads as shadow. */
+export const POWER_GRID_CASING_COLOR = '#05080d';
+
 export const POWER_GRID_TIERS = Object.freeze([
   Object.freeze({
     id: 'ehv',
@@ -110,7 +129,7 @@ export const POWER_GRID_TIERS = Object.freeze([
     label: '≥ 300 kV',
     blurb: 'The backbone. In France this is the 400 kV grid RTE runs the country on.',
     color: '#ff5f4d',
-    widthPx: 3.2,
+    widthPx: 5.5,
     pointPx: 15,
   }),
   Object.freeze({
@@ -119,7 +138,7 @@ export const POWER_GRID_TIERS = Object.freeze([
     label: '180–299 kV',
     blurb: 'The regional transmission tier — 225 kV in France, 220 kV across much of Europe.',
     color: '#ff9d3c',
-    widthPx: 2.5,
+    widthPx: 4.4,
     pointPx: 12,
   }),
   Object.freeze({
@@ -128,7 +147,7 @@ export const POWER_GRID_TIERS = Object.freeze([
     label: '100–179 kV',
     blurb: 'Sub-transmission — 150 kV in France, 132 kV in the UK, 110 kV in Germany.',
     color: '#ffd84d',
-    widthPx: 2,
+    widthPx: 3.6,
     pointPx: 10,
   }),
   Object.freeze({
@@ -137,7 +156,7 @@ export const POWER_GRID_TIERS = Object.freeze([
     label: '50–99 kV',
     blurb: 'The last high-voltage step before distribution — France’s 63 kV and 90 kV network.',
     color: '#7ee0a8',
-    widthPx: 1.6,
+    widthPx: 3,
     pointPx: 8,
   }),
 ]);
@@ -256,6 +275,8 @@ export const POWER_GRID_QUERY_TIMEOUT_SEC = 50;
 export const POWER_GRID_COORD_DECIMALS = 5;
 
 const EARTH_MEAN_RADIUS_KM = 6371.0088;
+/** Metres per degree of latitude (WGS84 mean), for the pylon spacing grid. */
+const M_PER_DEG_LAT = 111_320;
 
 /**
  * Parse an OSM `voltage` value into its individual volt readings.
@@ -733,4 +754,212 @@ export function projectPowerGrid(payload, {
     caps: { ...caps },
     towersRequested: Boolean(towersRequested),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Pylon marks — the rhythm of an overhead route, at the spacing a camera reads
+// ---------------------------------------------------------------------------
+
+/**
+ * Pixels between two drawn pylons, centre to centre.
+ *
+ * The glyph is drawn at {@link POWER_PYLON_ICON_PX}; at 44 px apart a route
+ * reads as a line of pylons rather than a dotted rule, and two neighbours never
+ * touch. This is the number the ground spacing is SOLVED from — the spacing in
+ * metres is whatever puts the marks this far apart on THIS camera, which is
+ * what makes the rhythm survive a zoom.
+ */
+export const POWER_PYLON_GAP_PX = 44;
+/** On-screen size of one pylon glyph, in CSS pixels. */
+export const POWER_PYLON_ICON_PX = 17;
+/** Ground spacing is clamped into this band, whatever the camera solves. */
+export const POWER_PYLON_MIN_SPACING_M = 150;
+export const POWER_PYLON_MAX_SPACING_M = 30_000;
+/** Marks drawn at once. A pylon past this is a pixel, not a structure. */
+export const POWER_PYLON_MAX_MARKS = 600;
+/**
+ * Shortest overhead way that earns a pylon, in metres.
+ *
+ * Measured 2026-09-14 around the Trocadéro: 126 km of mapped grid, **100% of it
+ * underground** — and 33 ways still tagged `power=line`, of 3 to 45 m each,
+ * 499 m in total. Those are the jumpers and busbar runs INSIDE a substation
+ * yard, not transmission lines, and a pylon glyph on one is a pylon drawn in
+ * the middle of a switchyard.
+ *
+ * 150 m is well under a real span between two pylons (300-500 m on a French
+ * 400 kV line, so no genuine line is ever excluded by it) and far above
+ * anything a yard contains.
+ */
+export const POWER_PYLON_MIN_WAY_M = 150;
+
+/**
+ * Ground spacing between two drawn pylons, for one camera.
+ *
+ * @param {number} metresPerPixel Ground metres one pixel covers at the focus.
+ * @param {object} [options]
+ * @param {number} [options.gapPx]
+ * @returns {number} Metres, clamped into the band above.
+ */
+export function powerPylonSpacingM(metresPerPixel, { gapPx = POWER_PYLON_GAP_PX } = {}) {
+  if (!Number.isFinite(metresPerPixel) || metresPerPixel <= 0) {
+    return POWER_PYLON_MIN_SPACING_M;
+  }
+  const solved = metresPerPixel * gapPx;
+  return Math.min(POWER_PYLON_MAX_SPACING_M, Math.max(POWER_PYLON_MIN_SPACING_M, solved));
+}
+
+/** Great-circle distance between two lon/lat pairs, in metres. */
+function segmentMetres(lon1, lat1, lon2, lat2) {
+  const toRad = Math.PI / 180;
+  const p1 = lat1 * toRad;
+  const p2 = lat2 * toRad;
+  const dLat = (lat2 - lat1) * toRad;
+  const dLon = (lon2 - lon1) * toRad;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dLon / 2) ** 2;
+  return 2 * EARTH_MEAN_RADIUS_KM * 1000 * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+/**
+ * Where to draw a pylon, walking the MAPPED VERTICES of the overhead routes.
+ *
+ * ── WHY THE VERTICES AND NOT A SPACING ALONG THE LINE ───────────────────────
+ *
+ * A pylon drawn every 2 km by dividing a line into 2 km pieces is a pylon at a
+ * position nobody surveyed — the layer's whole discipline is that a mark sits
+ * where the data put it. It does not have to be invented here, because of how
+ * OpenStreetMap maps a transmission line: the way's node list IS the pylon
+ * list.
+ *
+ * Measured 2026-09-14 against the live proxy, nodes tagged `power=tower` that
+ * fall on a vertex of an overhead way THIS LAYER DRAWS: **574 of 574** in the
+ * Bayonne box (0.25°, 377 km of overhead route) and **750 of 775** at Saclay.
+ * The 25 misses are not noise and they are not a hole in the rule — each is a
+ * pylon belonging to a way the layer excludes on purpose; the one audited is
+ * `disused:power=line`, a decommissioned 63 kV liaison whose steel is still
+ * standing and still tagged. A tower with no drawn route under it has no
+ * rhythm to join.
+ *
+ * The vertex set is the SUPERSET of the tagged one: one vertex every 265 m
+ * against one tagged pylon every 657 m at Bayonne, the remainder being the
+ * pylons whose node nobody has tagged yet plus the occasional pure bend.
+ *
+ * So this walks each overhead way vertex by vertex, keeps a running distance,
+ * and emits the NEXT MAPPED VERTEX once `spacingM` has gone by. Every mark is a
+ * node someone drew. The spacing is honoured as a floor, never as a position:
+ * on a route whose vertices are 800 m apart, a 300 m request yields every
+ * vertex and not a single interpolation.
+ *
+ * UNDERGROUND WAYS ARE SKIPPED, and that is not a detail — it is the whole
+ * reason the layer dashes them. A cable has no pylons, and it also carries far
+ * MORE vertices than an overhead line does (3,173 against 1,426 in that same
+ * viewport, because a trench follows streets), so drawing pylons on vertices
+ * without this filter would put the densest pylon field exactly where there are
+ * none.
+ *
+ * @param {object} payload Projected `/api/power-grid` document.
+ * @param {object} [options]
+ * @param {number} [options.spacingM] Minimum ground metres between two marks.
+ * @param {number} [options.maxCount] Hard ceiling on the marks returned.
+ * @returns {Array<{lat:number, lon:number, vi:number, strokeId:string, first:boolean}>}
+ */
+export function powerPylonMarks(payload, {
+  spacingM = POWER_PYLON_MIN_SPACING_M,
+  maxCount = POWER_PYLON_MAX_MARKS,
+} = {}) {
+  const strokes = Array.isArray(payload?.strokes) ? payload.strokes : [];
+  const gap = Number.isFinite(spacingM) && spacingM > 0 ? spacingM : POWER_PYLON_MIN_SPACING_M;
+  const cap = Number.isFinite(maxCount) ? Math.max(0, Math.floor(maxCount)) : POWER_PYLON_MAX_MARKS;
+  const marks = [];
+  if (cap === 0) return marks;
+
+  // Spacing has to hold ACROSS ways, not only along one, and the junctions are
+  // why. OpenStreetMap splits a liaison at every junction and attribute change,
+  // so two consecutive ways SHARE their junction node — "the first vertex of
+  // every way" alone stacks two pylons on the identical coordinate at every
+  // split, and clusters a dozen of them where four routes meet at a yard.
+  // Marks are therefore filed in a grid of `gap`-sized cells and a candidate is
+  // dropped when any of the nine cells around it already holds one closer than
+  // `gap`. Nine cells is exhaustive: a cell is `gap` wide, so nothing outside
+  // them can be within `gap`.
+  const cellDegLat = gap / M_PER_DEG_LAT;
+  const grid = new Map();
+  const cellKey = (row, col) => `${row}|${col}`;
+  const accept = (lat, lon) => {
+    // Longitude cells are sized at the mark's own latitude, so a cell stays
+    // roughly square from Lille to Perpignan rather than collapsing north.
+    const cellDegLon = cellDegLat / Math.max(0.05, Math.cos(lat * (Math.PI / 180)));
+    const row = Math.floor(lat / cellDegLat);
+    const col = Math.floor(lon / cellDegLon);
+    for (let dr = -1; dr <= 1; dr += 1) {
+      for (let dc = -1; dc <= 1; dc += 1) {
+        const bucket = grid.get(cellKey(row + dr, col + dc));
+        if (!bucket) continue;
+        for (const near of bucket) {
+          if (segmentMetres(lon, lat, near[1], near[0]) < gap) return false;
+        }
+      }
+    }
+    const key = cellKey(row, col);
+    const bucket = grid.get(key);
+    if (bucket) bucket.push([lat, lon]);
+    else grid.set(key, [[lat, lon]]);
+    return true;
+  };
+
+  for (const stroke of strokes) {
+    // A cable has no pylons. See the note above — this is the filter, not a
+    // refinement of one.
+    if (stroke?.u) continue;
+    // Nor does a 7 m jumper inside a switchyard, which OSM also tags
+    // `power=line`. See POWER_PYLON_MIN_WAY_M for what that measured like.
+    if (!(stroke.km * 1000 >= POWER_PYLON_MIN_WAY_M)) continue;
+    const coords = stroke?.c;
+    if (!Array.isArray(coords) || coords.length < 4) continue;
+    const strokeId = String(stroke.id ?? '');
+    // The first vertex is OFFERED, not guaranteed: it is where the mapped way
+    // begins, so a route shorter than one spacing still gets a pylon rather
+    // than reading as underground — but it goes through the same gate as every
+    // other vertex, which is what keeps a junction from growing a rosette.
+    if (accept(coords[1], coords[0])) {
+      marks.push({ lat: coords[1], lon: coords[0], vi: stroke.vi, strokeId, first: true });
+      if (marks.length >= cap) return marks;
+    }
+    let since = 0;
+    for (let i = 2; i < coords.length; i += 2) {
+      since += segmentMetres(coords[i - 2], coords[i - 1], coords[i], coords[i + 1]);
+      if (since < gap) continue;
+      since = 0;
+      if (!accept(coords[i + 1], coords[i])) continue;
+      marks.push({ lat: coords[i + 1], lon: coords[i], vi: stroke.vi, strokeId, first: false });
+      if (marks.length >= cap) return marks;
+    }
+  }
+  return marks;
+}
+
+/**
+ * Index the MAPPED pylons by rounded position, so a drawn mark can find the one
+ * it is standing on.
+ *
+ * Five decimals is ~1.1 m — the precision `projectPowerGrid` publishes for both
+ * a tower node and a way vertex, and where both exist they are the SAME node
+ * upstream, so an exact-key match is the right test rather than a
+ * nearest-neighbour search. A miss is therefore meaningful rather than a
+ * rounding accident: it means no drawn way passes through that pylon.
+ *
+ * @param {object} payload
+ * @returns {Map<string, object>}
+ */
+export function powerTowerIndex(payload) {
+  const index = new Map();
+  for (const tower of Array.isArray(payload?.towers) ? payload.towers : []) {
+    if (!Number.isFinite(tower?.lat) || !Number.isFinite(tower?.lon)) continue;
+    index.set(powerPositionKey(tower.lat, tower.lon), tower);
+  }
+  return index;
+}
+
+/** The key {@link powerTowerIndex} stores under, at the published precision. */
+export function powerPositionKey(lat, lon) {
+  return `${lat.toFixed(POWER_GRID_COORD_DECIMALS)},${lon.toFixed(POWER_GRID_COORD_DECIMALS)}`;
 }

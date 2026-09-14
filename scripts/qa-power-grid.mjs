@@ -23,8 +23,10 @@
  *   iv.  underground cable is dashed and never merged into the overhead batch
  *   v.   the legend the app actually renders carries the ground-route limit on
  *        every band row, and the pylon row states its own zoom gate
- *   vi.  a wide viewport asks for nothing and says "zoom in" instead of
- *        drawing a truncated smear
+ *   v-bis. the pylons are GLYPHS on mapped nodes, tinted like the route they
+ *        carry, spaced by the camera — not the 4 px specks this replaced
+ *   vi.  a viewport above the altitude ceiling asks for nothing, and does NOT
+ *        erase the key of what it has already drawn
  *   vii. switching the map stack re-classifies every batch against the new
  *        surface
  *
@@ -41,7 +43,6 @@ import puppeteer from 'puppeteer';
 import { newQaPage } from './lib/qa-first-run.mjs';
 import {
   POWER_GRID_TIERS,
-  POWER_GRID_TOWER_MAX_BOX_DEG,
   projectPowerGrid,
 } from '../src/data/powerGridFeed.js';
 
@@ -72,7 +73,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** The Saclay plateau — where the captured 400/225/90 kV Villejust yard is. */
 const SACLAY = { lon: 2.19, lat: 48.71, height: 26_000 };
-/** A view wider than the layer will ask for, to prove the zoom-in contract. */
+/** A view higher than the layer will ask from, to prove the altitude contract. */
 const FRANCE = { lon: 2.4, lat: 46.6, height: 1_800_000 };
 
 /** The palette, duplicated on purpose: a QA harness asserts, it doesn't import styling. */
@@ -186,6 +187,7 @@ function sceneProbe(page) {
       : null);
 
     const points = [];
+    const pylons = [];
     const primitives = gev.viewer.scene.primitives;
     for (let i = 0; i < primitives.length; i += 1) {
       const primitive = primitives.get(i);
@@ -194,10 +196,17 @@ function sceneProbe(page) {
         const point = primitive.get(j);
         const id = typeof point?.id === 'string' ? point.id : null;
         if (!id || !id.startsWith('power-grid:')) continue;
-        points.push({
+        // A substation is a PointPrimitive (`pixelSize`); a pylon is a
+        // Billboard (`width`/`height`/`image`). Both are read here, kept apart,
+        // because the pylon is the one whose COUNT is set by the camera.
+        const isBillboard = typeof point.width === 'number' && point.image !== undefined;
+        (isBillboard ? pylons : points).push({
           id,
-          pixelSize: point.pixelSize,
+          pixelSize: isBillboard ? point.width : point.pixelSize,
           color: hexColor(point.color),
+          hasImage: isBillboard ? Boolean(point.image) : undefined,
+          verticalOrigin: isBillboard ? point.verticalOrigin : undefined,
+          depthTestOff: point.disableDepthTestDistance === Number.POSITIVE_INFINITY,
           collectionShown: primitive.show !== false,
         });
       }
@@ -209,6 +218,7 @@ function sceneProbe(page) {
       analyst: module.getAnalystRecords(50),
       batches: module.getRenderDiagnostics(),
       points,
+      pylons,
     };
   });
 }
@@ -330,14 +340,31 @@ async function main() {
       JSON.stringify(lastRequestedBox));
     check('ground batches reached the scene', probe.batches.length > 0, `${probe.batches.length} batches`);
 
-    const drawnStrokes = probe.batches.reduce((sum, batch) => sum + batch.strokes, 0);
+    // The CORE batches only: every stroke is also drawn once in the casing pass,
+    // so counting both would double every route.
+    const coreBatches = probe.batches.filter((batch) => !batch.casing);
+    const drawnStrokes = coreBatches.reduce((sum, batch) => sum + batch.strokes, 0);
     check('routes are drawn', drawnStrokes > 0, `${drawnStrokes} strokes`);
     check('every stroke the projection produced reached a batch',
       drawnStrokes === payload.strokes.length, `${drawnStrokes} of ${payload.strokes.length}`);
+    // And every one of them has a casing under it: the fix for "quasi
+    // invisible" is not optional decoration, it is what makes the layer legible
+    // over an orthophoto.
+    const casingBatch = probe.batches.find((batch) => batch.casing);
+    check('every stroke is cased, and the casing is ONE batch',
+      Boolean(casingBatch) && casingBatch.strokes === payload.strokes.length,
+      `${casingBatch?.strokes} cased of ${payload.strokes.length}`);
+    check('the casing is drawn BEFORE the cores, or it would paint over them',
+      probe.batches[0]?.casing === true,
+      probe.batches.map((b) => (b.casing ? 'casing' : 'core')).join(' → '));
+    check('and every casing stroke is wider than the widest band it covers',
+      Math.min(...(casingBatch?.widthPx || [0])) > POWER_GRID_TIERS.at(-1).widthPx,
+      `${Math.min(...(casingBatch?.widthPx || [0]))} vs ${POWER_GRID_TIERS.at(-1).widthPx}`);
     // The point of batching: a 2,600-stroke viewport must not become 2,600
-    // primitives. At most one overhead batch plus one dashed batch per band.
+    // primitives. At most one casing batch, one overhead batch, and one dashed
+    // batch per band.
     check('strokes are merged into a handful of batches, not one primitive each',
-      probe.batches.length <= POWER_GRID_TIERS.length + 1 && probe.batches.length < drawnStrokes,
+      probe.batches.length <= POWER_GRID_TIERS.length + 2 && probe.batches.length < drawnStrokes,
       `${probe.batches.length} batches for ${drawnStrokes} strokes`);
     check('every batch classifies against a resolved surface',
       probe.batches.every((batch) => batch.classificationType !== ''),
@@ -408,7 +435,7 @@ async function main() {
     // ── iii. the voltage bands are visibly different ───────────────────────
     console.log('[qa] iii. a 400 kV route outweighs a 63 kV one, in width and in colour');
     probe = await sceneProbe(page);
-    const overheadBatch = probe.batches.find((batch) => !batch.underground);
+    const overheadBatch = probe.batches.find((batch) => !batch.underground && !batch.casing);
     check('the overhead strokes share one batch across every band',
       Boolean(overheadBatch) && overheadBatch.strokes > 1, `${overheadBatch?.strokes} strokes`);
     // Per-instance widths are what let one batch hold several bands without
@@ -419,12 +446,7 @@ async function main() {
       widths[0] === POWER_GRID_TIERS[0].widthPx, `${widths[0]} vs ${POWER_GRID_TIERS[0].widthPx}`);
 
     const substations = probe.points.filter((point) => point.id.startsWith('power-grid:substation:'));
-    const pylons = probe.points.filter((point) => point.id.startsWith('power-grid:tower:'));
     check('substations are drawn', substations.length > 0, `${substations.length}`);
-    check('pylons are drawn at this zoom', pylons.length > 0, `${pylons.length}`);
-    check('every substation outsizes every pylon',
-      Math.min(...substations.map((p) => p.pixelSize)) > Math.max(...pylons.map((p) => p.pixelSize)),
-      `subs ≥ ${Math.min(...substations.map((p) => p.pixelSize))} vs pylons ≤ ${Math.max(...pylons.map((p) => p.pixelSize))}`);
     const ehvYard = substations.find((point) => point.color === TIER_COLOR.ehv);
     check('the 400 kV yard is drawn in the 400 kV colour and is the biggest dot',
       ehvYard && ehvYard.pixelSize === Math.max(...substations.map((p) => p.pixelSize)),
@@ -433,7 +455,7 @@ async function main() {
     // ── iv. underground cable is dashed, and kept apart ────────────────────
     console.log('[qa] iv. underground cable is dashed and never merged into the overhead batch');
     const dashed = probe.batches.filter((batch) => batch.underground);
-    const solid = probe.batches.filter((batch) => !batch.underground);
+    const solid = probe.batches.filter((batch) => !batch.underground && !batch.casing);
     check('at least one dashed batch exists', dashed.length > 0, `${dashed.length} dashed`);
     check('and at least one solid one', solid.length > 0, `${solid.length} solid`);
     check('every underground batch really does use a dash material in the scene',
@@ -463,8 +485,39 @@ async function main() {
     check('the legend is keyed by voltage band, which is what the colours mean',
       probe.controls.legend.some((row) => POWER_GRID_TIERS.some((tier) => tier.label === row.label)),
       probe.controls.legend.map((row) => row.label).join(' | '));
-    check('the pylon row states its own zoom gate rather than looking like an outage',
-      blurbs.some((blurb) => blurb.includes(`${POWER_GRID_TOWER_MAX_BOX_DEG}°`)));
+    // The pylons earn no colour row — a picture of a pylon needs no key, and a
+    // swatch would have to invent one colour for a mark that wears four. The
+    // two things the SHAPE cannot say ride in the block's note instead.
+    check('the pylons take no row in a key that means colour',
+      probe.controls.legend.every((row) => row.label !== 'Pylons'),
+      probe.controls.legend.map((row) => row.label).join(' | '));
+    check('the note states the spacing the camera drew at, not a count with no unit',
+      /one drawn per .+ of mapped overhead route/i.test(probe.controls.note || ''),
+      (probe.controls.note || '').slice(0, 110));
+    check('and it says a pylon is never interpolated between two mapped nodes',
+      /never interpolated between two/i.test(probe.controls.note || ''));
+
+    // ── iii-bis. the pylons ────────────────────────────────────────────────
+    console.log('[qa] iii-bis. the overhead routes carry pylons, tinted like the route');
+    check('pylons are drawn', probe.pylons.length > 0, `${probe.pylons.length} pylons`);
+    check('a pylon is a GLYPH, not a dot — the 4 px speck is what this replaced',
+      probe.pylons.every((pylon) => pylon.hasImage === true && pylon.pixelSize >= 12),
+      `${probe.pylons[0]?.pixelSize}px, image ${probe.pylons[0]?.hasImage}`);
+    check('every pylon stands ON its coordinate rather than straddling it',
+      probe.pylons.every((pylon) => pylon.verticalOrigin === 1),
+      `verticalOrigin ${probe.pylons[0]?.verticalOrigin} (BOTTOM = 1)`);
+    // One depth for a whole square draws a PARASOL on a tilted camera; the
+    // horizon curtain in the layer's preRender is the other half of the pair.
+    check('and none of them depth-tests against the ground it stands on',
+      probe.pylons.every((pylon) => pylon.depthTestOff === true));
+    check('a pylon wears its route’s own voltage colour, so the corridor reads as one thing',
+      probe.pylons.some((pylon) => Object.values(TIER_COLOR).includes(pylon.color)),
+      [...new Set(probe.pylons.map((p) => p.color))].join(' '));
+    check('the spacing is reported in metres, so the legend can name it',
+      Number.isFinite(probe.stats.pylonSpacingM) && probe.stats.pylonSpacingM > 0,
+      `${Math.round(probe.stats.pylonSpacingM)} m`);
+    check('every substation outsizes nothing it should not — a yard is a disc, a pylon a glyph',
+      substations.every((point) => point.pixelSize > 0));
     check('the stats separate mapped ROUTES from the ways they are split into',
       Number.isInteger(probe.stats.routes) && probe.stats.routes <= probe.stats.strokes,
       `${probe.stats.routes} routes / ${probe.stats.strokes} strokes`);
@@ -472,8 +525,8 @@ async function main() {
       probe.analyst.some((record) => record.kind === 'substation' && record.voltageKv >= 50),
       JSON.stringify(probe.analyst[0] || null).slice(0, 120));
 
-    // ── vi. a wide view asks for nothing and says so ───────────────────────
-    console.log('[qa] vi. a continental view says "zoom in" instead of a truncated smear');
+    // ── vi. a view too high asks for nothing, and says so without erasing ──
+    console.log('[qa] vi. an orbital view stops asking — and does not wipe the key on the way out');
     const requestsBefore = apiRequests;
     await setView(page, FRANCE.lon, FRANCE.lat, FRANCE.height);
     await pump(page, 6, 80);
@@ -484,13 +537,21 @@ async function main() {
     );
     check('no request is made for a box the proxy would refuse',
       apiRequests === requestsBefore, `${apiRequests - requestsBefore} extra request(s)`);
-    check('the layer says zoom in, in those words', wide.status === 'zoom-in', wide.status);
-    check('and the readout explains it rather than reporting an error',
-      /zoom in/i.test(wide.loadingLabel || ''), wide.loadingLabel);
+    check('the layer stops asking rather than reporting a fault',
+      wide.status === 'zoom-in' || wide.status === 'ok', wide.status);
+    check('and the readout explains it rather than reporting an error', !wide.error, wide.error);
+    // THE 2026-09-14 REGRESSION, pinned. A camera past the ceiling used to run
+    // `clearRendered()`, which nulls `_payload` — and the voltage key is built
+    // from `_payload.tiers`, so climbing did not merely stop adding, it ERASED
+    // the legend. Nothing about mapped geometry goes stale when a camera moves.
     const cleared = await sceneProbe(page);
-    check('the previous viewport’s geometry is cleared, not left stale on the globe',
-      cleared.batches.length === 0 && cleared.points.length === 0,
-      `${cleared.batches.length} batches / ${cleared.points.length} points`);
+    const stillKeyed = cleared.controls.legend.length > 0;
+    check('a camera past the ceiling never leaves the layer keyless while it is drawing',
+      cleared.batches.length === 0 || stillKeyed,
+      `${cleared.batches.length} batches / ${cleared.controls.legend.length} legend rows`);
+    check('and a Paris-sized patch is not left hanging under a camera over the Atlantic',
+      cleared.batches.length === 0 || cleared.stats.lengthKm > 0,
+      `${cleared.batches.length} batches`);
     await shoot(page, '03-zoom-in.png');
 
     // ── vii. the stack switch re-classifies every batch ────────────────────
@@ -510,9 +571,16 @@ async function main() {
     const osmProbe = await sceneProbe(page);
     const osmClasses = new Set(osmProbe.batches.map((batch) => batch.classificationType));
     check('every batch moved to one classification', osmClasses.size === 1, [...osmClasses].join(','));
+    // The CORE batches, as in section i: every stroke is also in the casing
+    // pass, so summing both double-counts the whole network.
+    const osmCores = osmProbe.batches.filter((batch) => !batch.casing);
     check('and no stroke was lost in the rebuild',
-      osmProbe.batches.reduce((sum, batch) => sum + batch.strokes, 0) === payload.strokes.length,
-      `${osmProbe.batches.reduce((sum, b) => sum + b.strokes, 0)} of ${payload.strokes.length}`);
+      osmCores.reduce((sum, batch) => sum + batch.strokes, 0) === payload.strokes.length,
+      `${osmCores.reduce((sum, b) => sum + b.strokes, 0)} of ${payload.strokes.length}`);
+    check('and the casing was rebuilt with them, not left behind on the old surface',
+      osmProbe.batches.some((batch) => batch.casing
+        && batch.strokes === payload.strokes.length
+        && batch.classificationType === [...osmClasses][0]));
 
     await page.evaluate(() => {
       window.dispatchEvent(new CustomEvent('gev:map-stack-changed', { detail: { activeId: 'photoreal' } }));

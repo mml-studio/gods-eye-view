@@ -10,13 +10,22 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   POWER_GRID_CAPS,
+  POWER_GRID_CASING_PX,
   POWER_GRID_MAX_BOX_DEG,
   POWER_GRID_MIN_VOLTAGE_V,
   POWER_GRID_TIERS,
   POWER_GRID_TOWER_MAX_BOX_DEG,
   POWER_GRID_VOLTAGE_PREFILTER,
   POWER_SUBSTATION_ROLE_UNSTATED,
+  POWER_PYLON_GAP_PX,
+  POWER_PYLON_MIN_SPACING_M,
+  POWER_PYLON_MIN_WAY_M,
+  POWER_PYLON_MAX_SPACING_M,
   powerBoxTooWide,
+  powerPositionKey,
+  powerPylonMarks,
+  powerPylonSpacingM,
+  powerTowerIndex,
   substationRoleLabel,
   formatKilovolts,
   maxOsmVoltage,
@@ -46,6 +55,8 @@ const OSM = JSON.parse(readFileSync(
 ));
 
 const projected = projectPowerGrid(OSM);
+/** The same projection, named for the tests below that read it as a document. */
+const PAYLOAD = projectPowerGrid(OSM, { towersRequested: true });
 const voltageOf = (record) => projected.voltages[record.vi];
 const operatorOf = (record) => (record.o >= 0 ? projected.operators[record.o] : null);
 
@@ -462,4 +473,144 @@ test('pylons are asked for only when the box is tight enough to tell them apart'
   assert.ok(POWER_GRID_TOWER_MAX_BOX_DEG < POWER_GRID_MAX_BOX_DEG);
   assert.equal(powerGridQuery(wide).includes('tower'), false);
   assert.equal(powerGridQuery(tight).includes('tower'), true);
+});
+
+test('a pylon is drawn on a MAPPED vertex, and the spacing only ever skips one', () => {
+  // The rhythm the operator asked for — "en poser une tous les X mètres" — with
+  // the constraint the layer cannot break: no mark may sit at a coordinate
+  // nobody surveyed. Dividing a 12 km line into six 2 km pieces would put five
+  // pylons in fields. Walking the way's own node list and skipping until the
+  // spacing is met puts every one of them on a node.
+  const vertices = new Set();
+  for (const stroke of PAYLOAD.strokes) {
+    if (stroke.u) continue;
+    for (let i = 0; i < stroke.c.length; i += 2) {
+      vertices.add(powerPositionKey(stroke.c[i + 1], stroke.c[i]));
+    }
+  }
+  const marks = powerPylonMarks(PAYLOAD, { spacingM: 500 });
+  assert.ok(marks.length > 0);
+  for (const mark of marks) {
+    assert.ok(vertices.has(powerPositionKey(mark.lat, mark.lon)),
+      'every mark sits on a vertex of an overhead mapped way');
+  }
+});
+
+test('an underground cable gets no pylons, however many vertices it carries', () => {
+  // Not a refinement — the whole reason the layer dashes them. A trench follows
+  // streets, so it carries MORE vertices than the overhead line beside it;
+  // without this filter the densest pylon field on screen would be laid exactly
+  // where there are none.
+  const undergroundOnly = { ...PAYLOAD, strokes: PAYLOAD.strokes.filter((s) => s.u) };
+  assert.ok(undergroundOnly.strokes.length > 0, 'the fixture really has cable in it');
+  assert.deepEqual(powerPylonMarks(undergroundOnly, { spacingM: 100 }), []);
+});
+
+test('the spacing holds ACROSS ways, so a junction does not grow a rosette', () => {
+  // OpenStreetMap splits a liaison at every junction, and two consecutive ways
+  // SHARE their junction node. "The first vertex of every way" alone stacks two
+  // pylons on one coordinate at every split.
+  const marks = powerPylonMarks(PAYLOAD, { spacingM: 800 });
+  const seen = new Set();
+  for (const mark of marks) {
+    const key = powerPositionKey(mark.lat, mark.lon);
+    assert.equal(seen.has(key), false, `two pylons drawn on ${key}`);
+    seen.add(key);
+  }
+  // And no two marks are closer than the spacing, whichever ways they came from.
+  for (let i = 0; i < marks.length; i += 1) {
+    for (let j = i + 1; j < marks.length; j += 1) {
+      const dLat = (marks[i].lat - marks[j].lat) * 111_320;
+      const dLon = (marks[i].lon - marks[j].lon) * 111_320
+        * Math.cos(marks[i].lat * (Math.PI / 180));
+      assert.ok(Math.hypot(dLat, dLon) >= 800 * 0.98,
+        'two marks closer together than the spacing asked for');
+    }
+  }
+});
+
+test('climbing thins the pylons and descending walks back down to every vertex', () => {
+  const tight = powerPylonMarks(PAYLOAD, { spacingM: POWER_PYLON_MIN_SPACING_M });
+  const wide = powerPylonMarks(PAYLOAD, { spacingM: 8_000 });
+  assert.ok(tight.length > wide.length,
+    'a wider spacing must draw fewer pylons, not the same ones further apart');
+  // The cap is a ceiling on the drawing, never a truncation of the data.
+  assert.ok(powerPylonMarks(PAYLOAD, { spacingM: 10, maxCount: 12 }).length <= 12);
+  assert.deepEqual(powerPylonMarks(PAYLOAD, { maxCount: 0 }), []);
+  assert.deepEqual(powerPylonMarks(null), []);
+});
+
+test('the spacing is solved from the camera and clamped into a readable band', () => {
+  // 44 px between two 17 px glyphs: a line of pylons rather than a dotted rule.
+  assert.equal(powerPylonSpacingM(10), 10 * POWER_PYLON_GAP_PX);
+  // A camera on the deck must not ask for a 3 m spacing, and one in orbit must
+  // not ask for a 400 km one.
+  assert.equal(powerPylonSpacingM(0.01), POWER_PYLON_MIN_SPACING_M);
+  assert.equal(powerPylonSpacingM(100_000), POWER_PYLON_MAX_SPACING_M);
+  assert.equal(powerPylonSpacingM(NaN), POWER_PYLON_MIN_SPACING_M);
+  assert.equal(powerPylonSpacingM(-5), POWER_PYLON_MIN_SPACING_M);
+});
+
+test('a mapped pylon is found by its EXACT position, because it IS the way vertex', () => {
+  // A tower node and a way vertex are the same OSM node, published at the same
+  // 1.1 m precision, so the card join is an exact-key lookup rather than a
+  // nearest-neighbour search — and a MISS therefore means something: no drawn
+  // way passes through that pylon.
+  //
+  // This fixture cannot measure the join RATE and must not pretend to: it was
+  // trimmed to one way per distinct power/voltage combination, so most of the
+  // ways its towers belong to are not in it. The rate is measured against the
+  // live proxy and recorded in `powerPylonMarks` — 574/574 at Bayonne, 750/775
+  // at Saclay. What this pins is the INDEX: every tower reachable by its own
+  // coordinate, and no tower reachable by a neighbouring one.
+  const index = powerTowerIndex(PAYLOAD);
+  assert.equal(index.size, PAYLOAD.towers.length);
+  for (const tower of PAYLOAD.towers) {
+    assert.equal(index.get(powerPositionKey(tower.lat, tower.lon)), tower);
+    // One metre away is a different node, not a fuzzy match on the same one.
+    assert.equal(index.get(powerPositionKey(tower.lat + 0.0001, tower.lon)), undefined);
+  }
+
+  // And the join really does fire where the fixture DOES carry both halves:
+  // a mark that lands on a tagged tower gets the pylon record, and the rest
+  // stay way vertices rather than being promoted into pylons.
+  const marks = powerPylonMarks(PAYLOAD, { spacingM: 150 });
+  const joined = marks.filter((mark) => index.has(powerPositionKey(mark.lat, mark.lon)));
+  assert.ok(joined.length > 0, 'the fixture must exercise the join at least once');
+  assert.ok(joined.length < marks.length,
+    'and it must exercise the un-tagged case too, which is the honest card');
+});
+
+test('a casing is wider than every band it sits under', () => {
+  // The fix for "c'est quasi invisible": a coloured line on an orthophoto has
+  // no reliable background, so every stroke is drawn twice — near-black and
+  // wider underneath, then its band colour on top.
+  assert.ok(POWER_GRID_CASING_PX > 0);
+  for (const tier of POWER_GRID_TIERS) {
+    assert.ok(tier.widthPx >= 3, `${tier.id} must survive an orthophoto at 1:1`);
+    assert.ok(tier.widthPx + POWER_GRID_CASING_PX > tier.widthPx);
+  }
+  // Ordered, so a 400 kV route still reads as the heaviest thing on screen.
+  const widths = POWER_GRID_TIERS.map((tier) => tier.widthPx);
+  assert.deepEqual(widths, [...widths].sort((a, b) => b - a));
+});
+
+test('a switchyard jumper is not a line, and earns no pylon', () => {
+  // Measured 2026-09-14 over the Trocadéro: 126 km of mapped grid, 100% of it
+  // underground, and 33 ways still tagged `power=line` — of 3 to 45 m each,
+  // 499 m in total. Those are the jumpers inside a substation yard. A pylon
+  // glyph on one is a pylon drawn in the middle of a switchyard.
+  const yardJumper = {
+    id: 'w1', c: [2.29, 48.85, 2.2901, 48.8501], km: 0.012, u: 0, vi: 0, n: -1, o: -1,
+  };
+  const realLine = {
+    id: 'w2', c: [2.10, 48.70, 2.12, 48.71, 2.14, 48.72], km: 3.1, u: 0, vi: 0, n: -1, o: -1,
+  };
+  const voltages = [{ v: 225_000, raw: '225000', tier: 'hv-high', all: [225_000] }];
+  assert.deepEqual(powerPylonMarks({ strokes: [yardJumper], voltages }, { spacingM: 150 }), []);
+  assert.ok(powerPylonMarks({ strokes: [realLine], voltages }, { spacingM: 150 }).length > 0,
+    'and a real span is never excluded by the same threshold');
+  // The threshold sits under the shortest real span and far over a yard run.
+  assert.ok(POWER_PYLON_MIN_WAY_M < 300, 'a French 400 kV span is 300-500 m');
+  assert.ok(POWER_PYLON_MIN_WAY_M > 45, 'the longest yard jumper measured was 45 m');
 });
