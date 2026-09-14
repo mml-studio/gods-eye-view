@@ -22,6 +22,7 @@ import {
   DATACENTER_LEGEND_ROWS,
   DATACENTER_SURFACES,
   datacenterCardDetails,
+  formatPowerMw,
   datacenterFootprint,
   datacenterHeightM,
   datacenterRenderSpec,
@@ -262,7 +263,9 @@ test('the shipped pack gets materially more card than it used to, and no lies', 
     new URL('./local_data/datacenters/datacenters.geojsonl', import.meta.url),
     'utf8',
   ).trim().split('\n');
-  assert.equal(lines.length, 4351, 'the pack this was measured against');
+  // 4 351 OSM features plus the 287 operating French sites DCWatch knows and
+  // OSM never mapped — see scripts/build-datacenters-power.mjs.
+  assert.equal(lines.length, 4638, 'the pack this was measured against');
 
   let withDetail = 0;
   let withTwo = 0;
@@ -285,6 +288,82 @@ test('the shipped pack gets materially more card than it used to, and no lies', 
   assert.ok(withTwo / lines.length > 0.40, `only ${withTwo} got two lines`);
   // And the campus outlines are still worded as campuses.
   assert.ok(siteWorded > 100, `${siteWorded} site-worded footprints`);
+});
+
+test('a DCWatch power reaches the card, and signs itself', () => {
+  const lines = datacenterCardDetails({
+    tags: { name: 'TGCC', operator: 'CEA - Atos', telecom: 'data_center' },
+    dcwatch: { powerMw: 7.5, startYear: 2010, release: '2026-04-09' },
+  });
+  assert.equal(lines[0], 'CEA - Atos \u00b7 7,5 MW');
+  assert.equal(lines[1], 'en service depuis 2010');
+  assert.equal(lines[2], 'puissance, ann\u00e9e : DCWatch 2026-04-09');
+});
+
+test('a mapped data_center:power outranks DCWatch, and the signature says so', () => {
+  // Digital Realty MRS1 is one of the five French features that publish the
+  // tag. The surveyed value wins; only the year is DCWatch's, and the card
+  // must not claim the megawatts came from DCWatch.
+  const lines = datacenterCardDetails({
+    tags: { name: 'Digital Realty MRS1', operator: 'Digital Realty', 'data_center:power': '16 MW' },
+    dcwatch: { powerMw: 15.6, startYear: 2015, release: '2026-04-09' },
+  });
+  assert.ok(lines[0].includes('16 MW'), lines[0]);
+  assert.ok(!lines[0].includes('15,6'), lines[0]);
+  assert.equal(lines.at(-1), 'ann\u00e9e : DCWatch 2026-04-09');
+});
+
+test('a card whose every line came from OSM is never signed DCWatch', () => {
+  const lines = datacenterCardDetails({
+    tags: { name: 'X', operator: 'Equinix', start_date: '2015' },
+    dcwatch: { startYear: 2015, release: '2026-04-09' },
+  });
+  assert.deepEqual(lines, ['Equinix', 'en service depuis 2015']);
+});
+
+test('a DCWatch block with nothing in it changes nothing', () => {
+  assert.deepEqual(
+    datacenterCardDetails({ tags: { name: 'X', operator: 'Equinix' }, dcwatch: { release: '2026-04-09' } }),
+    ['Equinix'],
+  );
+  assert.deepEqual(datacenterCardDetails({ tags: { name: 'X' }, dcwatch: null }), []);
+  assert.deepEqual(datacenterCardDetails({ tags: { name: 'X' }, dcwatch: 'oops' }), []);
+});
+
+test('formatPowerMw keeps a tenth where a tenth separates two sites', () => {
+  assert.equal(formatPowerMw(7.5), '7,5 MW');
+  assert.equal(formatPowerMw(0.348), '0,3 MW');
+  assert.equal(formatPowerMw(15.6), '16 MW');
+  assert.equal(formatPowerMw(85), '85 MW');
+  // 0.000 in the source means "looked, found nothing", never "draws no power".
+  assert.equal(formatPowerMw(0), '');
+  assert.equal(formatPowerMw(null), '');
+  assert.equal(formatPowerMw('abc'), '');
+});
+
+test('every card line in the shipped pack fits the host clamp', () => {
+  const lines = readFileSync(
+    new URL('./local_data/datacenters/datacenters.geojsonl', import.meta.url),
+    'utf8',
+  ).trim().split('\n');
+  let signed = 0;
+  let withPower = 0;
+  for (const raw of lines) {
+    const feature = JSON.parse(raw);
+    for (const line of datacenterCardDetails(feature.properties, {
+      areaM2: geometryAreaM2(feature.geometry),
+    })) {
+      if (line.includes('DCWatch')) {
+        signed += 1;
+        // clampCardLine() truncates at 48; a provenance line that comes back
+        // cut mid-date is worse than none.
+        assert.ok(line.length <= 48, `${line.length}: ${line}`);
+      }
+      if (/\bMW\b/.test(line)) withPower += 1;
+    }
+  }
+  assert.equal(signed, 336, 'cards signed DCWatch');
+  assert.equal(withPower, 339, 'cards printing a power');
 });
 
 test('the campus outlines the pack is known to contain are never called buildings', () => {
@@ -486,13 +565,19 @@ test('the shipped pack still splits into the four populations this was measured 
   }
 
   // The numbers quoted in the module header and in DATACENTER_SURFACES.
-  assert.deepEqual(counts, { volume: 461, slab: 2739, site: 317, point: 834 });
+  // `point` carries the 287 DCWatch appendices on top of the 834 OSM nodes:
+  // a site DCWatch located but nobody traced has no emprise to be small, which
+  // is exactly what the hollow ring says.
+  assert.deepEqual(counts, { volume: 461, slab: 2739, site: 317, point: 1121 });
   for (const surface of DATACENTER_SURFACES) {
     assert.equal(surface.count, counts[surface.key], `${surface.key} blurb is stale`);
   }
-  // Two thirds of the pack has an emprise and no height. That proportion IS
-  // the argument for the flat slab, so it is asserted rather than assumed.
-  assert.ok(counts.slab / lines.length > 0.6);
+  // Three fifths of the pack has an emprise and no height. That proportion IS
+  // the argument for the flat slab, so it is asserted rather than assumed. It
+  // was 63 % before the DCWatch merge added 287 features with no emprise at
+  // all; the slab COUNT is unchanged and the denominator is what moved.
+  assert.ok(counts.slab / lines.length > 0.55, `${counts.slab} / ${lines.length}`);
+  assert.equal(counts.slab, 2739, 'the OSM half is untouched by the merge');
   // Nothing in the pack asks for a skyscraper.
   assert.ok(extrudedMax <= DATACENTER_MAX_HEIGHT_M, `${extrudedMax} m`);
   assert.equal(extrudedMax, 170);

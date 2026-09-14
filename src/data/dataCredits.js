@@ -628,10 +628,17 @@ export const DATA_CREDITS = [
   // ── Bundled snapshots ───────────────────────────────────────────
   {
     key: 'datacenters',
+    // Two databases, one layer, one licence family: the OSM extract draws the
+    // footprints, and DCWatch supplies the megawatts and the 287 French sites
+    // OSM never mapped. Both are ODbL, so the share-alike obligation this entry
+    // already carried is unchanged — but a reader looking at a power figure is
+    // entitled to find its publisher here and not only on the card.
     html:
       'Datacenters: ' +
       '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a> ' +
-      '(ODbL 1.0)',
+      '(ODbL 1.0) · puissances et sites français: ' +
+      '<a href="https://gitlab.com/hubblo/datacenter-watch" target="_blank" rel="noopener">DCWatch</a> ' +
+      '(Hubblo, ODbL)',
   },
   {
     key: 'dams',
