@@ -6,6 +6,34 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-14
 
 ### Fixed
+- **La rampe de puissance était ordonnée, conforme aux deux tests de la règle,
+  et trop sombre pour qu'on s'y repère.** Les pastilles livrées le matin même
+  couraient de L\* 30,6 à 83,0, avec des écarts de 10 à 18, un ordre qui
+  survivait en niveaux de gris et en deutéranopie simulée. Un lecteur les a
+  regardées sur Bordeaux et a dit que la couleur était trop sombre pour un bon
+  repérage. Il avait raison, et le chiffre qui le prouve n'est pas dans la
+  rampe : les deux barreaux du bas — `lente` et `normale` — font **46 % des
+  sites d'une ville française**. Une pastille sombre dans un jonc sombre sur
+  une orthophoto est une tache sombre, quelle que soit sa teinte.
+
+  **UNE RAMPE ORDONNÉE EN CLARTÉ A UN PROBLÈME DE PLANCHER, et les deux tests
+  de la règle ne le voient pas** — ils mesurent l'ORDRE, jamais la VISIBILITÉ.
+  Une échelle qui varie en valeur a, par construction, un bas sombre. La rampe
+  dépense donc maintenant tout son ordre dans la **moitié claire** : L\* 54,1 →
+  63,3 → 72,3 → 81,7 → 90,9. Entre le plus sombre qui se lise encore sur un
+  fond sombre et le plus clair avant le blanc il reste 37 points, soit des
+  écarts de 9,2 au lieu de 13 — plus serré, et suffisant.
+
+  Le gain se mesure des deux côtés : **plancher remonté de 23,5 L\***, et
+  séparation compositée sur quatre fonds témoins — eau, forêt, urbain clair,
+  toit de tuiles — passée de **ΔE 21,4 à 35,5**, pour un seuil de perception de
+  2,3. L'ordre survit toujours en gris (54 < 63 < 72 < 82 < 91) et en
+  deutéranopie (40 → 46 → 52 → 68 → 93).
+
+  Le gris de refus mesure L\* 54,8 : il est désormais au BAS de la rampe et non
+  plus au milieu, donc la classe « puissance non exploitable » est aussi
+  trouvable que n'importe quelle bande mesurée, et ce qui la distingue est sa
+  FORME — la plaque creuse — et non sa teinte.
 - **318 bornes étaient dessinées sur Bordeaux, et personne ne les trouvait — y
   compris celui qui les avait dessinées.** Un lecteur a regardé la ville depuis
   12 653 m, à la verticale, sur l'imagerie photoréaliste, et a dit que les

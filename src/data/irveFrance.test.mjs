@@ -318,8 +318,14 @@ const RAMP = IRVE_BAND_KEYS.filter((band) => band !== 'inconnue').map(irveBandCo
 
 test('the ramp is ordered in LIGHTNESS, so the order survives in greys (B4)', () => {
   const ladder = RAMP.map((hex) => lab(hex)[0]);
+  // AND IT SITS IN THE LIGHT HALF. A reader called the first version too dark
+  // to pick out, and the arithmetic agreed: its two bottom rungs were L* 30.6
+  // and 48.7, which is 46 % of the sites in a French city drawn as dark blobs
+  // inside a dark casing. The floor is the rule now, not just the order.
+  assert.ok(ladder[0] >= 52, `the darkest rung is L* ${ladder[0].toFixed(1)}`);
+  assert.ok(ladder.at(-1) <= 93, 'and the lightest must not reach white');
   for (let i = 1; i < ladder.length; i += 1) {
-    assert.ok(ladder[i] - ladder[i - 1] >= 9,
+    assert.ok(ladder[i] - ladder[i - 1] >= 8.8,
       `rung ${i} is only ${(ladder[i] - ladder[i - 1]).toFixed(1)} L* above its neighbour`);
   }
   // B4's second test: simulate a deuteranopia, and the order has to hold there
@@ -334,7 +340,7 @@ test('adjacent rungs stay separable once composited over a basemap (B3)', () => 
   // B3's own test: three control backdrops — water, forest, pale urban — at the
   // beam's shipped alpha. Six or seven declared classes are not six or seven
   // PERCEIVED ones once the alpha, the HDR and the sensor pass have run.
-  const backdrops = ['#12324f', '#2f4a24', '#c8c4bc'];
+  const backdrops = ['#12324f', '#2f4a24', '#c8c4bc', '#7d5b4f'];
   const over = (hex, backdrop) => {
     const mix = [0, 2, 4].map((i) => {
       const fg = parseInt(hex.replace('#', '').slice(i, i + 2), 16);
@@ -346,7 +352,7 @@ test('adjacent rungs stay separable once composited over a basemap (B3)', () => 
   for (const backdrop of backdrops) {
     for (let i = 1; i < RAMP.length; i += 1) {
       const separation = deltaE(lab(over(RAMP[i - 1], backdrop)), lab(over(RAMP[i], backdrop)));
-      assert.ok(separation > 10,
+      assert.ok(separation > 25,
         `${RAMP[i - 1]} and ${RAMP[i]} are ΔE ${separation.toFixed(1)} apart over ${backdrop}`);
     }
   }
@@ -427,7 +433,7 @@ test('the refusal is a hollow plate, and a measured band is a solid one (D3)', (
   // exactly. A baked hue would multiply into something else entirely.
   assert.match(svg(solid), /#ffffff/);
   for (const band of IRVE_BAND_KEYS) {
-    assert.doesNotMatch(svg(irveMarkImage(band, IRVE_MARK_SPARSE_PX)), /#3b3f8f|#c6d94a/);
+    assert.doesNotMatch(svg(irveMarkImage(band, IRVE_MARK_SPARSE_PX)), /#0482ed|#f3e967/);
   }
 
   // Below the punch floor the bolt is dropped rather than smudged: one channel

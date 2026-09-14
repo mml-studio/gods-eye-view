@@ -169,6 +169,14 @@ Ajout de l'état de l'art : la recommandation contemporaine (Jégou, webinaire A
 
 **Test.** Convertir la rampe en niveaux de gris. L'ordre survit-il ? Simuler une deutéranopie. L'ordre survit-il ?
 
+> **Amendement du 2026-09-14 — une rampe ordonnée en clarté a un problème de PLANCHER, et le test ci-dessus ne le voit pas.** Une échelle qui varie en valeur a, par définition, un bas sombre. Sur un fond photographique, ce bas disparaît — et les deux tests de la règle le déclarent conforme, parce qu'ils mesurent l'ORDRE et jamais la VISIBILITÉ.
+>
+> Mesuré sur `irve-fr` : la rampe livrée le 2026-09-10 courait de L\* 30,6 à 83,0, écarts de 10 à 18, ordre intact en gris et en deutéranopie — et un lecteur a dit que les pastilles étaient trop sombres pour se repérer. Il avait raison, et le chiffre qui le prouve n'est pas dans la rampe mais dans la donnée : les deux barreaux du bas (`lente` 6,7 % et `normale` 39,3 %) font **46 % des sites d'une ville française**. Une pastille sombre dans un jonc sombre sur une orthophoto est une tache sombre, quelle que soit sa teinte.
+>
+> **Règle.** Sur fond photographique, une rampe ordonnée dépense son ordre dans la MOITIÉ CLAIRE. Entre L\* ≈ 54 — le plus sombre qui se lise encore sur un fond sombre — et L\* ≈ 91 — le plus clair avant le blanc — il reste 37 points : pour cinq classes cela fait des écarts de 9,2 au lieu de 13, ce qui est plus serré et suffisant. Le gain se mesure des deux côtés : plancher remonté de 23,5 L\*, et séparation compositée passée de ΔE 21,4 à **35,5**. Le coût est un plafond de classes plus bas qu'on ne croit — B3 disait déjà six à sept, la moitié claire en autorise cinq confortablement.
+>
+> **Test ajouté.** Le barreau le plus sombre de la rampe est-il au-dessus de L\* 52 ? Et la classe la plus fréquente de la donnée tombe-t-elle sur un barreau clair ou sur le bas de l'échelle ?
+
 ### B5 · Forme et taille ne mentent pas sur un type inconnu — **P0**
 
 **Fondement.** « La forme : qualitatif seulement, 5 à 7 formes maximum. »

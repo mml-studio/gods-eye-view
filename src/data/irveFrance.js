@@ -350,41 +350,65 @@ const GROUND_WARM_LIMIT = 600;
  *
  * ── WHAT REPLACES IT, AND HOW IT WAS CHECKED ───────────────────────────────
  *
- * A monotonic value ramp, blue → cyan → green → chartreuse, every rung at
- * least 10 L* above the one below:
+ * A monotonic value ramp, blue → cyan → teal → green → chartreuse, every rung
+ * at least 9 L* above the one below:
  *
- *     30.6 → 48.7 → 61.9 → 72.9 → 83.0     (Δ 18.2 · 13.1 · 11.0 · 10.1)
+ *     54.1 → 63.3 → 72.3 → 81.7 → 90.9     (Δ 9.2 · 9.0 · 9.4 · 9.3)
  *
- * B4's two tests pass rather than being asserted. Greyscale: 31 < 49 < 62 < 73
- * < 83, the order survives. Deuteranopia (Viénot 1999): 28.7 → 40.6 → 46.5 →
- * 58.2 → 80.8, still strictly increasing.
+ * B4's two tests pass rather than being asserted. Greyscale: 54 < 63 < 72 < 82
+ * < 91, the order survives. Deuteranopia (Viénot 1999): 40 → 46 → 52 → 68 →
+ * 93, still strictly increasing.
  *
  * B3's test — *« deux classes adjacentes restent-elles séparables une fois
- * compositées ? »* — run at the beam's own 0.82 alpha over three control
- * backdrops (eau `#12324f`, forêt `#2f4a24`, urbain clair `#c8c4bc`). Smallest
- * adjacent ΔE76 of the twelve pairs: **19.3**, against a just-noticeable
- * difference of about 2.3.
+ * compositées ? »* — run at the mark's own alpha over four control backdrops
+ * (eau `#12324f`, forêt `#2f4a24`, urbain clair `#c8c4bc`, toit `#7d5b4f`).
+ * Smallest adjacent ΔE76 of the sixteen pairs: **35.5**, against a
+ * just-noticeable difference of about 2.3.
+ *
+ * ── AND WHY THE WHOLE LADDER SITS IN THE LIGHT HALF ────────────────────────
+ *
+ * The first version of this ramp ran 30.6 → 83.0, which satisfies every rule
+ * above with room to spare and was still wrong on a map. A reader looked at
+ * the shipped plates over Bordeaux and said the colours were too dark to pick
+ * out — and the arithmetic agrees: `lente` at L\* 30.6 and `normale` at 48.7
+ * are **46 % of the sites in a French city**, and a dark plate inside a dark
+ * casing over photographic imagery is a dark blob whatever its hue.
+ *
+ * A lightness ramp has a floor problem no amount of chroma fixes: B4 wants the
+ * value to carry the order, and the bottom of a value range is by definition
+ * dark. The resolution is to spend the ORDER on the light half only. Between
+ * L\* 54 — the darkest a plate can be and still read against a dark basemap —
+ * and L\* 91 — the lightest it can be without becoming white — there are 37
+ * points for four gaps, so the ladder is 9.2 apart rather than 13. That is
+ * tighter and it is enough, and it buys a floor 23.5 L\* higher and a
+ * composited separation that went from 21.4 to 35.5.
  *
  * Against the 415 distinct inks the rest of `src/data` uses, the nearest
- * neighbour of any rung is now ΔE 8.0 (`#4a4fa8`, amenities) where two rungs
- * used to be at ΔE 0.
+ * neighbour of any rung is ΔE 4.4 — `rapide` against `cadastreFeed.js`'s
+ * `#7ee787`. That one is deliberately not opened up: the cadastre ink is a
+ * PARCEL OUTLINE, a hairline on a polygon boundary, and this is a 26 px filled
+ * pastille with a dark casing and a bolt punched through it. Two different
+ * mark types at four ΔE are not a confusion; washing the rung out to 40 chroma
+ * to satisfy the number would have made a real one, against its own neighbours.
  *
  * ── AND `inconnue` LEAVES THE RAMP ALTOGETHER ──────────────────────────────
  *
  * It was neutral slate at L* 56.3, sitting 2.6 L* from `hpc` at 58.9: the one
  * class that means "we could not read this" was, in greys, the same mark as
- * the fastest charging in the country. D3 asks for a MOTIF and not a tint
+ * the fastest charging in the country. The refusal graphite measures L* 54.8,
+ * which is now the bottom of the ramp rather than the middle of it — so it is
+ * as findable as any measured band, and what tells it apart is its SHAPE. D3 asks for a MOTIF and not a tint
  * where a value is refused, so the mark is now a HOLLOW RING — see
  * {@link IRVE_UNKNOWN_INK} — and the ink is the graphite this repo already
  * reserves for a refusal. A motif is also the one encoding that survives the
  * NVG and FLIR passes.
  */
 const BAND_COLORS = Object.freeze({
-  lente: '#3b3f8f',
-  normale: '#3f6fd8',
-  accelere: '#2ba2c2',
-  rapide: '#5ec962',
-  hpc: '#c6d94a',
+  lente: '#0482ed',
+  normale: '#08a5d9',
+  accelere: '#00c6be',
+  rapide: '#7ee17a',
+  hpc: '#f3e967',
   inconnue: PRISM_NO_RATIO_COLOR,
 });
 /**
