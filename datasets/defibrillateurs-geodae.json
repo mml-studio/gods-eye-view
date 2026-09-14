@@ -15,23 +15,38 @@
   },
   "geometry": { "lon": "c_long_coor1", "lat": "c_lat_coor1" },
   "feature": {
-    "title": ["c_nom", "c_acc_complt", "c_adr_voie"],
+    "title": ["c_nom", "c_adr_voie"],
+    "blank": ["non renseigné", "non renseignée", "inconnu"],
     "details": [
       { "field": "c_adr_voie", "label": "Voie" },
-      { "field": "c_com_nom", "label": "Commune" },
-      { "field": "c_acc", "label": "Accès" },
-      { "field": "c_disp_j", "label": "Jours" },
-      { "field": "c_disp_h", "label": "Heures" },
-      { "field": "c_etat_fonct", "label": "État" }
+      { "field": "c_acc_etg", "label": "Étage" },
+      { "field": "c_disp_j", "label": "Jours", "format": "days" },
+      { "field": "c_disp_h", "label": "Heures", "format": "list" },
+      { "field": "c_acc_complt", "label": "Accès" },
+      { "field": "c_etat_fonct", "label": "État", "omitWhen": ["En fonctionnement"] }
     ],
     "group": {
-      "field": "c_acc",
-      "styles": {
-        "Extérieur": { "color": "#ff5c7a", "label": "Extérieur" },
-        "Intérieur": { "color": "#ffb3c0", "label": "Intérieur" }
-      },
-      "other": { "color": "#9aa7bd", "label": "Accès non renseigné" }
-    }
+      "rules": [
+        {
+          "key": "h24",
+          "label": "Accessible 24 h/24",
+          "color": "#5ce6a8",
+          "when": { "c_disp_h": ["24h/24"] }
+        },
+        {
+          "key": "libre",
+          "label": "Accès libre",
+          "color": "#ff5c7a",
+          "when": { "c_acc_lib": ["t"] }
+        }
+      ],
+      "other": { "color": "#7d8aa0", "label": "Accès restreint" }
+    },
+    "filters": [
+      { "id": "tous", "label": "Tous", "title": "Tous les défibrillateurs chargés" },
+      { "id": "libre", "label": "Accès libre", "groups": ["h24", "libre"], "title": "Ceux qu'un passant peut décrocher" },
+      { "id": "h24", "label": "24 h/24", "groups": ["h24"], "title": "Ceux dont l'horaire déclaré couvre la nuit" }
+    ]
   },
   "attribution": {
     "publisher": "Atlasanté — Base nationale des défibrillateurs (GeoDAE)",

@@ -6,6 +6,45 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-14
 
 ### Changed
+- **À Lyon, la couche Défibrillateurs recouvrait la ville de fiches dont une
+  ligne sur six disait quelque chose.** Le jeu GeoDAE rend 1 176 appareils dans
+  une vue de centre-ville. L'hôte d'annotations en matérialise au plus 160 par
+  source : une fiche par appareil n'a donc jamais été possible, et ce qui
+  arrivait à l'écran était **~25 fiches de sept lignes — un échantillon de 2 %
+  du jeu, à pleine hauteur, par-dessus la carte qu'il décrivait**. Derrière,
+  1 176 tiges de rappel de 65 px hachuraient Lyon en rose.
+
+  Mesuré sur les 888 DAE de la commune : `Commune : Lyon` sur 888 lignes,
+  `État : En fonctionnement` sur 883, `Accès : Intérieur` sur 885 — et deux
+  lignes qui affichaient le littéral Postgres brut, `{lundi,mardi,mercredi,
+  jeudi,vendredi}` et `{"non renseigné"}`.
+
+  Désormais : **le nom seul flotte**, le détail complet arrive au clic (la fiche
+  de contexte, qui a toujours porté la ligne entière et pas seulement les champs
+  déclarés). La bascule est automatique et se lit — au-delà de 160 objets
+  chargés, une fiche par objet est arithmétiquement impossible, donc la couche
+  n'en promet plus une. La tige est plafonnée à 18 m dans ce régime : la marque
+  reste dégagée du maillage photoréaliste, le mur de hachures disparaît.
+
+  La fiche du clic est réécrite avec : les littéraux `{…}` sont décodés
+  (`lun–ven`, `24h/24`), une ligne qui ne dirait que « non renseigné » n'est pas
+  écrite, `Commune` part (c'est la vue), et `État` **n'apparaît que lorsqu'il
+  n'est pas « En fonctionnement »** — les 5 cas sur 888 sont les seuls que
+  personne ne doit manquer. Le cas courant passe de six lignes à deux.
+
+- **Et la couleur de cette couche ne séparait rien.** Elle peignait
+  `Intérieur` / `Extérieur` : 885 contre 3 dans Lyon. Elle peint maintenant ce
+  qu'un lecteur vient réellement demander — *puis-je m'en servir maintenant* :
+  **accessible 24 h/24** (41), **accès libre** (584), **accès restreint** (304),
+  chacun avec son effectif dans la légende. Trois puces sur la ligne filtrent
+  sur ces mêmes groupes ; elles **masquent des marques et ne déchargent rien** —
+  l'effectif de la couche et la légende continuent de compter le jeu entier.
+
+  Rien de tout cela n'est du code propre aux défibrillateurs : un manifeste
+  déclare désormais `feature.ambient`, `feature.blank`, `format` / `omitWhen`
+  sur une ligne de détail, des groupes de couleur **par règles ordonnées sur
+  plusieurs colonnes**, et `feature.filters`. Voir `docs/DATASETS.md`.
+
 - **Les pastilles des autorisations d'urbanisme flottaient au milieu de nulle
   part, et elles glissaient sur les toits dès qu'on faisait pivoter la carte.**
   Mesuré au-dessus de Paris, caméra à 500 m : **les 4 753 pastilles de la couche

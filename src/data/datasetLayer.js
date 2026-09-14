@@ -22,15 +22,27 @@
  *     flat (D1 — a colour with no printed meaning is a promise).
  *   · WHAT A CARD SAYS. The manifest's `feature.details`, or — when it
  *     declares none — the first few short fields of the row, minus the
- *     columns that only locate or identify it.
+ *     columns that only locate or identify it. A line whose value is one of
+ *     `feature.blank`, or the one spelling a detail declares `omitWhen` for,
+ *     is not written at all: a card is worth its shortest true version.
+ *   · WHETHER IT SAYS IT AT ALL. Above `DATASET_DENSE_FEATURE_COUNT` loaded
+ *     features a card each is arithmetically impossible, so the overlay
+ *     carries the title alone and the detail waits for the click. Derived from
+ *     the load, not from the subject — `feature.ambient` overrules it.
  *
  * @module data/datasetLayer
  */
 
 import * as Cesium from 'cesium';
-import { createLocalGeoJsonLayer } from './localGeojson.js';
-import { datasetLayerId, datasetSourceLine } from './datasetManifest.js';
+import { LOCAL_OVERLAY_COHORT_LIMIT, createLocalGeoJsonLayer } from './localGeojson.js';
+import { DATASET_OTHER_GROUP_KEY, datasetLayerId, datasetSourceLine } from './datasetManifest.js';
 import { DATASET_RELAY_PATH, loadDatasetFeatures } from './datasetSources.js';
+import {
+  cleanFieldText,
+  datasetDetailLine,
+  fieldMatchKey,
+  rowMatchesWhen,
+} from './datasetFields.js';
 
 /** How often a viewport-scoped layer re-checks the camera, ms. */
 export const DATASET_VIEWPORT_POLL_MS = 2500;
@@ -40,6 +52,37 @@ export const DATASET_BBOX_PAD_RATIO = 0.2;
 export const DATASET_REFETCH_SHRINK_RATIO = 0.5;
 export const DATASET_CARD_MAX_LINE = 64;
 export const DATASET_CARD_DEFAULT_LINES = 4;
+/**
+ * Above this many loaded features, the floating overlay carries the TITLE and
+ * the detail waits for a click.
+ *
+ * Not a taste: it is the point where a card each stops being possible. The
+ * shared host materializes at most {@link LOCAL_OVERLAY_COHORT_LIMIT} ambient
+ * entries per source, so a set larger than that can never show a card for every
+ * member — what it shows is a screen-grid sample of itself, drawn at full card
+ * height, hiding the map underneath. Measured on GeoDAE over Lyon: 1 176
+ * features in view, about 25 cards on screen, each seven lines tall, over 60 %
+ * of the viewport covered by a 2 % sample.
+ *
+ * The threshold is the cohort limit itself rather than a tuned number, because
+ * that is the fact it is about. `feature.ambient` in the manifest overrides it
+ * in both directions.
+ */
+export const DATASET_DENSE_FEATURE_COUNT = LOCAL_OVERLAY_COHORT_LIMIT;
+
+/**
+ * Ceiling on the recall stem, in metres, for a set drawn as labels.
+ *
+ * The stem holds its mark 65 px above the ground at every range, which is a
+ * recall device when a layer draws forty of them and a wall when it draws
+ * twelve hundred: on the Lyon view every defibrillator contributed a ~58 m
+ * pink shaft, and the aggregate read as hatching over the whole city. Capped in
+ * metres the device survives — the mark is still lifted clear of the photoreal
+ * mesh, which is the job — and the shaft shrinks to nothing as the camera pulls
+ * back, exactly when the wall used to appear. Same mechanism, and the same
+ * reasoning, as the airports pack's 150 m (`stemMaxHeightM` in `localGeojson.js`).
+ */
+export const DATASET_DENSE_STEM_MAX_M = 18;
 
 /**
  * The camera's view rectangle in degrees, or null when it does not intersect
@@ -128,15 +171,13 @@ export function datasetCoverageLine({ count = 0, total = null, truncated = false
 }
 
 function cleanValue(value) {
-  if (value == null) return '';
-  if (typeof value === 'object') {
-    try { return JSON.stringify(value).slice(0, DATASET_CARD_MAX_LINE); } catch { return ''; }
+  // Objects are clamped on the way out of JSON, scalars are not: the one
+  // caller left is the TITLE, which the card host wraps and the label entry
+  // clamps for its own one-line drawing (`clampOverlayLabelTitle`).
+  if (value != null && typeof value === 'object') {
+    return cleanFieldText(value).slice(0, DATASET_CARD_MAX_LINE);
   }
-  return String(value).replace(/\s+/g, ' ').trim();
-}
-
-function clampLine(text) {
-  return text.length > DATASET_CARD_MAX_LINE ? `${text.slice(0, DATASET_CARD_MAX_LINE - 1).trimEnd()}…` : text;
+  return cleanFieldText(value);
 }
 
 const ID_LIKE = /(^|_)(id|gid|uuid|siren|siret|code|url|lien|link|photo|geom|wkt|the_geom|coordonnees|coordinates|__id)(_|$)/i;
@@ -226,21 +267,23 @@ export function datasetProgressLine(progress, now = Date.now()) {
   return remaining ? `${head} — ${remaining}` : head;
 }
 
-export function datasetCardCopy(manifest) {
+export function datasetCardCopy(manifest, { titleOnly = false } = {}) {
   const geometryFields = new Set(Object.values(manifest.geometry || {}).filter((value) => typeof value === 'string'));
   const titleFields = new Set(manifest.feature?.title || []);
   const declared = manifest.feature?.details || [];
+  const blankKeys = new Set((manifest.feature?.blank || []).map(fieldMatchKey));
   return (props) => {
     const row = props || {};
     const title = cleanValue(row.name) || manifest.label;
+    // A label entry carries the title and nothing else. The title stays FULL
+    // here: `createLocalInfrastructureOverlayEntry` clamps what it draws, and
+    // the context card the click opens gets the name the register published.
+    if (titleOnly) return { title, details: [] };
     const details = [];
     if (declared.length) {
       for (const detail of declared) {
-        const value = cleanValue(row[detail.field]);
-        if (!value) continue;
-        const label = detail.label ? `${detail.label} : ` : '';
-        const unit = detail.unit ? ` ${detail.unit}` : '';
-        details.push(clampLine(`${label}${value}${unit}`));
+        const line = datasetDetailLine(row, detail, { blankKeys, max: DATASET_CARD_MAX_LINE });
+        if (line) details.push(line);
       }
       return { title, details };
     }
@@ -250,10 +293,86 @@ export function datasetCardCopy(manifest) {
       const value = cleanValue(raw);
       if (!value || value === title || value.length > DATASET_CARD_MAX_LINE || /^https?:\/\//i.test(value)) continue;
       if (value === 'true' || value === 'false' || value === 'f' || value === 't') continue;
+      if (blankKeys.has(fieldMatchKey(value))) continue;
       details.push(`${key} : ${value}`);
     }
     return { title, details };
   };
+}
+
+/**
+ * Which group a row falls in, for either form of `feature.group`.
+ *
+ * Rule form is ORDERED and first-match-wins, so a manifest states its priority
+ * by writing it down: a defibrillator that is both open 24h/24 and freely
+ * accessible is drawn as 24h/24, because that is the stronger of the two
+ * answers to the question the reader asked.
+ *
+ * @param {object|null} group Normalized `feature.group`.
+ * @returns {((props: object) => (string|null))|null}
+ */
+export function datasetGroupResolver(group) {
+  if (!group) return null;
+  if (group.rules) {
+    return (props) => {
+      for (const rule of group.rules) {
+        if (rowMatchesWhen(props || {}, rule.when)) return rule.key;
+      }
+      return group.other ? DATASET_OTHER_GROUP_KEY : null;
+    };
+  }
+  return (props) => {
+    const value = props?.[group.field];
+    const key = value == null ? '' : String(value).trim();
+    if (Object.hasOwn(group.styles, key)) return key;
+    return group.other ? DATASET_OTHER_GROUP_KEY : (key || null);
+  };
+}
+
+/**
+ * The chip strip for a manifest's `feature.filters`, with what each one would
+ * leave on screen.
+ *
+ * The count is the DRAWN total of the groups the chip names, read off the same
+ * tally the legend is built from — so a chip says how much of the map it keeps
+ * before it is pressed, and the row's own count (which never moves) says how
+ * much was loaded. Nothing is dropped by a chip; the marks of the groups it
+ * does not name are hidden.
+ *
+ * @param {object} manifest
+ * @param {object} params Current runtime params.
+ * @param {Map<string,{total:number}>} tally
+ * @returns {Array<object>}
+ */
+export function datasetFilterChips(manifest, params, tally) {
+  const filters = manifest.feature?.filters;
+  if (!filters || filters.length === 0) return [];
+  const current = datasetActiveFilter(manifest, params);
+  const totalOf = (keys) => keys.reduce((sum, key) => sum + (tally?.get?.(key)?.total || 0), 0);
+  const loaded = [...(tally?.values?.() || [])].reduce((sum, bucket) => sum + (bucket.total || 0), 0);
+  return filters.map((filter) => {
+    const active = filter.id === current.id;
+    const kept = filter.groups ? totalOf(filter.groups) : loaded;
+    const title = filter.title
+      ? `${filter.title} — ${formatCount(kept)} sur ${formatCount(loaded)}`
+      : `${formatCount(kept)} sur ${formatCount(loaded)} dans la vue`;
+    return {
+      id: `filter:${filter.id}`,
+      label: filter.label,
+      active,
+      state: active ? 'active' : 'idle',
+      title,
+      params: { filter: filter.id },
+    };
+  });
+}
+
+/** The filter a params bag selects, falling back to the first declared one. */
+export function datasetActiveFilter(manifest, params) {
+  const filters = manifest.feature?.filters || [];
+  if (filters.length === 0) return { id: null, groups: null };
+  const wanted = params?.filter;
+  return filters.find((filter) => filter.id === wanted) || filters[0];
 }
 
 /**
@@ -273,10 +392,28 @@ export function datasetLegend(manifest, tally, count) {
     entries.push({ color: style.color, label: style.label, count: bucket ? bucket.total : 0 });
   }
   if (group.other) {
-    const bucket = tally?.get?.('__other__');
+    const bucket = tally?.get?.(DATASET_OTHER_GROUP_KEY);
     entries.push({ color: group.other.color, label: group.other.label, count: bucket ? bucket.total : 0 });
   }
   return entries;
+}
+
+/**
+ * What the floating overlay carries for this load: the manifest's word if it
+ * gave one, otherwise the answer the feature count implies.
+ *
+ * Re-asked on every load rather than fixed at construction, because the same
+ * manifest is dense over Lyon and sparse over the Creuse and the honest
+ * rendering is not the same one.
+ *
+ * @param {object} manifest
+ * @param {number} count Features this load actually produced.
+ * @returns {'card'|'label'}
+ */
+export function datasetAmbientVariant(manifest, count) {
+  const declared = manifest.feature?.ambient;
+  if (declared === 'card' || declared === 'label') return declared;
+  return Number(count) > DATASET_DENSE_FEATURE_COUNT ? 'label' : 'card';
 }
 
 /**
@@ -312,17 +449,17 @@ export function createDatasetLayer(manifest, {
   const groupStyles = group
     ? Object.fromEntries([
       ...Object.entries(group.styles).map(([value, style]) => [value, { color: style.color }]),
-      ...(group.other ? [['__other__', { color: group.other.color }]] : []),
+      ...(group.other ? [[DATASET_OTHER_GROUP_KEY, { color: group.other.color }]] : []),
     ])
     : null;
-  const groupOf = group
-    ? (props) => {
-      const value = props?.[group.field];
-      const key = value == null ? '' : String(value).trim();
-      if (Object.hasOwn(group.styles, key)) return key;
-      return group.other ? '__other__' : key || null;
-    }
-    : null;
+  const groupOf = datasetGroupResolver(group);
+  const filters = manifest.feature?.filters || null;
+  // Two writers, one per ambient variant, both built once: the variant is
+  // re-decided per load and swapping a closure is cheaper than re-deriving the
+  // blank set and the title field per feature.
+  const cardWriter = datasetCardCopy(manifest);
+  const labelWriter = datasetCardCopy(manifest, { titleOnly: true });
+  let _ambient = datasetAmbientVariant(manifest, 0);
 
   const inner = createLocalGeoJsonLayer({
     id,
@@ -333,8 +470,22 @@ export function createDatasetLayer(manifest, {
     source: datasetSourceLine(manifest),
     labels: true,
     ...(groupOf ? { groupOf, groupStyles } : {}),
-    rowControls: (params, tally) => ({ legend: datasetLegend(manifest, tally, _report?.features?.length || 0) }),
-    cardCopy: datasetCardCopy(manifest),
+    ...(filters ? {
+      groupVisible: (groupKey, params) => {
+        const active = datasetActiveFilter(manifest, params);
+        return !active.groups || active.groups.includes(groupKey);
+      },
+      defaultParams: { filter: filters[0].id },
+    } : {}),
+    rowControls: (params, tally) => ({
+      chips: datasetFilterChips(manifest, params, tally),
+      legend: datasetLegend(manifest, tally, _report?.features?.length || 0),
+    }),
+    // Read per load, not captured: `_ambient` is settled the moment the
+    // features land, before the loader walks them into records.
+    overlayVariant: () => _ambient,
+    stemMaxHeightM: () => (_ambient === 'label' ? DATASET_DENSE_STEM_MAX_M : Number.POSITIVE_INFINITY),
+    cardCopy: (props, measured) => (_ambient === 'label' ? labelWriter(props, measured) : cardWriter(props, measured)),
     loadFeatures: async () => {
       _abort?.abort();
       _abort = typeof AbortController === 'function' ? new AbortController() : null;
@@ -354,6 +505,11 @@ export function createDatasetLayer(manifest, {
           onProgress: (step) => { _progress = { ...step, startedAt }; },
         });
         _report = result;
+        // Settled HERE, between the answer and the walk that turns it into
+        // records: everything downstream (`cardCopy`, `overlayVariant`,
+        // `stemMaxHeightM`) reads it while building, so a load that arrives
+        // dense cannot be drawn with the previous load's sparse rendering.
+        _ambient = datasetAmbientVariant(manifest, result.features?.length || 0);
         return result.features;
       } catch (error) {
         _error = error?.message || String(error);
@@ -398,6 +554,16 @@ export function createDatasetLayer(manifest, {
     getManifest: () => manifest,
     /** The last load report, for the panel and the QA harness. */
     getLoadReport: () => _report,
+    /** What the floating overlay is carrying right now — 'card' or 'label'. */
+    getAmbientVariant: () => _ambient,
+
+    // Attached only when the manifest declares chips: the manager treats the
+    // presence of `setParams` as "this layer has runtime parameters", and a
+    // dataset with nothing to filter must keep rejecting them as it always did.
+    ...(filters ? {
+      setParams: (params) => inner.setParams?.(params) === true,
+      getParams: () => inner.getParams?.() || null,
+    } : {}),
 
     init: async () => {},
 

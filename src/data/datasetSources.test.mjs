@@ -90,6 +90,26 @@ test('tabularColumnsFor asks only for what the manifest names, geometry included
     geometry: { lon: 'lng', lat: 'lat' },
   });
   assert.equal(tabularColumnsFor(bare), null, 'no fields declared means every column');
+
+  // A rule group reads several columns and names none of them `field`. Missing
+  // them would not fail: every rule would miss, every row would land in
+  // `other`, and the legend would print a confident row of zeroes.
+  const ruled = normalizeDatasetManifest({
+    id: 'x2', label: 'X', attribution: ATTRIBUTION,
+    source: { kind: 'datagouv', resourceId: 'eb76d20a-8501-400e-b336-d85724de5435' },
+    geometry: { lon: 'lng', lat: 'lat' },
+    feature: {
+      title: ['nom'],
+      group: {
+        rules: [
+          { key: 'h24', color: '#000000', when: { heures: ['24h/24'] } },
+          { key: 'libre', color: '#111111', when: { libre: ['t'], heures: ['ouvrables'] } },
+        ],
+        other: { color: '#222222' },
+      },
+    },
+  });
+  assert.deepEqual(tabularColumnsFor(ruled), ['lng', 'lat', 'nom', 'heures', 'libre']);
 });
 
 test('featuresFromGeoJson accepts a collection, a feature and an array, refuses the rest', () => {

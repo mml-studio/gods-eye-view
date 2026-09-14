@@ -5,6 +5,7 @@ import * as Cesium from 'cesium';
 import {
   GROUND_SAMPLE_MAX_ARMED_RETRIES,
   LOCAL_OVERLAY_COHORT_LIMIT,
+  LOCAL_OVERLAY_LABEL_MAX_TITLE,
   LOCAL_STEM_TIP_EPSILON_M,
   applyLocalSurfaceStyle,
   createLocalGeoJsonLayer,
@@ -511,6 +512,54 @@ test('local infrastructure entries satisfy the shared presentation contract', ()
   assert.equal(entry.edgeFade, 'keyhole');
   assert.equal(entry.horizonCull, true);
   assert.equal(entry.terrainOcclusion, false);
+});
+
+test('the label variant withholds the detail and moves to the label lane', () => {
+  const position = Cesium.Cartesian3.fromDegrees(4.85, 45.75, 200);
+  const shared = {
+    id: 'dae-1',
+    layerId: 'ds-defibrillateurs-geodae',
+    position,
+    properties: {},
+    priority: 10,
+    accent: '#ff5c7a',
+    copy: { title: 'DAE — Hôtel de Ville', details: ['Voie : place de la Comédie', 'Heures : 24h/24'] },
+  };
+  const card = createLocalInfrastructureOverlayEntry(shared);
+  const label = createLocalInfrastructureOverlayEntry({ ...shared, variant: 'label' });
+
+  assert.equal(card.variant, 'card');
+  assert.deepEqual(card.details, shared.copy.details);
+  assert.equal(card.collisionGroup, 'ambient-card');
+  assert.equal(card.zIndex, 30);
+
+  assert.equal(label.variant, 'label');
+  assert.equal(label.title, 'DAE — Hôtel de Ville', 'the name is the whole entry');
+  assert.deepEqual(label.details, [], 'the detail waits for the click, it is not dropped from the record');
+  assert.equal(label.collisionGroup, 'ambient-label');
+  assert.equal(label.zIndex, 10, 'the label lane, not the card lane');
+  assert.equal(label.interactive, true, 'the name is still the click surface');
+  // Everything else about the entry is the card's: same range, same fade, same
+  // culling — a dense layer is not a different kind of object.
+  assert.equal(label.maxDistance, card.maxDistance);
+  assert.equal(label.distanceFadeStartRatio, card.distanceFadeStartRatio);
+  assert.deepEqual(label.distanceScale, card.distanceScale);
+  assert.equal(label.horizonCull, card.horizonCull);
+
+  // A label does not wrap (`WRAPPING_VARIANTS`), so a long name is cut for the
+  // DRAWING only — the copy it came from, and the context card the click
+  // opens, still hold the whole thing.
+  const longName = 'DAE - Piscine Saint-Exupéry (Piscine d’hiver), entrée personnel côté cour';
+  const longCopy = { title: longName, details: [] };
+  const cut = createLocalInfrastructureOverlayEntry({ ...shared, variant: 'label', copy: longCopy });
+  assert.equal(cut.title.length, LOCAL_OVERLAY_LABEL_MAX_TITLE);
+  assert.match(cut.title, /…$/);
+  assert.equal(longCopy.title, longName, 'the pack’s copy is not rewritten');
+  assert.equal(
+    createLocalInfrastructureOverlayEntry({ ...shared, copy: longCopy }).title,
+    longName,
+    'a card wraps, so it keeps the whole name',
+  );
 });
 
 test('a short-range card fades inside its own range, never before it', () => {
