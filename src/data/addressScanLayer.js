@@ -458,8 +458,17 @@ export function scanShiftNeeded(last, next, minShiftKm = ADDRESS_SCAN_MIN_SHIFT_
  * @param {number} config.updateInterval Manager refresh cadence, ms.
  * @param {(point: {lat: number, lon: number}) => Record<string, string>} [config.params]
  *   Extra query parameters for a scan.
- * @param {(context: {payload: object, dataSource: object, point: object}) => number}
+ * @param {(context: {payload: object, dataSource: object, point: object,
+ *   viewer: ?object, runtime: Record<string, string>}) => number}
  *   config.render Draws the payload and returns how many entities it created.
+ *
+ *   `runtime` is the parameters in force AT THE MOMENT OF THE DRAW, and it is
+ *   handed over rather than left to be read from `rowControls` — which is what
+ *   a filtering layer tried first and got wrong. `rowControls` runs on a panel
+ *   refresh, which is a different tick from the redraw a `setParams` triggers,
+ *   so a layer mirroring the runtime out of it drew every filter change ONE
+ *   CLICK LATE: measured in Bayonne, « Maisons » pressed and 397 flats still
+ *   on screen, then « Toutes » pressed and the single house appearing.
  * @param {(payload: object) => Record<string, unknown>} [config.summarize]
  *   Extra fields merged into `getStats()`.
  * @param {(context: {lon: number, lat: number, payload: object, point: object})
@@ -485,6 +494,20 @@ export function scanShiftNeeded(last, next, minShiftKm = ADDRESS_SCAN_MIN_SHIFT_
  *   simply stale value is REJECTED — `setParams` returns false, the manager
  *   reports `ParamsRejected`, and the layer keeps the question it was already
  *   asking — rather than clamped into something plausible.
+ * @param {string[]} [config.drawOnlyParams]
+ *   The subset of `runtimeParams` that changes the DRAWING and not the
+ *   QUESTION — a filter over rows the proxy has already served.
+ *
+ *   A parameter listed here must be absent from `config.params`, or the two
+ *   halves fight: the query string would move, `runScan` would refetch, and
+ *   this would be a slower way of doing what it exists to avoid. When every
+ *   key a `setParams` call changed is in this list, the layer rebuilds its
+ *   entities from the payload in hand — no request, no rate-limit slot, no
+ *   round trip between a chip press and the map answering it.
+ *
+ *   It is also the honest reading of what happened: the reader did not ask the
+ *   register a different question, they asked to be shown less of the answer.
+ *   Rescanning would re-download an identical reply to draw a subset of it.
  * @param {(runtime: Record<string, string>, summary: ?object) => object} [config.rowControls]
  *   Chips for this layer's row in the panel, built from the runtime params in
  *   force and the current summary. The manager turns a click into
@@ -528,6 +551,7 @@ export function createAddressScanLayer(config) {
     id, name, icon, source, endpoint, updateInterval,
     params = () => ({}),
     runtimeParams = {},
+    drawOnlyParams = [],
     rowControls = null,
     render,
     summarize = () => ({}),
@@ -904,23 +928,36 @@ export function createAddressScanLayer(config) {
   }
 
   /**
-   * Redraw the answer ALREADY IN HAND onto a new map stack.
+   * Redraw the answer ALREADY IN HAND.
    *
-   * Not a rescan: the register has not changed, the ground under it has. A
-   * layer that draws ground-classification geometry chooses its classification
-   * surface when the primitive is BUILT, so switching from IGN ortho to the
-   * Google photoreal tileset — which hides the globe — leaves a wash addressed
-   * to terrain that is no longer being drawn, and the layer silently shows
-   * nothing. Rebuilding from `_payload` costs no request and no rate limit.
+   * Not a rescan, and there are two reasons to want one.
    *
+   * THE GROUND CHANGED. A layer that draws ground-classification geometry
+   * chooses its classification surface when the primitive is BUILT, so
+   * switching from IGN ortho to the Google photoreal tileset — which hides the
+   * globe — leaves a wash addressed to terrain that is no longer being drawn,
+   * and the layer silently shows nothing.
+   *
+   * THE READER CHANGED WHAT THEY WANT TO SEE, not what they want to know. A
+   * filter over an answer already served is the second case, and it is the one
+   * `drawOnlyParams` names: the register has not changed, so re-asking it
+   * would spend a request, a rate-limit slot and a round trip to redraw rows
+   * that are already in memory — and would make the filter feel like a page
+   * load. See `config.drawOnlyParams`.
+   *
+   * Either way, rebuilding from `_payload` costs no request.
+   *
+   * @param {string} reason Render-governor tag, so a profile can tell the two
+   *   causes apart.
    * @returns {boolean} True when something was redrawn.
    */
-  function redrawForMapStack() {
+  function redrawFromPayload(reason) {
     if (!_dataSource || !_payload || !_lastPoint || _dormant) return false;
     clearSelection();
     _dataSource.entities.removeAll();
     _count = render({
       payload: _payload, dataSource: _dataSource, point: _lastPoint, viewer: _viewer,
+      runtime: { ..._runtime },
     }) || 0;
     seatMarkers(_lastPoint);
     // The photoreal stack has no `tileLoadProgressEvent` to come back on, so a
@@ -931,7 +968,7 @@ export function createAddressScanLayer(config) {
     // hook runs here too — otherwise switching basemaps silently closes a card
     // the reader never asked to close.
     runAfterDraw(_payload, _lastPoint);
-    governorRequestRender(`${id}-map-stack`);
+    governorRequestRender(`${id}-${reason}`);
     return true;
   }
 
@@ -1045,7 +1082,7 @@ export function createAddressScanLayer(config) {
         clearSelection();
         _dataSource.entities.removeAll();
         _count = render({
-          payload, dataSource: _dataSource, point, viewer: _viewer,
+          payload, dataSource: _dataSource, point, viewer: _viewer, runtime: { ..._runtime },
         }) || 0;
         // Before the index, so a card is built from the seated position rather
         // than from the ellipsoid one it was drawn at.
@@ -1146,7 +1183,7 @@ export function createAddressScanLayer(config) {
         });
       }
       if (redrawOnMapStack && !_mapStackListener && mapStackEventTarget?.addEventListener) {
-        _mapStackListener = () => { redrawForMapStack(); };
+        _mapStackListener = () => { redrawFromPayload('map-stack'); };
         mapStackEventTarget.addEventListener('gev:map-stack-changed', _mapStackListener);
       }
       // Force the next update to scan: the camera may have travelled a
@@ -1284,6 +1321,27 @@ export function createAddressScanLayer(config) {
      * to the nearest legal value, would answer a question nobody asked while
      * looking exactly like the one they did.
      */
+    /**
+     * Whether this layer would take these parameters, WITHOUT applying them.
+     *
+     * The enum is the layer's own and the manager cannot see it, so a caller
+     * that wants to OFFER parameters rather than impose them has no way to
+     * tell a refusal apart from a failure: `setParams` returning false is
+     * logged, notified as `params-failed`, and rightly so — for a caller that
+     * meant it. The fused-row chip fan-out does not mean it. It offers one
+     * reader intention to every member of a row and expects most of them to
+     * decline, so it asks first.
+     *
+     * @param {Record<string, string>} next
+     * @returns {boolean}
+     */
+    acceptsParams(next = {}) {
+      for (const [key, value] of Object.entries(next)) {
+        const spec = runtimeParams[key];
+        if (!spec || !spec.values.includes(String(value))) return false;
+      }
+      return true;
+    },
     setParams(next = {}, { origin = 'programmatic' } = {}) {
       // VALIDATED WHOLE, THEN APPLIED. The loop used to write each key as it
       // checked it, so `{type: 'Maison', surface: '47'}` returned false — the
@@ -1298,22 +1356,30 @@ export function createAddressScanLayer(config) {
         if (!spec.values.includes(candidate)) return false;
         accepted.push([key, candidate]);
       }
-      let changed = false;
+      const changedKeys = [];
       for (const [key, candidate] of accepted) {
         if (_runtime[key] === candidate) continue;
         _runtime[key] = candidate;
-        changed = true;
+        changedKeys.push(key);
       }
+      const changed = changedKeys.length > 0;
       if (!changed) return true;
+      if (_enabled) console.log(`[Data:${id}] params (${origin}):`, { ..._runtime });
+      // A CHANGE THAT ONLY MOVES THE DRAWING NEVER TOUCHES THE NETWORK. Every
+      // key that changed is a filter over rows already in hand, so the answer
+      // on screen is rebuilt from `_payload` and the proxy is not asked a
+      // question it has already answered. `changedKeys` is checked rather than
+      // the declaration alone, because a single call may carry both kinds —
+      // `{type, surface}` — and a mixed call has to rescan.
+      const drawOnly = changedKeys.length > 0
+        && changedKeys.every((key) => drawOnlyParams.includes(key));
+      if (_enabled && drawOnly && redrawFromPayload('params')) return true;
       // The scan is not forced from here — `runScan` already refetches when
       // the QUERY STRING changes, and the runtime params are in it. What this
       // does is stop waiting for the camera or the update interval, which
       // would otherwise leave the reader looking at the old window with the
       // new label under it.
-      if (_enabled) {
-        console.log(`[Data:${id}] params (${origin}):`, { ..._runtime });
-        void runScan(_viewer);
-      }
+      if (_enabled) void runScan(_viewer);
       return true;
     },
     getStats() {

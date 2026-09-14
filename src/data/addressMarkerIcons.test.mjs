@@ -77,16 +77,47 @@ test('the euro sign is an open arc with two bars, not a C', () => {
  * and keeps the glyph off a pale orthophoto. A hue baked into the artwork
  * would fight the tint and destroy the channel each layer spends colour on.
  */
-test('every glyph is tint-safe: white art over a black halo, and no other hue', () => {
+test('every glyph is tint-safe: white art over black, and no other hue', () => {
   for (const kind of ADDRESS_GLYPH_KINDS) {
     const svg = svgOf(addressMarkerGlyph(kind));
     assert.ok(svg.includes('#ffffff'), `${kind} draws white art`);
-    assert.ok(svg.includes('rgba(0,0,0,0.62)'), `${kind} draws a dark halo`);
-    // Any colour token that is neither the white art nor the black halo.
+    assert.ok(svg.includes('rgba(0,0,0,0.62)'), `${kind} draws a dark halo or rim`);
+    // Any colour token that is neither the white art nor BLACK at some alpha.
+    // The alpha is free — a pastille inks its sign at 0.78 so the counter of
+    // the arc stays open, a halo strokes at 0.62 — because alpha is not a hue
+    // and black at any alpha survives the multiply intact. What the rule
+    // forbids is a CHANNEL: any token with r, g or b apart would fight
+    // `billboard.color` and destroy the one thing each layer spends colour on.
     const colours = svg.match(/#[0-9a-f]{3,8}|rgba?\([^)]*\)/gi) || [];
-    const foreign = colours.filter((token) => token !== '#ffffff' && token !== 'rgba(0,0,0,0.62)');
+    const foreign = colours.filter((token) => token !== '#ffffff'
+      && !/^rgba\(0,\s*0,\s*0,\s*[\d.]+\)$/.test(token));
     assert.deepEqual(foreign, [], `${kind} carries no hue of its own`);
   }
+});
+
+/**
+ * The one register that draws over Google's photoreal tileset rather than over
+ * a road map. A 19 px euro in line-art puts ~7 % of its box in ink; over a
+ * field of terracotta roofs an amber 7 % is not a marker, it is nothing —
+ * measured in Bayonne, 2026-09-14. The pastille inverts the passes: the disc
+ * is the tintable surface and the sign is dark ink on it.
+ */
+test('the DVF pastille is a filled disc that takes the tint, with the sign in dark ink', () => {
+  const svg = svgOf(addressMarkerGlyph('euro'));
+  // Two circles on the same centre: the dark rim, then the white surface.
+  const circles = [...svg.matchAll(/<circle cx="48" cy="48" r="(\d+)"[^>]*fill="([^"]+)"/g)]
+    .map((match) => ({ r: Number(match[1]), fill: match[2] }));
+  assert.equal(circles.length, 2, 'a rim and a surface');
+  assert.equal(circles[0].fill, 'rgba(0,0,0,0.62)', 'the rim is drawn first, and is dark');
+  assert.equal(circles[1].fill, '#ffffff', 'the surface is white, so the tint lands on it');
+  assert.equal(circles[0].r, circles[1].r, 'the rim is a stroke on the same circle, not a halo');
+  // The sign is NOT white here: white on `#ffe066` is the one combination of
+  // the DVF ramp that disappears, and the disc under it now carries that ramp.
+  assert.ok(!/stroke="#ffffff"/.test(svg), 'nothing is stroked in white on a pastille');
+  assert.match(svg, /stroke="rgba\(0,\s*0,\s*0,\s*0\.78\)"/);
+  // The disc must not clip the sign: the furthest point of the € path is
+  // 37.5 units from the centre, plus half a stroke.
+  assert.ok(circles[1].r >= 41, `disc r=${circles[1].r} clears the € path`);
 });
 
 test('the halo is drawn under the art, never over it', () => {

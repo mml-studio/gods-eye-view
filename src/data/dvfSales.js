@@ -2,7 +2,9 @@ import * as Cesium from 'cesium';
 import { addressMarkerGlyph } from './addressMarkerIcons.js';
 import { createAddressScanLayer } from './addressScanLayer.js';
 import { clearBuildingTheme, registerBuildingTheme } from './buildingTheme.js';
+import { saleKind } from './dvfFeed.js';
 import { publishJoin } from './layerJoins.js';
+import { gpuClassificationTypeForScene } from './urbanismeGpu.js';
 
 /**
  * DVF — what the flats around this point actually sold for, on the buildings
@@ -132,9 +134,115 @@ import { publishJoin } from './layerJoins.js';
 /** Layer id — also the theme id in the building-theme registry. */
 export const DVF_LAYER_ID = 'dvf-sales';
 
+/**
+ * WHICH SALES ARE DRAWN — the filter the reader kept thinking was already
+ * there.
+ *
+ * Reported 2026-09-14, from rue des Basques in Bayonne: « j'ai l'impression
+ * qu'on peut choisir soit de voir les appartements, soit de voir les maisons
+ * […] beaucoup de ventes de maisons apparaissent, il n'y a que du collectif
+ * ici ». Both halves of that were wrong and the interface was why. The chips
+ * on the row said `Appart.` and `Maison`, and they belonged to the ESTIMATE
+ * next door — they chose the subject a value was computed for and never
+ * touched a single dot on the map. So the reader, with `Maison` lit, was
+ * looking at 257 flats and reading them as houses. The register's own count
+ * within 300 m of that point, over five editions: zero houses.
+ *
+ * Two ways to fix that. Label the chips harder, or make them true. This is
+ * the second, and `docs/CARTOGRAPHIE.md` G1 is the reason it is not a
+ * judgement call — « le filtre est le maillon manquant », named as the most
+ * valuable missing component of the whole application. A reader who
+ * spontaneously reaches for a control that is not there has said which
+ * control to build.
+ *
+ * THREE VALUES AND NOT FOUR. `autre` — a commercial local, a cellar or a
+ * parking space alone, bare land — is not offered as a class of its own
+ * because nobody opens a price layer to look for a parking space; it is
+ * included in `tous`, counted in the disclosure line when a filter hides it,
+ * and named on its own card. `dvfFeed.saleKind` holds the fold and the
+ * measurement behind it.
+ *
+ * IT IS A DRAW-ONLY PARAMETER. The register served every mutation in the
+ * radius; filtering is a subset of rows already in memory, so the chip never
+ * costs a request (`drawOnlyParams`, `addressScanLayer.js`). And the COLOURS
+ * do not move when it changes: the denominator is the commune median over
+ * every mutation of the editions, which is what C1 requires and what makes
+ * "the flats here are dearer than this commune" a sentence that survives the
+ * filter being on.
+ *
+ * THE VALUES ARE THE ESTIMATE'S OWN WORDS, and that is load-bearing rather
+ * than tidy. `avis-valeur` sits on this same fused row and has always taken
+ * `type: 'Appartement' | 'Maison'`; sharing the vocabulary is what lets one
+ * chip steer both members through the manager's fan-out, so pressing
+ * « Maisons » shows the houses AND estimates a house. One control, one reader
+ * intention, two layers — instead of the two identical-looking strips of chips
+ * that caused the confusion in the first place.
+ */
+export const DVF_TYPE_FILTERS = Object.freeze([
+  Object.freeze({
+    id: 'tous',
+    label: 'Toutes',
+    title: 'Toutes les mutations du rayon — logements, locaux, dépendances et terrains',
+  }),
+  Object.freeze({
+    id: 'Appartement',
+    label: 'Appart.',
+    title: 'Seulement les mutations qui portent un appartement, cave ou parking compris',
+  }),
+  Object.freeze({
+    id: 'Maison',
+    label: 'Maisons',
+    title: 'Seulement les mutations qui portent une maison — leur prix porte le terrain, '
+      + 'qui n’est pas neutralisé',
+  }),
+]);
+
+/**
+ * The sales a filter keeps.
+ * @param {Array<object>} sales
+ * @param {string} filter One of {@link DVF_TYPE_FILTERS} ids.
+ * @returns {Array<object>}
+ */
+export function filterSalesByType(sales, filter) {
+  const list = Array.isArray(sales) ? sales : [];
+  const wanted = filter === 'Appartement' ? 'appartement' : (filter === 'Maison' ? 'maison' : null);
+  if (!wanted) return list;
+  return list.filter((sale) => saleKind(sale) === wanted);
+}
+
 /** Refresh cadence. Editions are annual; this is about camera movement. */
 const UPDATE_INTERVAL_MS = 600_000;
 const SCAN_RADIUS_M = 300;
+
+/**
+ * The PLOT a sale bought, washed onto the ground under its marker.
+ *
+ * A euro sign floating over an oblique photoreal city names no building. The
+ * register already says which ground changed hands — `id_parcelle` on every
+ * mutation row, the same 14-character key Etalab's open cadastre is indexed
+ * by, and the proxy joins the two (400 of 400 within 300 m of rue des
+ * Basques in Bayonne; 170 distinct plots). So the layer draws the plot.
+ *
+ * CLAMPED, NOT EXTRUDED. `classificationType` paints the surface the globe is
+ * actually drawing — terrain under a map basemap, the 3D tileset under the
+ * photoreal stack — which is the one way a mark stays on the roofs instead of
+ * 83 pixels beside them. It is also why the layer redraws on a map-stack
+ * change: a classified primitive chooses its surface when it is BUILT.
+ *
+ * LIGHTER INK THAN THE CADASTRE'S OWN 0.28. The parcels are not the subject
+ * here — the sale is — and the wash is a locator under a marker, not a plan.
+ * The boundary is the part that survives being small, so it keeps most of the
+ * opacity, exactly as `adsUrbanisme.js` found for its emprises.
+ *
+ * ONE PLOT, ONE COLOUR, AND IT IS THE MOST RECENT SALE'S. Several mutations
+ * on one plot is the normal case and they are not contemporaries; this is the
+ * same reduction {@link dvfMostRecentSale} makes for a building volume, and
+ * it is the same function, so a plot and the volume standing on it can never
+ * be painted from two different transactions.
+ */
+const PARCEL_FILL_ALPHA = 0.2;
+const PARCEL_OUTLINE_ALPHA = 0.85;
+const PARCEL_OUTLINE_WIDTH_PX = 1.4;
 
 /**
  * Marker size, in CSS px. A sale with a comparable ratio is the one worth
@@ -355,7 +463,7 @@ export function dvfReference(payload) {
  * @param {object} klass One of {@link DVF_RATIO_CLASSES}.
  * @returns {?string}
  */
-function classBoundsText(referenceMedian, klass) {
+export function classBoundsText(referenceMedian, klass) {
   if (!(typeof referenceMedian === 'number' && referenceMedian > 0)) return null;
   const index = DVF_RATIO_CLASSES.indexOf(klass);
   const upper = index > 0 ? DVF_RATIO_CLASSES[index - 1].min : null;
@@ -368,13 +476,116 @@ function classBoundsText(referenceMedian, klass) {
 }
 
 /**
- * The key to the ramp (D1).
+ * The sentence that frames the classes: what they are divided by, over what,
+ * and by what rule.
  *
- * The reference line comes FIRST and carries a count of its own — the number of
- * comparable mutations the median was computed from — because the panel prints
- * a count beside every entry and an entry with none renders `undefined`. It is
- * also the honest thing to show: a median over 6 mutations and a median over
- * 1 700 are not the same promise.
+ * It is the `legendNote` slot rather than a first entry of the key, and that
+ * is the whole of the D1 argument applied honestly. The denominator is not a
+ * CLASS — nothing on the map is painted in it — so printing it as a row with
+ * an empty swatch and a six-line paragraph made the key open on something a
+ * reader has to scroll past to reach the colours. Above the classes, in one
+ * line, it does the same job in a tenth of the height.
+ *
+ * @param {object} reference From {@link dvfReference}.
+ * @returns {string}
+ */
+export function dvfLegendNote(reference, { parcels = 0 } = {}) {
+  const line = [
+    reference.label,
+    reference.yearsLabel,
+    // The frozen rule, said once. Without it the €/m² bounds below read as
+    // quantiles of what is on screen, which is exactly what C1 forbids and
+    // exactly what this layer stopped doing on 2026-09-03.
+    'classes gelées à ±5 % et ±25 % de ce médian',
+  ].filter(Boolean).join(' · ');
+  // WHAT THE TINTED GROUND IS. The plots wear the same ramp as the markers —
+  // one channel, one information — so they need no class of their own; what
+  // they need is the sentence that says they are plots, and which of several
+  // mutations each one is showing. Only when there are any: a commune Etalab
+  // publishes no cadastre for must not be told it is looking at parcels.
+  return parcels > 0 ? `${line} · sol teinté = la parcelle vendue` : line;
+}
+
+/**
+ * The A5 slot: what this answer had to leave out, in one sentence.
+ *
+ * Three admissions used to be three legend rows with a paragraph each — the
+ * scan radius buried inside the denominator's blurb, the clipping, and the
+ * mutations the register publishes with no coordinate. They are not classes
+ * and they were pushing the classes off the panel. They are still all here,
+ * still all counted, on the line that is FOR what a key had to leave out.
+ *
+ * @param {object} reference From {@link dvfReference}.
+ * @param {object} summary `payload.summary`.
+ * @param {number} drawn How many sales were actually drawn.
+ * @param {{filter?: string, hidden?: number}} [options] The type filter in
+ *   force and how many served mutations it took off the map. A filter is the
+ *   loudest reason a count on the row disagrees with the register, so it is
+ *   the first thing this line says.
+ * @returns {string}
+ */
+export function dvfLegendDisclosure(reference, summary, drawn, options = {}) {
+  const parts = [];
+  // A4: this silence has a cause, and it is not "these sales bought no
+  // ground". Only said when the register DID name plots and the cadastre
+  // could not return them — an answer with no `parcels` key at all is an
+  // older cached payload, not a failure to report.
+  if (Array.isArray(options.parcels) && options.parcels.length === 0 && drawn > 0) {
+    parts.push('parcelles indisponibles pour cette commune : les ventes sont dessinées, le sol '
+      + 'qu’elles ont acheté ne l’est pas');
+  }
+  const filter = DVF_TYPE_FILTERS.find((entry) => entry.id === options.filter);
+  if (filter && filter.id !== 'tous' && options.hidden > 0) {
+    parts.push(`filtre « ${filter.label} » : ${options.hidden} autre(s) mutation(s) non `
+      + 'dessinée(s), que le médian de référence compte quand même');
+  }
+  parts.push(`rayon ${SCAN_RADIUS_M} m`);
+  if (summary?.truncated) {
+    parts.push(`écrêté à ${drawn} sur ${summary.count}, les plus proches`);
+  }
+  if (reference.unplacedCount > 0) {
+    parts.push(`${reference.unplacedCount} mutation(s) sans coordonnée publiée, comptée(s) dans `
+      + 'le médian et impossibles à dessiner');
+  }
+  const line = parts.join(' · ');
+  return `${line.charAt(0).toUpperCase()}${line.slice(1)}.`;
+}
+
+/**
+ * The key to the ramp (D1) — the CLASSES, and nothing that is not one.
+ *
+ * ── WHY THIS IS SHORTER THAN IT WAS, AND WHAT DID NOT LEAVE ────────────────
+ *
+ * Measured on Bayonne, 2026-09-14: ten entries, each with a paragraph under
+ * it, filling the whole right rail and running off the bottom of the screen
+ * before the Avis de valeur block underneath had shown its first line. Every
+ * sentence in it was true and most of them were the wrong sentence to put in
+ * front of somebody who had just switched the layer on. D1's test is « sans
+ * ouvrir aucun panneau, l'utilisateur peut-il traduire une couleur en
+ * valeur ? » — and a key you have to READ for a minute fails it as surely as
+ * one that is hidden.
+ *
+ * So the key now holds exactly the six things that are painted, and the three
+ * that were never classes moved to the two slots that exist for them:
+ *
+ *   · the DENOMINATOR and the frozen rule → {@link dvfLegendNote}, the block's
+ *     own line, printed ABOVE the classes it divides;
+ *   · the radius, the clipping and the mutations with no coordinate →
+ *     {@link dvfLegendDisclosure}, the A5 line under the classes;
+ *   · each class's sentence → its tooltip, which is where `_refreshMapLegend`
+ *     puts a blurb once entries sit side by side.
+ *
+ * Nothing was deleted. The layer says the same things in a fifth of the
+ * height, and the classes are visible without scrolling, which is the whole
+ * of what the key is for.
+ *
+ * ── THE LABELS ARE €/m², NOT RATIOS ────────────────────────────────────────
+ *
+ * `+25 % et plus · 5 164 €/m² et plus` was both bounds on one line and it was
+ * the longest line in the block. D2 asks for bounds a reader can hold, and of
+ * those two only the second can be compared to a listing. The ratio is not
+ * lost: the rule that produced it is stated once in the note above, where it
+ * belongs — it is a property of the whole ramp, not of one class.
  *
  * `counts` is supplied when the caller knows what was drawn (the layer's own
  * row, counting SALES) and omitted when `buildingTheme.js` will fill it in by
@@ -386,32 +597,20 @@ function classBoundsText(referenceMedian, klass) {
  */
 export function dvfLegendEntries(reference, counts = null) {
   const entries = [];
-  entries.push({
-    label: `${reference.label} — mutations comparables`,
-    color: null,
-    count: reference.comparableCount,
-    blurb: [
-      'Le dénominateur de toutes les couleurs de cette couche : le médian de la commune',
-      reference.yearsLabel ? `sur les ${reference.yearsLabel}` : null,
-      '— pas le médian de ce qui est à l’écran. Élargir la vue, zoomer ou partager le lien',
-      'ne change aucune couleur (règle C1) ; franchir une limite communale change le',
-      'territoire de référence, et cette ligne le dit. Les ventes dessinées, elles, sont',
-      `celles des ${SCAN_RADIUS_M} m autour du point scruté : un volume non peint est le plus`,
-      'souvent un volume hors de ce rayon, pas un bâtiment sans mutation.',
-    ].filter(Boolean).join(' '),
-  });
   for (const klass of DVF_RATIO_CLASSES) {
     const bounds = classBoundsText(reference.medianPrixM2, klass);
     const entry = {
-      label: bounds ? `${klass.label} · ${bounds}` : klass.label,
+      label: bounds || klass.label,
       color: klass.color,
-      blurb: klass.blurb,
+      // The ratio leads the tooltip, because that is the class's DEFINITION
+      // and the label is only what it means at today's reference.
+      blurb: `${klass.label} — ${klass.blurb}`,
     };
     if (counts) entry.count = counts.get(klass.id) || 0;
     entries.push(entry);
   }
   const neutral = {
-    label: 'vente sans €/m² comparable',
+    label: 'sans prix au m²',
     color: COLOR_NO_RATIO,
     blurb: 'Mutation qui a acheté autre chose qu’un seul logement — un immeuble de 179 lots, '
       + 'un appartement avec un commerce — ou un échange. Le registre ne dit pas comment le '
@@ -480,6 +679,23 @@ let _themePayload = null;
 let _themeEnabled = false;
 
 /**
+ * The type filter in force, mirrored out of the shell's runtime.
+ *
+ * WRITTEN FROM `render`, WHICH IS THE ONLY PLACE THAT CANNOT BE LATE. The
+ * first version mirrored it from `rowControls` and drew every filter change
+ * one click behind: `setParams` redraws immediately, `rowControls` runs on the
+ * next panel refresh, and those are two different ticks. Measured in Bayonne —
+ * « Maisons » pressed and 397 flats still on screen, then « Toutes » pressed
+ * and the single house appearing.
+ *
+ * It is mirrored at all because the THEME has no call frame of its own: it is
+ * republished from `enable()` and from the registry's notifications, with no
+ * runtime in reach, and a theme painting a different subset from the markers
+ * above it would put the row, the key and the city in three populations.
+ */
+let _typeFilter = 'tous';
+
+/**
  * Publish (or withdraw) the theme for the payload in hand.
  *
  * Withdrawing rather than publishing an empty theme is deliberate: a registered
@@ -511,7 +727,7 @@ let _unpublishByParcel = null;
  * exists only when there IS one.
  */
 function publishByParcel() {
-  const sales = _themeEnabled ? (_themePayload?.sales || []) : [];
+  const sales = _themeEnabled ? filterSalesByType(_themePayload?.sales, _typeFilter) : [];
   if (!sales.length) {
     _unpublishByParcel?.();
     _unpublishByParcel = null;
@@ -538,7 +754,12 @@ function publishTheme() {
     return false;
   }
   const reference = dvfReference(_themePayload);
-  const sales = _themePayload.sales || [];
+  // THE SAME SUBSET THE MARKERS DRAW. A filter the volumes did not honour
+  // would put the row, the key and the city in three different populations —
+  // « Appart. » lit, forty markers on screen, and a hundred and seventy
+  // volumes painted from the houses that were filtered out of the count
+  // beside them.
+  const sales = filterSalesByType(_themePayload.sales, _typeFilter);
   registerBuildingTheme({
     id: DVF_LAYER_ID,
     label: 'Ventes DVF (€/m²)',
@@ -547,6 +768,11 @@ function publishTheme() {
     reduce: dvfMostRecentSale,
     colorFor: (sale) => saleColorCss(saleRatioPrice(sale), reference.medianPrixM2),
     legend: dvfLegendEntries(reference),
+    // The denominator travels WITH the swatches, because the row that prints
+    // them is not this one: Bâti 3D borrows the ramp, and a ramp of ratios
+    // with no named reference territory is unreadable there in exactly the
+    // way it would be here.
+    legendNote: dvfLegendNote(reference),
     // NOT "sans mutation". The scan asks the register about a 300 m disc while
     // BD TOPO loads volumes over a box up to 9 km wide, so most unpainted
     // volumes were never asked about at all. Labelling them "no sale recorded"
@@ -555,6 +781,150 @@ function publishTheme() {
     unknownLabel: `hors du rayon de ${SCAN_RADIUS_M} m ou sans mutation`,
   });
   return true;
+}
+
+/**
+ * Positions for one ring, closed. Three points is the least that encloses
+ * anything; the same helper the other ground-polygon layers keep.
+ * @param {Array<number[]>} ring
+ * @returns {?Array<object>}
+ */
+function ringPositions(ring) {
+  if (!Array.isArray(ring) || ring.length < 3) return null;
+  return Cesium.Cartesian3.fromDegreesArray(ring.flat());
+}
+
+/**
+ * Wash the plots the drawn sales name, under the markers.
+ *
+ * The fill and the outline are SEPARATE entities because a ground-clamped
+ * `polygon` cannot draw its own stroke in Cesium — `outline: true` is silently
+ * ignored once the polygon is classified. Both carry the same name and
+ * description, so the edge of a plot opens the same card as its middle.
+ *
+ * Exported for its own test: "the plot is painted by its most recent sale, and
+ * an unsold plot is not drawn at all" is the contract, and a later
+ * simplification to "colour by whatever came first" would undo it silently.
+ *
+ * @param {object} dataSource
+ * @param {Array<object>} parcels `[{id, parts}]` from the proxy.
+ * @param {Array<object>} sales The sales that were actually DRAWN.
+ * @param {object} reference From {@link dvfReference}.
+ * @param {number} classificationType Cesium surface to clamp onto.
+ * @returns {number} Plots drawn.
+ */
+export function drawDvfParcels(dataSource, parcels, sales, reference, classificationType) {
+  const list = Array.isArray(parcels) ? parcels : [];
+  if (!list.length) return 0;
+  const byParcel = new Map();
+  for (const sale of sales) {
+    const key = String(sale?.parcelle || '').trim();
+    if (!key) continue;
+    const held = byParcel.get(key);
+    if (held) held.push(sale); else byParcel.set(key, [sale]);
+  }
+  let drawn = 0;
+  for (const parcel of list) {
+    // A plot whose every sale was filtered out is ground with nothing to say.
+    // Not drawn: a wash with no marker on it reads as a sale the card cannot
+    // open — the same rule `adsUrbanisme.js` applies to an emprise with no
+    // dossier left in the served cut.
+    const sale = dvfMostRecentSale(byParcel.get(parcel.id) || []);
+    if (!sale) continue;
+    const price = saleRatioPrice(sale);
+    const css = saleColorCss(price, reference.medianPrixM2);
+    const fill = Cesium.Color.fromCssColorString(css).withAlpha(PARCEL_FILL_ALPHA);
+    const stroke = Cesium.Color.fromCssColorString(css).withAlpha(PARCEL_OUTLINE_ALPHA);
+    const name = sale.address || sale.commune || 'Parcelle';
+    const description = [
+      `parcelle ${parcel.id}`,
+      sale.date,
+      euros(sale.valeur),
+      price === null ? 'pas de €/m² comparable' : eurosPerM2(price),
+      'dernière mutation connue de cette parcelle dans le rayon scruté',
+    ].filter(Boolean).join(' · ');
+    for (const [index, rings] of (parcel.parts || []).entries()) {
+      const outer = ringPositions(rings[0]);
+      if (!outer) continue;
+      const holes = [];
+      for (let h = 1; h < rings.length; h += 1) {
+        const hole = ringPositions(rings[h]);
+        // A courtyard is not part of the plot. Filled in, the wash would claim
+        // ground the sale did not buy.
+        if (hole) holes.push(new Cesium.PolygonHierarchy(hole));
+      }
+      dataSource.entities.add({
+        id: `dvf-parcel:${parcel.id}:${index}`,
+        name,
+        description,
+        properties: { kind: 'dvf-parcel', parcelle: parcel.id, saleId: sale.id },
+        polygon: {
+          hierarchy: new Cesium.PolygonHierarchy(outer, holes),
+          material: fill,
+          classificationType,
+          outline: false,
+        },
+      });
+      for (const [ringIndex, ring] of rings.entries()) {
+        const positions = ringPositions(ring);
+        if (!positions) continue;
+        dataSource.entities.add({
+          id: `dvf-parcel:${parcel.id}:${index}:${ringIndex}`,
+          name,
+          description,
+          polyline: {
+            positions: [...positions, positions[0]],
+            width: PARCEL_OUTLINE_WIDTH_PX,
+            material: new Cesium.ColorMaterialProperty(stroke),
+            clampToGround: true,
+            classificationType,
+          },
+        });
+      }
+    }
+    drawn += 1;
+  }
+  return drawn;
+}
+
+/**
+ * One mutation's card.
+ *
+ * `type_local` LEADS THE SECOND HALF OF IT, and it used to be on no card at
+ * all. The map draws flats, houses, shops, cellars and bare land in one
+ * vocabulary of dots; a reader looking at a dense city centre had no way to
+ * find out which, and that is exactly how 257 Bayonne flats came to be read
+ * as houses on 2026-09-14. The register's own wording is used, joined rather
+ * than folded: `Appartement + Dépendance` says more than `Appartement` does,
+ * and it is the reason the sale below it has no €/m² often enough to matter.
+ *
+ * @param {object} sale One served mutation.
+ * @param {object} reference From {@link dvfReference}.
+ * @returns {string}
+ */
+export function dvfSaleCard(sale, reference) {
+  const price = saleRatioPrice(sale);
+  const comparable = price !== null;
+  const ratio = comparable && reference.medianPrixM2 ? price / reference.medianPrixM2 : null;
+  return [
+    sale.date,
+    sale.nature,
+    euros(sale.valeur),
+    (sale.types || []).join(' + ') || 'type non publié',
+    comparable ? eurosPerM2(price)
+      // Saying WHY there is no ratio is the point of drawing it neutral.
+      : sale.dwellingCount > 1 ? `${sale.dwellingCount} logements — pas de €/m² comparable`
+        : 'pas de €/m² comparable',
+    // The denominator travels with every single card, never only with the
+    // legend: a ratio a reader cannot trace back to a named territory is a
+    // decoration.
+    ratio === null
+      ? (comparable ? reference.label : null)
+      : `${ratioText(ratio)} × le médian de ${reference.territory || 'la commune'} `
+        + `(${eurosPerM2(reference.medianPrixM2)})`,
+    sale.dwellingSurface ? `${sale.dwellingSurface} m²` : null,
+    Number.isFinite(sale.distanceM) ? `${sale.distanceM} m` : null,
+  ].filter(Boolean).join(' · ');
 }
 
 /** Count the drawn sales by the class they were painted in. */
@@ -672,20 +1042,47 @@ export function dvfVoiceSummary(stats) {
 
 const baseLayer = createAddressScanLayer({
   id: DVF_LAYER_ID,
-  name: 'Ventes immobilières (DVF)',
+  name: 'Prix de l’immobilier (DVF)',
   icon: '€',
   source: 'DVF — Etalab / DGFiP',
   endpoint: '/api/dvf',
   updateInterval: UPDATE_INTERVAL_MS,
+  runtimeParams: {
+    type: {
+      values: DVF_TYPE_FILTERS.map((entry) => entry.id),
+      defaultValue: 'tous',
+    },
+  },
+  // DELIBERATELY ABSENT FROM `params`. The proxy is asked for every mutation
+  // in the radius whatever the chip says, and the filter is applied to the
+  // rows it returned — see {@link DVF_TYPE_FILTERS}. Putting `type` in the
+  // query string would move the signature, refetch an identical reply, and
+  // spend a rate-limit slot to draw a subset of what was already in memory.
+  drawOnlyParams: ['type'],
   params: () => ({ radius: String(SCAN_RADIUS_M) }),
+  // ON, since the layer started washing the PLOTS. A ground-classification
+  // primitive reads its classification surface once, when it is built, so a
+  // draw addressed to terrain survives a switch to the photoreal tileset —
+  // which hides the globe — by silently showing nothing. The markers never
+  // needed this; the parcels do.
+  redrawOnMapStack: true,
   // What the answer covers, so a caller choosing a camera height frames the
   // block this layer speaks for rather than the 12 km its ceiling allows.
   scanReachM: SCAN_RADIUS_M,
 
-  render({ payload, dataSource }) {
+  render({ payload, dataSource, viewer, runtime }) {
+    _typeFilter = String(runtime?.type ?? 'tous');
     const reference = dvfReference(payload);
+    const sales = filterSalesByType(payload.sales, _typeFilter);
+    // THE GROUND FIRST, so the markers are added after and pick above their
+    // own wash. Counted separately from the markers: a plot is not a sale, and
+    // the row's number has always been "how many mutations are on screen".
+    drawDvfParcels(
+      dataSource, payload.parcels, sales, reference,
+      gpuClassificationTypeForScene(viewer?.scene),
+    );
     let drawn = 0;
-    for (const sale of payload.sales || []) {
+    for (const sale of sales) {
       if (!Number.isFinite(sale.lon) || !Number.isFinite(sale.lat)) continue;
       const price = saleRatioPrice(sale);
       const comparable = price !== null;
@@ -730,24 +1127,7 @@ const baseLayer = createAddressScanLayer({
           rowCount: sale.rowCount,
         },
         name: sale.address || sale.commune || 'Mutation',
-        description: [
-          sale.date,
-          sale.nature,
-          euros(sale.valeur),
-          comparable ? eurosPerM2(price)
-            // Saying WHY there is no ratio is the point of drawing it neutral.
-            : sale.dwellingCount > 1 ? `${sale.dwellingCount} logements — pas de €/m² comparable`
-              : 'pas de €/m² comparable',
-          // The denominator travels with every single card, never only with
-          // the legend: a ratio a reader cannot trace back to a named
-          // territory is a decoration.
-          ratio === null
-            ? (comparable ? reference.label : null)
-            : `${ratioText(ratio)} × le médian de ${reference.territory || 'la commune'} `
-              + `(${eurosPerM2(reference.medianPrixM2)})`,
-          sale.dwellingSurface ? `${sale.dwellingSurface} m²` : null,
-          `${sale.distanceM} m`,
-        ].filter(Boolean).join(' · '),
+        description: dvfSaleCard(sale, reference),
       });
       drawn += 1;
     }
@@ -763,37 +1143,48 @@ const baseLayer = createAddressScanLayer({
    * The key to the ramp, plus the two admissions A5 asks for: what was clipped
    * and what could not be placed.
    */
-  rowControls(_runtime, _summary, payload) {
+  rowControls(runtime, _summary, payload) {
+    // READ, NEVER WRITTEN, here: `render` owns the mirror — see `_typeFilter`.
+    // The chips still show the runtime, which is the truth even on the tick
+    // before the draw has caught up with it.
+    const filter = String(runtime?.type ?? 'tous');
+    const chips = DVF_TYPE_FILTERS.map((entry) => ({
+      id: `type:${entry.id}`,
+      label: entry.label,
+      active: entry.id === filter,
+      params: { type: entry.id },
+      // OFFERED TO EVERY MEMBER OF THE ROW. The estimate next door asks the
+      // same question about the same doorway and takes the same vocabulary;
+      // `tous` is not in ITS enum and is simply refused, which is the right
+      // outcome — "show me everything on the map" is not an instruction to
+      // change what is being valued.
+      fanOut: true,
+      title: entry.title,
+    }));
     // Built from the payload that was actually DRAWN, so a layer that has never
     // scanned — or whose scan went dormant above the ceiling — publishes
     // nothing rather than a key to a wash that is not on screen. The shell
-    // hands over a null payload in exactly those two cases.
-    if (!payload) return null;
+    // hands over a null payload in exactly those two cases. The CHIPS are
+    // published either way: a control a reader cannot find until the layer has
+    // answered is a control they will not find.
+    if (!payload) return { chips };
     const reference = dvfReference(payload);
-    const sales = payload.sales || [];
-    const legend = dvfLegendEntries(reference, countByClass(sales, reference.medianPrixM2));
-    const summary = payload.summary || {};
-    if (summary.truncated) {
-      legend.push({
-        label: `écrêté à ${sales.length} sur ${summary.count} — les plus proches`,
-        color: null,
-        count: Math.max(0, (summary.count || 0) - sales.length),
-        blurb: 'Les mutations sont triées par distance au point scruté et la réponse s’arrête '
-          + 'au plafond ; celles qui manquent sont les plus lointaines du rayon, jamais les '
-          + 'moins chères ni les plus anciennes.',
-      });
-    }
-    if (reference.unplacedCount > 0) {
-      legend.push({
-        label: 'mutations de la commune sans coordonnée publiée',
-        color: null,
-        count: reference.unplacedCount,
-        blurb: 'Elles ont un prix et pas de position : le registre les publie sans longitude ni '
-          + 'latitude. Elles comptent dans le médian de référence et ne peuvent pas être '
-          + 'dessinées — un vide de la carte qui n’est pas un vide du marché.',
-      });
-    }
-    return { legend };
+    const sales = filterSalesByType(payload.sales, filter);
+    return {
+      chips,
+      legend: dvfLegendEntries(reference, countByClass(sales, reference.medianPrixM2)),
+      // ORDERED CLASSES, SO ONE BAR. The five steps of the ramp plus the
+      // neutral are one distribution of one population — how the block's
+      // sales fall around the commune's median IS the layer's argument, and
+      // six stacked rows never showed its shape.
+      legendBar: true,
+      legendNote: dvfLegendNote(reference, { parcels: (payload.parcels || []).length }),
+      note: dvfLegendDisclosure(reference, payload.summary || {}, sales.length, {
+        filter,
+        hidden: (payload.sales || []).length - sales.length,
+        parcels: payload.parcels,
+      }),
+    };
   },
 
   summarize(payload) {
@@ -824,6 +1215,11 @@ const baseLayer = createAddressScanLayer({
       themeId: DVF_LAYER_ID,
       themePrecedence: DVF_THEME_PRECEDENCE,
       themePoints: (payload.sales || []).length,
+      // The ground the register named and the cadastre returned. Reported
+      // because "no plot is tinted" has two causes — nothing sold here, or
+      // Etalab publishes no parcels for this commune — and a count is the
+      // only thing that tells them apart from outside.
+      parcelsDrawn: (payload.parcels || []).length,
       // D1 in the stats as well as in the panel: a caller reading this layer
       // programmatically gets the ramp and its denominator, not just a count.
       legend: dvfLegendEntries(reference, countByClass(payload.sales || [], reference.medianPrixM2)),

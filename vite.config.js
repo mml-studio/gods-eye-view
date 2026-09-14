@@ -23109,6 +23109,96 @@ function dvfProxy() {
     return { mutations, unavailable };
   }
 
+  /**
+   * The commune's parcels, indexed by the 14-character reference DVF publishes.
+   *
+   * WHY THE GROUND, AND NOT JUST THE DOT. A euro sign floating over an oblique
+   * photoreal city names no building: the operator's own reading of the
+   * urbanism row next door, 2026-09-14 — « on vient mettre en surbrillance les
+   * bâtiments qui sont sur une parcelle, je pense qu'on pourrait faire la même
+   * chose pour repérer quel bâtiment peut être concerné par une information du
+   * data layer DVF ». The register already answers it: `id_parcelle` is on
+   * every mutation row, and it is the SAME key Etalab's open cadastre files
+   * are indexed by. Measured over the 400 mutations within 300 m of rue des
+   * Basques in Bayonne: **400 of 400 joined**, 170 distinct plots, 1 175
+   * vertices in total.
+   *
+   * ETALAB'S COMMUNE FILE, NOT API CARTO. The sibling Sitadel proxy already
+   * takes this exact file for this exact purpose, so the download is shared
+   * and cached rather than doubled; and a per-box Api Carto call would spend a
+   * rate-limit slot on a free public service for every pan, to answer about
+   * plots this route has already named.
+   *
+   * NON-FATAL, ALWAYS. A commune Etalab publishes no parcels for (Saint-
+   * Barthélemy) or a download that fails leaves `parcels: []` and the layer
+   * draws its markers exactly as it did before. A price map that refuses to
+   * open because the ground under it is unavailable would be a worse answer
+   * than one without the ground.
+   *
+   * BOUNDED TO THREE COMMUNES. Nantes' single file holds 58 099 parcels; the
+   * index is the one structure here a reader can grow by panning, and the
+   * downloads underneath are disk-cached by the Sitadel fetcher, so eviction
+   * costs a parse and not a request.
+   */
+  const parcelIndexes = new Map();
+  const PARCEL_INDEX_MAX = 3;
+
+  function loadCommuneParcels(insee) {
+    if (parcelIndexes.has(insee)) return parcelIndexes.get(insee);
+    const pending = (async () => {
+      const index = new Map();
+      for (const code of communeCadastreCodes(insee)) {
+        const collection = await fetchSitadelParcels(code);
+        for (const feature of collection?.features || []) {
+          const id = feature?.properties?.id;
+          const geometry = feature?.geometry;
+          if (!id || !geometry) continue;
+          // Polygon → one part; MultiPolygon → several. Rings kept as
+          // published: the client closes them, and a plot with a courtyard
+          // needs its interior rings to cut a hole rather than be filled in.
+          const parts = geometry.type === 'Polygon'
+            ? [geometry.coordinates]
+            : (geometry.type === 'MultiPolygon' ? geometry.coordinates : null);
+          if (parts) index.set(id, parts);
+        }
+      }
+      return index;
+    })().catch((error) => {
+      // Evicted, so a transient failure does not cost the ground for the life
+      // of the process. Reported once rather than per scan.
+      parcelIndexes.delete(insee);
+      console.warn(`[DVF Proxy] cadastre for ${insee} unavailable:`, error?.message || error);
+      return new Map();
+    });
+    parcelIndexes.set(insee, pending);
+    while (parcelIndexes.size > PARCEL_INDEX_MAX) {
+      parcelIndexes.delete(parcelIndexes.keys().next().value);
+    }
+    return pending;
+  }
+
+  /**
+   * The plots the served sales actually name, once each.
+   * @param {Array<object>} sales
+   * @param {string} insee
+   * @returns {Promise<Array<{id: string, parts: Array}>>}
+   */
+  async function parcelsFor(sales, insee) {
+    const wanted = new Set();
+    for (const sale of sales) {
+      const id = String(sale?.parcelle || '').trim();
+      if (id) wanted.add(id);
+    }
+    if (!wanted.size) return [];
+    const index = await loadCommuneParcels(insee);
+    const out = [];
+    for (const id of wanted) {
+      const parts = index.get(id);
+      if (parts) out.push({ id, parts });
+    }
+    return out;
+  }
+
   function install(middlewares) {
     installAddressRoute(middlewares, '/api/dvf', (url) => {
       const point = addressPoint(url.searchParams);
@@ -23122,6 +23212,7 @@ function dvfProxy() {
           if (!commune) return null;
           const { mutations, unavailable } = await loadEditions(years, commune.code);
           const { sales, summary } = selectNearbySales(mutations, point, radiusM);
+          const parcels = await parcelsFor(sales, commune.code);
           // The register's own hole, carried on the answer rather than left to
           // be inferred from an empty list: a commune in the Bas-Rhin, the
           // Haut-Rhin, the Moselle or Mayotte returns nothing because the file
@@ -23129,7 +23220,7 @@ function dvfProxy() {
           // is the other silence — editions that exist and did not download.
           return {
             commune, years, unavailableYears: unavailable,
-            coverage: dvfCoverage(commune.code), sales, summary,
+            coverage: dvfCoverage(commune.code), sales, summary, parcels,
           };
         },
       };

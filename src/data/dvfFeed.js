@@ -102,6 +102,39 @@ export const DWELLING_TYPES = Object.freeze(['Appartement', 'Maison']);
 export const ANCILLARY_TYPES = Object.freeze(['Dépendance']);
 
 /**
+ * WHAT A MUTATION BOUGHT, folded onto the three answers a reader can act on.
+ *
+ * The register publishes `type_local` per ROW and a mutation is several rows,
+ * so "is this a flat or a house" is not a field — it is a reduction, and it
+ * has to be made somewhere. Measured within 300 m of rue des Basques in
+ * Bayonne over the 2021–2025 editions: 257 mutations of a flat alone, 72 of a
+ * flat with its cellar or parking space, 42 of nothing but a commercial local,
+ * 14 of a flat together with one, 10 of all three, 4 of a cellar alone, and 1
+ * carrying no `type_local` at all.
+ *
+ * THE DWELLING WINS OVER WHAT RODE ALONG WITH IT. A flat sold with its cellar
+ * is a flat; a flat sold with a shop is still, for the purpose of "show me the
+ * flats", a flat — and it is already refused a €/m² by `prixM2`, so the map
+ * draws it neutral and the card says why. Folding it into `autre` would hide
+ * a dwelling transaction from a reader who asked to see dwelling
+ * transactions.
+ *
+ * `maison` OUTRANKS `appartement` in the rare mutation that holds both,
+ * because that mutation is a house sold with a flat in it and the house is the
+ * building. No captured row shows the case; the rule is one comparison and it
+ * stops the answer depending on set iteration order.
+ *
+ * @param {object} sale One mutation from {@link groupMutations}.
+ * @returns {'maison'|'appartement'|'autre'}
+ */
+export function saleKind(sale) {
+  const types = Array.isArray(sale?.types) ? sale.types : [];
+  if (types.includes('Maison')) return 'maison';
+  if (types.includes('Appartement')) return 'appartement';
+  return 'autre';
+}
+
+/**
  * The mutation natures whose `valeur_fonciere` is a PRICE, and so the only
  * ones a price per square metre may be computed from.
  *
