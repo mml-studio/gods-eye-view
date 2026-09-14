@@ -123,6 +123,42 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   avait fait à notre analyseur, le premier dit au lecteur ce qu'il peut savoir
   de la station. La fiche nomme toujours la cause, et la marque garde sa forme
   propre.
+
+- **La couche Risques disait tout et ne montrait rien.** Au-dessus du
+  Trocadéro, à 555 m, elle dessinait **un** triangle au trait pour un
+  établissement classé — « très peu visible, voire clairement invisible » — et
+  **rien du tout** pour les huit aléas que le même scan avait déjà résolus.
+  Inondation, argiles, sismicité, radon, canalisations, sols pollués étaient
+  récupérés, projetés, résumés dans `getStats()`, et lus par aucune surface du
+  globe : la seule à les afficher était `fiche.html`, qui n'a pas de lien
+  depuis la carte. Qui allumait la couche voyait un écran vide sans moyen
+  d'apprendre qu'il ne l'était pas.
+
+  **La commune est maintenant tracée.** Un liseré, pas un aplat, et c'est un
+  choix sur ce que la source dit : `resultats_rapport_risque` répond « Risque
+  Existant » sur une commune et sur une adresse, sans aucune géométrie. Une
+  commune remplie se lit « l'eau monte jusqu'ici », une limite se lit « la
+  compétence est ici » — et c'est ce qu'un verdict communal est. Le contour
+  vient de `geo.api.gouv.fr`, un appel par scan, **sur le code INSEE résolu par
+  la BAN** : un scan parisien trace le 13ᵉ arrondissement, pas le 75056 que le
+  rapport renvoie. Pas de rampe de sévérité non plus : Géorisques ne publie
+  aucun indice composite, et compter les aléas n'en est pas un — douze
+  « faible » ne valent pas un « important ».
+
+  **Les verdicts sont dans la clé de la carte**, lisibles sans ouvrir un
+  panneau qui s'affiche replié, avec une **case vide au lieu d'une pastille de
+  couleur** — le créneau « constaté, non cartographié » du manager, qui existe
+  exactement pour un fait que la carte n'a pas pu dessiner. Un aléa dont les
+  deux verdicts divergent garde sa ligne et les imprime tous les deux : sur le
+  13ᵉ, l'ICPE est « Risque Concerne » pour la commune et « Risque non Concerne »
+  pour l'adresse, les argiles « Risque Existant - important » contre « Risque
+  non Connu ».
+
+  **La marque est une plaque pleine.** Le triangle au trait mettait son encre
+  sur un filet de **1,09 pixel de large** à 15 px de rendu ; la plaque
+  concentre la même encre en une masse continue cerclée de noir, avec le point
+  d'exclamation évidé dedans — le traitement des sites militaires, pas celui
+  des marqueurs d'adresse.
 - **Quatre exploitants dans la même rue dessinaient la même tache.** La couche
   des véhicules partagés portait l'exploitant sur la COULEUR et la forme sur une
   silhouette Material teintée. Mesuré aux tailles réelles de la rampe : à 17 px
@@ -157,6 +193,29 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   pas à la taille carte. Rendus à l'échelle, seules les marques qui sont DÉJÀ une
 
 ### Fixed
+- **Un registre d'aléas muet ressemblait à une adresse sans risque.** Mesuré en
+  direct le 2026-09-14 : `resultats_rapport_risque` a refusé toute connexion
+  pendant une session entière pendant que `installations_classees` et `radon`
+  répondaient normalement. La couche traçait une commune, 31 établissements, et
+  du silence là où va le verdict inondation — impossible à distinguer d'une
+  adresse que le registre aurait déclarée propre. La clé nomme désormais la
+  panne, et les établissements restent affichés : une source indisponible
+  dégrade un acte, pas la mission.
+- **Un site sur trois était peint « Seveso » sans l'être.** `statutSeveso` n'est
+  pas un booléen : c'est une étiquette, et l'une de ses valeurs est la chaîne
+  `"Non Seveso"`, qui est *truthy*. Mesuré sur 380 établissements et quatre
+  scans (Feyzin, Port-Jérôme, Lacq, Paris 13ᵉ) : 181 lus comme Seveso, dont
+  **141 — 78 % — ne le sont pas**, dessinés dans la couleur la plus forte de la
+  couche, à sa plus grande taille, à côté d'une fiche affichant « Seveso : Non
+  Seveso ». Autour du Trocadéro seul, 24 sur 100.
+- **La clé survivait au dessin qu'elle décrivait.** Une couche d'adresse qui
+  franchit son plafond de 12 km vide la scène en une image, et son prochain
+  rafraîchissement de panneau est à un intervalle de mise à jour — cinq minutes
+  pour Géorisques. Mesuré : 13 entrées de légende encore à l'écran au-dessus
+  d'une scène à zéro entité. Symétriquement, rien ne repeignait le panneau
+  quand un scan ABOUTIT, donc une clé pouvait rester vide, ou décrire le pâté
+  de maisons qu'on venait de quitter. Les six couches d'adresse annoncent
+  désormais leurs changements de dessin.
 - **La rampe de puissance était ordonnée, conforme aux deux tests de la règle,
   et trop sombre pour qu'on s'y repère.** Les pastilles livrées le matin même
   couraient de L\* 30,6 à 83,0, avec des écarts de 10 à 18, un ordre qui

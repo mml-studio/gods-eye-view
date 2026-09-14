@@ -283,6 +283,27 @@ export class DataLayerManager {
     this._coverageBriefingHandler = null;
   }
 
+  /**
+   * Repaint the panel rows and the on-map key, now.
+   *
+   * The public door onto `_refreshTogglePanel`, for the one caller that is
+   * neither a toggle nor a tick: a layer whose DRAW changed without its data
+   * changing. An address layer crossing its altitude ceiling empties the scene
+   * in a frame, and its next scheduled repaint is its update interval away —
+   * five minutes for Géorisques. Until this existed the key went on describing
+   * a scene with nothing in it for all five.
+   *
+   * Kept as a method rather than exposing the private one so the shell has a
+   * name to call that says what it wants (a repaint) instead of naming the
+   * panel it happens to live in.
+   *
+   * @returns {boolean} Whether the panel actually painted — false while the
+   *   document is hidden, which defers to the visibilitychange pass.
+   */
+  refreshControls() {
+    return this._refreshTogglePanel();
+  }
+
   register(layerModule) {
     if (this._registrationsFinalized) {
       throw new Error('Data-layer registrations are finalized');

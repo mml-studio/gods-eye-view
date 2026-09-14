@@ -11,6 +11,9 @@ import {
   GEORISQUES_MAX_RADIUS_M,
   buildGeorisquesUrls,
   clampRadius,
+  hazardGrade,
+  hazardStanding,
+  isSevesoStatus,
   projectGeorisques,
   projectHazards,
   projectIcpe,
@@ -155,4 +158,118 @@ test('an absent parameter takes the default, not the minimum', () => {
   assert.equal(clampRadius(undefined), GEORISQUES_DEFAULT_RADIUS_M);
   // An EXPLICIT zero is still a request, and is still clamped to the floor.
   assert.equal(clampRadius('0'), 100);
+});
+
+test('"non connu" is never read as "non concerné", which is the whole trap', () => {
+  // Both begin "risque non", and a prefix test for the negative turns "the
+  // register does not know whether the clay under this address shrinks" into
+  // "it does not". Measured on the Paris 13e capture, where argiles reads
+  // exactly that at address level.
+  assert.equal(hazardStanding('Risque non Connu'), 'unknown');
+  assert.equal(hazardStanding('Risque non Concerne'), 'clear');
+  assert.equal(hazardStanding('Risque non concerné'), 'clear');
+
+  // Two vocabularies, one for each family, both meaning "it reaches here".
+  assert.equal(hazardStanding('Risque Existant'), 'concerned');
+  assert.equal(hazardStanding('Risque Existant - faible'), 'concerned');
+  assert.equal(hazardStanding('Risque Existant - important'), 'concerned');
+  assert.equal(hazardStanding('Risque Concerne'), 'concerned');
+
+  // Absent is absent — not assessed, and not clear.
+  assert.equal(hazardStanding(null), null);
+  assert.equal(hazardStanding(''), null);
+  assert.equal(hazardStanding('   '), null);
+  // A label neither vocabulary carries reports as unknown rather than as a
+  // guess: a new verdict string upstream must not silently paint "clear".
+  assert.equal(hazardStanding('Statut en cours de revision'), 'unknown');
+});
+
+test('the grade is the source\'s own word, and absent when there is none', () => {
+  assert.equal(hazardGrade('Risque Existant - faible'), 'faible');
+  assert.equal(hazardGrade('Risque Existant - important'), 'important');
+  assert.equal(hazardGrade('Risque Existant'), null);
+  assert.equal(hazardGrade('Risque non Connu'), null);
+  assert.equal(hazardGrade(null), null);
+});
+
+test('every hazard carries both standings, and the address grade wins', () => {
+  const natural = projectHazards(REPORT.risquesNaturels);
+  const argiles = natural.find((entry) => entry.id === 'retraitGonflementArgile');
+  // The real disagreement on the 13e, and the reason both verdicts travel:
+  // the commune is graded "important", the address is not known at all.
+  assert.equal(argiles.communeStanding, 'concerned');
+  assert.equal(argiles.addressStanding, 'unknown');
+  assert.equal(argiles.variesByAddress, true);
+  // The address carries no grade, so the commune's is what is reported rather
+  // than nothing — the reader is still owed "important".
+  assert.equal(argiles.grade, 'important');
+
+  const seisme = natural.find((entry) => entry.id === 'seisme');
+  assert.equal(seisme.addressStanding, 'concerned');
+  assert.equal(seisme.grade, 'faible');
+
+  const cotier = natural.find((entry) => entry.id === 'risqueCotier');
+  // Checked and absent: no verdict either side, and no standing invented.
+  assert.equal(cotier.present, false);
+  assert.equal(cotier.communeStanding, null);
+  assert.equal(cotier.addressStanding, null);
+
+  const icpe = projectHazards(REPORT.risquesTechnologiques).find((entry) => entry.id === 'icpe');
+  assert.equal(icpe.communeStanding, 'concerned');
+  assert.equal(icpe.addressStanding, 'clear');
+});
+
+test('the commune outline rides along, with the code the scan actually ran on', () => {
+  const contour = { code: '75113', name: 'Paris 13e Arrondissement', parts: [[2.3, 48.8, 2.4, 48.8, 2.4, 48.9]], simplified: true };
+  const out = projectGeorisques({
+    report: REPORT, icpe: ICPE, radon: RADON, contour, inseeCode: '75113', origin: ORIGIN, radiusM: 1000,
+  });
+  assert.equal(out.communeContour, contour);
+  assert.equal(out.available.contour, true);
+  // BOTH codes, because both are true statements about different things: the
+  // report was written about Paris-whole, the outline and the radon class were
+  // fetched for the arrondissement.
+  assert.equal(out.commune.inseeCode, '75056');
+  assert.equal(out.commune.scanInseeCode, '75113');
+});
+
+test('a missing outline degrades the stroke and nothing else', () => {
+  const out = projectGeorisques({
+    report: REPORT, icpe: ICPE, radon: RADON, origin: ORIGIN, radiusM: 1000,
+  });
+  assert.equal(out.communeContour, null);
+  assert.equal(out.available.contour, false);
+  // The verdicts, the establishments and the radon class are all still there:
+  // the outline is the one upstream whose absence costs a reader a line and
+  // not an answer.
+  assert.ok(out.naturalRisks.length > 0);
+  assert.ok(out.icpe.length > 0);
+  assert.equal(out.radon.class, 1);
+  assert.equal(out.commune.scanInseeCode, null);
+});
+
+test('"Non Seveso" is a truthy string, and was painting 78% of the red marks', () => {
+  // The register answers with a LABEL, not a boolean, and one of its values
+  // says no. Measured over 380 establishments on four scans (Feyzin,
+  // Port-Jérôme, Lacq, Paris 13e) on 2026-09-14: null 199, "Non Seveso" 141,
+  // "Seveso seuil bas" 15, "Seveso seuil haut" 25. Read as a boolean, 181
+  // sites came back Seveso — 141 of them wrongly, in the loudest colour the
+  // layer has, beside a card reading "Seveso : Non Seveso".
+  assert.equal(isSevesoStatus('Non Seveso'), false);
+  assert.equal(isSevesoStatus(null), false);
+  assert.equal(isSevesoStatus(''), false);
+  assert.equal(isSevesoStatus('Seveso seuil haut'), true);
+  assert.equal(isSevesoStatus('Seveso seuil bas'), true);
+  // Positive on the prefix, so a value this vocabulary has not seen yet stays
+  // Seveso if it announces itself as one, and is never promoted if it does not.
+  assert.equal(isSevesoStatus('Seveso seuil haut (dérogation)'), true);
+  assert.equal(isSevesoStatus('Établissement non concerné'), false);
+
+  // …and the projection uses it. Three of the five captured establishments
+  // carry "Non Seveso" and not one of them is a Seveso site.
+  const { items } = projectIcpe(ICPE, ORIGIN);
+  assert.equal(items.filter((site) => site.seveso).length, 0);
+  // The label still travels, because the card prints it: "checked, not Seveso"
+  // is a fact worth showing, it is just not a red plate.
+  assert.equal(items.filter((site) => site.sevesoStatus === 'Non Seveso').length, 3);
 });

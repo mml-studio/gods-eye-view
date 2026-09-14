@@ -138,6 +138,71 @@ function haversineM(lat1, lon1, lat2, lon2) {
 }
 
 /**
+ * The three standings a verdict can express, plus `null` for "not assessed".
+ *
+ * `concerned` — the hazard reaches here. `clear` — checked, does not reach.
+ * `unknown` — the register looked and says it does not know, which is NOT the
+ * same as clear and must never be painted as one.
+ */
+export const HAZARD_STANDINGS = Object.freeze(['concerned', 'clear', 'unknown']);
+
+/**
+ * Lower-case, accent-free form of a verdict label, for matching only.
+ * @param {unknown} value
+ * @returns {string}
+ */
+function foldVerdict(value) {
+  return String(value ?? '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().trim();
+}
+
+/**
+ * Classify one verdict label into a standing the map can colour.
+ *
+ * THE VOCABULARY IS TWO VOCABULARIES, and reading it as one is the trap. The
+ * natural hazards answer "Risque Existant", optionally graded — measured on the
+ * Paris 13e: `Risque Existant`, `Risque Existant - faible`, `Risque Existant -
+ * important`. The technological ones answer "Risque Concerne" / "Risque non
+ * Concerne". A third value, `Risque non Connu`, appears on the SAME scan
+ * (retrait-gonflement des argiles, address level) and is neither.
+ *
+ * ORDER OF THE TESTS IS LOad-BEARING. "Risque non Connu" and "Risque non
+ * Concerne" both begin "risque non", so a prefix test for the negative catches
+ * *unknown* and reports it as *clear* — turning "the register does not know
+ * whether the clay under this address shrinks" into "it does not". That is the
+ * one misreading this layer must not make, so `non conn` is matched first.
+ *
+ * @param {unknown} verdict Raw `libelleStatut…` label.
+ * @returns {?string} One of {@link HAZARD_STANDINGS}, or null when unassessed.
+ */
+export function hazardStanding(verdict) {
+  const text = foldVerdict(verdict);
+  if (!text) return null;
+  if (text.includes('non conn')) return 'unknown';
+  if (text.includes('non ')) return 'clear';
+  if (text.includes('existant') || text.includes('concerne')) return 'concerned';
+  // A label neither vocabulary contains. Reported as unknown rather than
+  // guessed at: a new verdict string upstream must not silently read "clear".
+  return 'unknown';
+}
+
+/**
+ * The grading a verdict carries after its dash, when it carries one.
+ *
+ * Kept as the SOURCE'S OWN WORD rather than mapped to a number. "faible" and
+ * "important" are the only two measured, but the field is free text upstream
+ * and a scale invented here would rank a third value it has never seen.
+ *
+ * @param {unknown} verdict
+ * @returns {?string}
+ */
+export function hazardGrade(verdict) {
+  const match = /\s-\s*(.+)$/.exec(String(verdict ?? '').trim());
+  return match ? match[1].trim() : null;
+}
+
+/**
  * Project one hazard entry, preserving the two verdicts the source separates.
  *
  * `present: false` is a real answer ("this hazard does not reach here"), not a
@@ -145,11 +210,17 @@ function haversineM(lat1, lon1, lat2, lon2) {
  * — a scan that silently dropped every absent hazard could not tell a reader
  * the difference between "checked, clear" and "never checked".
  *
+ * THE STANDINGS ARE COMPUTED HERE, at the projection, and not in the browser.
+ * `georisques.js` paints them; the vocabulary above is the kind of thing that
+ * belongs beside the measurement that established it, and this module is
+ * already the seam every other Géorisques fact is normalised at.
+ *
  * @param {string} id Hazard key as the upstream names it.
  * @param {object|null|undefined} entry
  * @returns {{id: string, label: string, present: boolean,
  *   communeVerdict: string|null, addressVerdict: string|null,
- *   variesByAddress: boolean, detail: string|null}|null}
+ *   communeStanding: string|null, addressStanding: string|null,
+ *   grade: string|null, variesByAddress: boolean, detail: string|null}|null}
  */
 function projectHazard(id, entry) {
   if (!entry || typeof entry !== 'object') return null;
@@ -161,6 +232,13 @@ function projectHazard(id, entry) {
     present: entry.present === true,
     communeVerdict,
     addressVerdict,
+    communeStanding: hazardStanding(communeVerdict),
+    addressStanding: hazardStanding(addressVerdict),
+    // The address's grading when there is one, else the commune's: a reader
+    // standing on the point is told about the point wherever the point was
+    // graded. Measured on the 13e, argiles reads "important" for the commune
+    // and carries no grade at the address, because there it is not known.
+    grade: hazardGrade(addressVerdict) ?? hazardGrade(communeVerdict),
     // The upstream disagreeing with itself is the signal, not a defect: it
     // means the hazard exists in the commune but not at this point.
     variesByAddress: Boolean(communeVerdict) && Boolean(addressVerdict)
@@ -185,6 +263,33 @@ export function projectHazards(hazards) {
   // reaches me", and a stable tail keeps snapshots diffable.
   out.sort((a, b) => (Number(b.present) - Number(a.present)) || a.id.localeCompare(b.id));
   return out;
+}
+
+/**
+ * Whether one establishment is actually a Seveso site.
+ *
+ * `statutSeveso` IS NOT A BOOLEAN AND IS NOT EMPTY WHEN THE ANSWER IS NO. It
+ * is a label, and one of its values is the string `"Non Seveso"` — which is
+ * truthy. `Boolean(row.statutSeveso)`, which this module did until
+ * 2026-09-14, therefore reported "Seveso" for every establishment the register
+ * had explicitly cleared.
+ *
+ * MEASURED over 380 establishments on four scans (Feyzin, Port-Jérôme, Lacq,
+ * Paris 13e) on 2026-09-14: `null` 199, `"Non Seveso"` 141, `"Seveso seuil
+ * bas"` 15, `"Seveso seuil haut"` 25. Under the old test 181 sites read as
+ * Seveso, of which **141 — 78% of them — were not**; around the Trocadéro
+ * alone, 24 of 100. They were drawn in the loudest colour the layer has, at
+ * its largest size, beside a card reading "Seveso : Non Seveso".
+ *
+ * Positive on the PREFIX rather than against a list of the two known labels: a
+ * future "Seveso seuil haut (dérogation)" must stay Seveso, while anything
+ * that does not announce itself as Seveso is not promoted into it.
+ *
+ * @param {unknown} statut Raw `statutSeveso`.
+ * @returns {boolean}
+ */
+export function isSevesoStatus(statut) {
+  return /^seveso/.test(foldVerdict(statut));
 }
 
 /**
@@ -215,7 +320,7 @@ export function projectIcpe(payload, origin) {
       commune: row?.commune ?? null,
       postalCode: row?.codePostal ?? null,
       regime: row?.regime ?? null,
-      seveso: Boolean(row?.statutSeveso),
+      seveso: isSevesoStatus(row?.statutSeveso),
       sevesoStatus: row?.statutSeveso ?? null,
       ied: row?.ied === true,
       nationalPriority: row?.prioriteNationale === true,
@@ -261,10 +366,13 @@ export function projectRadon(payload) {
  * projection, rather than being left to each caller to remember.
  *
  * @param {{report?: object|null, icpe?: object|null, radon?: object|null,
+ *   contour?: object|null, inseeCode?: string|null,
  *   origin: {lon: number, lat: number}, radiusM: number}} input
  * @returns {object} The `/api/georisques` response body, minus its envelope.
  */
-export function projectGeorisques({ report, icpe, radon, origin, radiusM }) {
+export function projectGeorisques({
+  report, icpe, radon, contour = null, inseeCode = null, origin, radiusM,
+}) {
   const address = report?.adresse
     ? {
       label: report.adresse.libelle ?? null,
@@ -281,8 +389,20 @@ export function projectGeorisques({ report, icpe, radon, origin, radiusM }) {
         // Echoed as the API gives it — 75056 for any Paris arrondissement.
         inseeCode: report.commune.codeInsee ?? null,
         postalCode: report.commune.codePostal ?? null,
+        // The code the SCAN actually ran on, resolved from the BAN by the
+        // proxy: 75113 where the line above says 75056. Both travel, because
+        // they are two different true statements — radon and the outline were
+        // fetched for this one, and the report was written about that one.
+        scanInseeCode: inseeCode,
       }
       : null,
+    // The outline of the commune the verdicts below are about. Drawn as a
+    // stroke rather than a wash, and that is a decision about honesty as much
+    // as about the photorealistic drape: a filled commune reads as an extent
+    // — "the water reaches this far" — and none of these hazards publishes
+    // one. A boundary reads as jurisdiction, which is what a commune verdict
+    // is.
+    communeContour: contour,
     radiusM,
     naturalRisks: projectHazards(report?.risquesNaturels),
     technologicalRisks: projectHazards(report?.risquesTechnologiques),
@@ -297,6 +417,7 @@ export function projectGeorisques({ report, icpe, radon, origin, radiusM }) {
       report: Boolean(report),
       icpe: Boolean(icpe),
       radon: Boolean(radon),
+      contour: Boolean(contour),
     },
   };
 }

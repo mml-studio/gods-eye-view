@@ -234,3 +234,62 @@ export function ringAnchor(flat) {
   }
   return [lon / points, lat / points];
 }
+
+/** An INSEE commune code the API will accept: 5 characters, 2A/2B included. */
+const COMMUNE_CODE = /^[0-9][0-9AB][0-9]{3}$/;
+
+/**
+ * Contour of ONE commune, by its INSEE code.
+ *
+ * A third URL and not a filter on the first: a layer that answers about one
+ * address needs one outline, and `/departements/{dep}/communes` is 887
+ * communes and 4 MB on the worst département in France. Measured 2026-09-14:
+ * Bordeaux (33063) answers in 12 681 bytes, Paris 13e (75113) in 2 521.
+ *
+ * `geometry=contour` IS THE WHOLE REQUEST and omitting it fails silently. The
+ * endpoint's default geometry is `centre`, so without it the reply is still
+ * HTTP 200, still `"type": "Feature"`, still carries a `geometry` — a **Point**
+ * of 125 bytes. Nothing throws, nothing is empty, and the caller draws a dot
+ * where it asked for a boundary. Measured on all three of 33063, 75113 and
+ * 75056 on 2026-09-14.
+ *
+ * ARRONDISSEMENTS MUNICIPAUX ANSWER HERE, unlike on the département route
+ * above, which has to ask a second time with `type=arrondissement-municipal`:
+ * `/communes/75113` is an exact lookup and returns "Paris 13e Arrondissement"
+ * without a type filter. So a caller that already holds a BAN-resolved code —
+ * 75113 rather than the 75056 Géorisques echoes — gets the arrondissement it
+ * asked for and nothing else has to know about the distinction.
+ *
+ * @param {string} code INSEE commune code.
+ * @param {{fields?:string}} [options]
+ * @returns {string}
+ */
+export function singleCommuneContourUrl(code, { fields = COMMUNE_CONTOUR_FIELDS } = {}) {
+  const insee = String(code || '').trim().toUpperCase();
+  if (!COMMUNE_CODE.test(insee)) throw new Error(`communeContours: invalid commune code ${code}`);
+  return `${GEO_API_ROOT}/communes/${insee}`
+    + `?format=geojson&geometry=contour&fields=${assertFields(fields)}`;
+}
+
+/**
+ * Project the single-Feature reply of {@link singleCommuneContourUrl}.
+ *
+ * Wraps the Feature into the FeatureCollection {@link projectCommuneContours}
+ * reads, rather than growing a second decimator: one commune is the same
+ * object as one of 887, and the rounding, the striding, the part ceiling and
+ * the `simplified` reporting must not be allowed to differ between the two
+ * routes that fetch it.
+ *
+ * A **Point** geometry — what the endpoint returns when `geometry=contour` is
+ * missing — projects to nothing, because it has no ring. That is deliberate:
+ * the failure surfaces as "no outline" rather than as a one-vertex polygon.
+ *
+ * @param {object} feature A `geo.api.gouv.fr` Feature.
+ * @param {{maxVertices?:number, decimals?:number, maxParts?:number}} [options]
+ * @returns {?object} One projected commune, or null when nothing was drawable.
+ */
+export function projectSingleCommuneContour(feature, options = {}) {
+  const collection = { type: 'FeatureCollection', features: feature ? [feature] : [] };
+  const { communes } = projectCommuneContours(collection, options);
+  return communes[0] || null;
+}

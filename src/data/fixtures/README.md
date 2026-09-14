@@ -528,3 +528,23 @@ documented anywhere upstream: 45 fields in common, five not. `depcom`,
 `nom_com` and `i_car_est` exist only at 200 m; `i_est_1km` only at 1 km. Asking
 one grid for the other's column is an HTTP 400, so a test that lets the two
 drift is a layer that dies at half its altitudes.
+
+- `geoapi-commune-75113-contour.json` / `geoapi-commune-75113-centre.json` —
+  the SAME commune from `geo.api.gouv.fr/communes/75113`, captured twice on
+  2026-09-14: once with `geometry=contour` (a Polygon of 114 vertices, 2 521
+  bytes) and once without it (a **Point**, 125 bytes).
+
+  The pair exists for the second file. Omitting `geometry=contour` is not an
+  error on this endpoint: the reply is still `200`, still `"type": "Feature"`,
+  still carries a `geometry` — it is simply the commune's CENTRE. Nothing
+  throws and nothing is empty, so a caller that forgets the parameter draws a
+  dot where it asked for a boundary and finds out by looking at the globe.
+  `communeContours.test.mjs` pins that the centre-only reply projects to
+  `null` rather than to a one-vertex polygon.
+
+  75113 rather than any commune: it is an *arrondissement municipal*, which the
+  `/departements/{dep}/communes` route cannot return without a second
+  `type=arrondissement-municipal` call and which this route answers directly.
+  That is what lets the Géorisques layer outline the arrondissement a Paris
+  scan actually ran on instead of the 75056 the risk report echoes. Used by
+  `communeContours.test.mjs` and `georisques.test.mjs`.
