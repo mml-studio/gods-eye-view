@@ -299,7 +299,10 @@ function probe(page) {
       summary: module.getViewportSummary(),
       national: module.getNationalSummary(),
       meshPick: module.getMeshSummary(),
-      legend: module.getRowControls().legend.map((item) => [item.label, item.count, item.color]),
+      legend: module.getRowControls().legend.map((item) => [item.label, item.count, item.color, item.glyph]),
+      legendNote: module.getRowControls().legendNote || '',
+      legendFooter: module.getRowControls().note || '',
+      chips: (module.getRowControls().chips || []).map((chip) => chip.label),
       rendered: module.getDetectableObjects({ maxCount: 100000 }).length,
       polygonsShown: shownCodes.size,
       polygonsHidden: hiddenCodes.size,
@@ -490,9 +493,15 @@ async function main() {
     check('the layer declares the sample rather than implying an inventory',
       meshPick?.thinned === true && meshPick.shown < meshPick.inBox,
       JSON.stringify(meshPick));
-    check('and the row line under the toggle names both counts',
-      /\d.* of \d.* sites — sampled maillage/.test(String(mesh.stats.loadingLabel || '')),
+    // Both counts AND the criterion: « sampled maillage » said how many were
+    // dropped and never which ones, and it called lattice CELLS "sites".
+    check('and the row line under the toggle names both counts, and its criterion',
+      /\d.* cellules pour \d.* sites en vue/.test(String(mesh.stats.loadingLabel || ''))
+      && /maille [\d.]+° verrouillée sur le monde/.test(String(mesh.stats.loadingLabel || '')),
       String(mesh.stats.loadingLabel || '').slice(0, 160));
+    check('the maillage is a world lattice, not a fraction of the box (G3)',
+      meshPick?.stepDeg > 0 && meshPick.shown === meshPick.cells,
+      JSON.stringify(meshPick));
     await shoot(page, '03-maillage.png');
 
     // ── ii. one dot per SITE ───────────────────────────────────────────────
@@ -518,30 +527,52 @@ async function main() {
     console.log('[qa] iii. the power ramp');
     const byLabel = Object.fromEntries(loaded.legend.map(([label, count]) => [label, count]));
     const colorOf = Object.fromEntries(loaded.legend.map(([label, , color]) => [label, color]));
-    check('the out-of-envelope band is drawn in neutral slate, not on the ramp',
-      colorOf['Puissance non exploitable'] === '#7c8899', colorOf['Puissance non exploitable']);
-    check('and the high-power band keeps the hot end of the ramp',
-      colorOf['Haute puissance (> 150 kW)'] === '#fa5252', colorOf['Haute puissance (> 150 kW)']);
+    // D3 — the refused class left the ramp for a MOTIF: the house refusal
+    // graphite plus a hollow ring, which is a shape and not a sixth rung.
+    const glyphOf = Object.fromEntries(loaded.legend.map(([label, , , glyph]) => [label, glyph]));
+    check('the out-of-envelope band is a RING in the refusal graphite, not a rung',
+      colorOf['Puissance non exploitable'] === '#7a8493'
+      && String(glyphOf['Puissance non exploitable'] || '').startsWith('data:image/svg+xml'),
+      `${colorOf['Puissance non exploitable']} / ${String(glyphOf['Puissance non exploitable']).slice(0, 30)}`);
+    check('and the ramp climbs in lightness to the fast end',
+      colorOf['Lente (≤ 7,4 kW)'] === '#3b3f8f' && colorOf['Haute puissance (> 150 kW)'] === '#c6d94a',
+      `${colorOf['Lente (≤ 7,4 kW)']} → ${colorOf['Haute puissance (> 150 kW)']}`);
 
     // ── iv. the legend counts charge points, by band, low to high ──────────
     console.log('[qa] iv. row legend');
     check('the legend counts CHARGE POINTS, not dots',
       byLabel['Lente (≤ 7,4 kW)'] === 226, JSON.stringify(loaded.legend.map(([l, c]) => [l, c])));
+    // TWO TIERS since the key was rebuilt: the height and its ruler, then the
+    // colour and its classes. The band rows are the ones with a count.
+    const bandRows = loaded.legend.filter(([label]) => /kW\)$|^Puissance non/.test(label));
     check('every band in view is listed exactly once',
-      Object.keys(byLabel).length === 6, JSON.stringify(Object.keys(byLabel)));
-    check('with no zero-count entries', loaded.legend.every(([, count]) => count > 0), JSON.stringify(loaded.legend));
+      bandRows.length === 6, JSON.stringify(bandRows.map(([l]) => l)));
+    check('with no zero-count entries', bandRows.every(([, count]) => count > 0), JSON.stringify(bandRows));
     check('read low power to high',
-      loaded.legend[0][0].startsWith('Lente') && loaded.legend.at(-1)[0].startsWith('Puissance non'),
+      bandRows[0][0].startsWith('Lente') && bandRows.at(-1)[0].startsWith('Puissance non'),
+      JSON.stringify(bandRows.map(([l]) => l)));
+    // F7 a — the height names its register, and D1 gives it numbered marks.
+    check('the height declares its register and carries a ruler',
+      loaded.legend[0][0].startsWith('Hauteur — points de charge')
+      && loaded.legend.filter(([label]) => /^\d+ points de charge$/.test(label)).length >= 3,
       JSON.stringify(loaded.legend.map(([l]) => l)));
+    // E1 — the operators' clock, printed with the key, never the proxy's.
+    check('the key carries the operators\u2019 own clock',
+      /d\u00e9p\u00f4t op\u00e9rateur le \d{2}\/\d{2}\/\d{4}/.test(String(loaded.legendNote || '')),
+      String(loaded.legendNote || ''));
+    // G1 — the filter, on the row strip.
+    check('the row offers a power floor rather than only a toggle',
+      loaded.chips.length === 4 && loaded.chips[0] === 'TOUT',
+      JSON.stringify(loaded.chips));
 
     // ── v. the layer says capacity, and names what it merged ───────────────
     console.log('[qa] v. what the control row declares');
     check('the control row reports the de-duplicated total',
-      /charge points/.test(loaded.stats.loadingLabel || ''), loaded.stats.loadingLabel);
+      /points de charge/.test(loaded.stats.loadingLabel || ''), loaded.stats.loadingLabel);
     check('and names the double publication it merged out',
-      /double-published merged/.test(loaded.stats.loadingLabel || ''), loaded.stats.loadingLabel);
+      /doublons fusionn\u00e9s/.test(loaded.stats.loadingLabel || ''), loaded.stats.loadingLabel);
     check('and the coordinates it withheld',
-      /misplaced withheld/.test(loaded.stats.loadingLabel || ''), loaded.stats.loadingLabel);
+      /mal plac\u00e9s \u00e9cart\u00e9s/.test(loaded.stats.loadingLabel || ''), loaded.stats.loadingLabel);
     check('the layer never advertises availability',
       !/(libre|available|disponible)/i.test((loaded.stats.loadingLabel || '').replace(/Accès libre/g, '')),
       loaded.stats.loadingLabel);

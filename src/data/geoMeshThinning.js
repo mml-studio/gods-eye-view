@@ -67,6 +67,43 @@ export const MESH_COLS = 30;
 export const MESH_ROWS = 20;
 
 /**
+ * ── THE WORLD LATTICE, AND WHY THE VIEW-RELATIVE GRID IS NOT ENOUGH ─────────
+ *
+ * The grid above is a fraction of the CURRENT BOX, so its cells slide with the
+ * camera: pan one kilometre and every cell boundary moves one kilometre, the
+ * buckets re-form around different sites, and a different site wins each cell.
+ * Nothing in the world changed and the map redrew. That is G3 — *agréger en
+ * espace monde, pas en espace écran* — and its test is exactly this one: pan
+ * without changing altitude and watch the counters move.
+ *
+ * A caller can instead pass `lattice: { stepDeg }`, and then a cell is a fixed
+ * square of the graticule — `floor(lat / step)`, `floor(lon / step)` — with no
+ * reference to the box at all. The same site falls in the same cell in every
+ * view that contains it, so panning slides the map under a stationary mesh.
+ *
+ * THE LADDER IS A QUADTREE, and that is what makes a tier change readable: a
+ * caller's steps are powers of two of a degree, so every cell of a finer tier
+ * is exactly inside one cell of the coarser tier. Changing tier SUBDIVIDES the
+ * mesh; it never reshuffles it.
+ *
+ * WHAT A LATTICE CELL IS NOT: equal-area (C3). A step of 0.25° is 27.8 km tall
+ * everywhere and 20.7 km wide at Perpignan against 17.5 km at Lille — a 15 %
+ * spread across metropolitan France. Callers that draw a lattice have to say
+ * so in their key; the alternative, a longitude step that widens with
+ * latitude, would break the world lock this exists to provide.
+ *
+ * WITH A LATTICE THERE IS NO STRIDE FILL. The point of the stride was to spend
+ * leftover budget on extra individual dots; a lattice pick reports a COMPLETE
+ * AGGREGATE per cell instead, and a second dot in an already-counted cell
+ * would be counted twice by anything reading those aggregates. One mark per
+ * occupied cell, and the budget is spent by choosing the step.
+ */
+
+/** Coarsest and finest lattice steps a caller may ask for, in degrees. */
+export const MESH_LATTICE_MIN_STEP_DEG = 1 / 4096;
+export const MESH_LATTICE_MAX_STEP_DEG = 8;
+
+/**
  * Resolve a latitude span against a caller's budget ladder.
  *
  * Latitude and not the larger of the two spans: on the app's 16:10 viewport
@@ -158,6 +195,41 @@ export function cellRepresentative(bucket) {
 }
 
 /**
+ * Bucket the rows inside a box into cells, either view-relative or world-locked.
+ *
+ * @param {Array<Array<number>>} rowsIn
+ * @param {{south:number, west:number, north:number, east:number}} box
+ * @param {{nCols:number, nRows:number, stepDeg:?number}} grid
+ * @returns {{cells:Map<string|number, Array<Array<number>>>, inBox:number}}
+ */
+function bucketRows(rowsIn, box, { nCols, nRows, stepDeg }) {
+  // A degenerate box would divide by zero; one cell is the honest answer for a
+  // view with no extent rather than a NaN column index.
+  const latSpan = box.north - box.south;
+  const lonSpan = box.east - box.west;
+  const cells = new Map();
+  let inBox = 0;
+  for (const row of rowsIn) {
+    if (!meshRowInBox(row, box)) continue;
+    inBox += 1;
+    const key = stepDeg
+      // World-locked: the cell is a square of the graticule and the box is not
+      // in the expression at all, which is the whole property (G3).
+      ? `${Math.floor(row[MESH_LAT] / stepDeg)}:${Math.floor(row[MESH_LON] / stepDeg)}`
+      : (latSpan > 0
+        ? Math.min(nRows - 1, Math.max(0, Math.floor(((row[MESH_LAT] - box.south) / latSpan) * nRows)))
+        : 0) * nCols
+        + (lonSpan > 0
+          ? Math.min(nCols - 1, Math.max(0, Math.floor(((row[MESH_LON] - box.west) / lonSpan) * nCols)))
+          : 0);
+    const bucket = cells.get(key);
+    if (bucket) bucket.push(row);
+    else cells.set(key, [row]);
+  }
+  return { cells, inBox };
+}
+
+/**
  * Pick a bounded, spatially-spread subset of the rows inside a box.
  *
  * @param {Array<Array<number>>} rows National mesh tuples.
@@ -167,52 +239,94 @@ export function cellRepresentative(bucket) {
  *   ladder via `meshBudgetForSpan` before calling.
  * @param {number} [options.cols]
  * @param {number} [options.rows]
+ * @param {{stepDeg:number}} [options.lattice] World-locked cells of `stepDeg`
+ *   degrees instead of a fraction of the box. Doubles the step until the
+ *   occupied cells fit the budget, so the pick can never silently degrade into
+ *   "the biggest N cells". Turns off the stride fill and returns a complete
+ *   aggregate per cell.
  * @returns {{picked:Array<Array<number>>, inBox:number, budget:number,
- *   thinned:boolean, cells:number}}
+ *   thinned:boolean, cells:number, stepDeg:?number, coarsened:number,
+ *   aggregates:?Array<{total:number, rows:number}>}}
  */
-export function selectGeoMesh(rows, { box, budget, cols, rows: rowCount } = {}) {
+export function selectGeoMesh(rows, { box, budget, cols, rows: rowCount, lattice } = {}) {
   const rowsIn = Array.isArray(rows) ? rows : [];
-  if (!box) return { picked: [], inBox: 0, budget: 0, thinned: false, cells: 0 };
+  const empty = {
+    picked: [], inBox: 0, budget: 0, thinned: false, cells: 0,
+    stepDeg: null, coarsened: 0, aggregates: null,
+  };
+  if (!box) return empty;
 
   const cap = Math.max(0, Math.floor(Number.isFinite(budget) ? budget : 0));
   const nCols = Math.max(1, Math.floor(cols ?? MESH_COLS));
   const nRows = Math.max(1, Math.floor(rowCount ?? MESH_ROWS));
 
-  // A degenerate box would divide by zero; one cell is the honest answer for a
-  // view with no extent rather than a NaN column index.
-  const latSpan = box.north - box.south;
-  const lonSpan = box.east - box.west;
+  const asked = Number(lattice?.stepDeg);
+  let stepDeg = Number.isFinite(asked) && asked > 0
+    ? Math.min(MESH_LATTICE_MAX_STEP_DEG, Math.max(MESH_LATTICE_MIN_STEP_DEG, asked))
+    : null;
 
-  /** @type {Map<number, Array<Array<number>>>} occupied cell → its rows */
-  const cells = new Map();
-  let inBox = 0;
-  for (const row of rowsIn) {
-    if (!meshRowInBox(row, box)) continue;
-    inBox += 1;
-    const col = lonSpan > 0
-      ? Math.min(nCols - 1, Math.max(0, Math.floor(((row[MESH_LON] - box.west) / lonSpan) * nCols)))
-      : 0;
-    const gridRow = latSpan > 0
-      ? Math.min(nRows - 1, Math.max(0, Math.floor(((row[MESH_LAT] - box.south) / latSpan) * nRows)))
-      : 0;
-    const key = gridRow * nCols + col;
-    const bucket = cells.get(key);
-    if (bucket) bucket.push(row);
-    else cells.set(key, [row]);
+  let { cells, inBox } = bucketRows(rowsIn, box, { nCols, nRows, stepDeg });
+  // MORE CELLS THAN BUDGET IS THE ONE FAILURE THE GRID EXISTS TO PREVENT: only
+  // the highest-ranked cells would win and the pick would be rank-based again.
+  // The view-relative grid rules it out by construction (600 cells, every
+  // budget above it); a world lattice cannot, because the box is free to hold
+  // any number of cells. So the step DOUBLES — staying on the quadtree, so the
+  // coarser mesh is the finer one merged four cells at a time — until it fits.
+  let coarsened = 0;
+  while (stepDeg && cap > 0 && cells.size > cap && stepDeg < MESH_LATTICE_MAX_STEP_DEG) {
+    stepDeg = Math.min(MESH_LATTICE_MAX_STEP_DEG, stepDeg * 2);
+    coarsened += 1;
+    ({ cells, inBox } = bucketRows(rowsIn, box, { nCols, nRows, stepDeg }));
   }
+
   if (!cap || !inBox) {
-    return { picked: [], inBox, budget: cap, thinned: inBox > 0, cells: cells.size };
+    return {
+      ...empty, inBox, budget: cap, thinned: inBox > 0, cells: cells.size, stepDeg, coarsened,
+    };
   }
 
   const cellBest = [];
   const rest = [];
+  /** Aligned with `cellBest`: what the whole cell holds, not what its mark is. */
+  const aggregates = [];
   for (const bucket of cells.values()) {
     bucket.sort(byWeight);
     const winner = cellRepresentative(bucket);
     cellBest.push(winner);
+    if (stepDeg) {
+      let total = 0;
+      for (const row of bucket) total += Number(row[MESH_WEIGHT]) || 0;
+      aggregates.push({ total, rows: bucket.length });
+      continue;
+    }
     for (const row of bucket) {
       if (row !== winner) rest.push(row);
     }
+  }
+
+  if (stepDeg) {
+    // One mark per occupied cell, heaviest cell first so a view that somehow
+    // still overflows keeps the most substantial cells. `byWeight` ranks the
+    // MARKS; the cells are ranked by what they hold, which is the figure the
+    // caller draws.
+    const order = aggregates
+      .map((aggregate, index) => index)
+      .sort((a, b) => aggregates[b].total - aggregates[a].total
+        || byWeight(cellBest[a], cellBest[b]));
+    const kept = order.slice(0, cap);
+    return {
+      picked: kept.map((index) => cellBest[index]),
+      aggregates: kept.map((index) => aggregates[index]),
+      inBox,
+      budget: cap,
+      // A lattice pick is "thinned" whenever it stands for more rows than it
+      // draws — which is nearly always, since a cell with four sites draws one
+      // mark. The caller prints both numbers either way.
+      thinned: kept.length < inBox,
+      cells: cells.size,
+      stepDeg,
+      coarsened,
+    };
   }
   // Cell winners are cut heaviest-first if there are somehow more cells than
   // budget, so an under-budget view still shows the most substantial ones.
@@ -238,5 +352,14 @@ export function selectGeoMesh(rows, { box, budget, cols, rows: rowCount } = {}) 
       picked.push(rest[i]);
     }
   }
-  return { picked, inBox, budget: cap, thinned: picked.length < inBox, cells: cells.size };
+  return {
+    picked,
+    inBox,
+    budget: cap,
+    thinned: picked.length < inBox,
+    cells: cells.size,
+    stepDeg: null,
+    coarsened: 0,
+    aggregates: null,
+  };
 }

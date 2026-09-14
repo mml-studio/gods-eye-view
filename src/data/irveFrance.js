@@ -25,20 +25,42 @@
  *       (span ≥ 9.5°)       to the number of charge points it holds and
  *                           coloured by its density, with the leaders
  *                           labelled. 18 KB, no clutter.
- *   part of the country   — **the maillage**: real site positions, thinned by
- *       (9° … 0.35°)        a geographic grid so every occupied cell keeps its
- *                           largest site before any cell gets a second dot.
- *                           1 100–2 200 dots, densifying as you close in.
+ *   part of the country   — **the maillage**: a CARROYAGE locked to the
+ *       (9° … 0.35°)        graticule, one mark per occupied cell, standing on
+ *                           a real site inside it and carrying the cell's
+ *                           complete charge-point total. 0.25° … 1/64°.
  *   one city              — **every site**, with its operators, connectors,
  *       (below ~45 km)      access conditions and freshness.
  *
  * The three never draw at once and each has its own legend, so a colour can
- * never be read against the wrong scale. The national regime draws the bundled
- * IGN département polygons that `meteoFranceVigilance.js` and `franceEnergy.js`
- * also paint — but EXTRUDED rather than clamped, which is a different Cesium
- * object with different rules, and the section below is that argument. The
- * maillage's thinning is `cctvLod.js`'s ambient-ring distribution transposed
- * from screen space to geographic space (see `irveMesh.js`).
+ * never be read against the wrong scale.
+ *
+ * ── ONE GRAMMAR ACROSS THE THREE, SINCE 2026-09-10 ─────────────────────────
+ *
+ * HEIGHT IS THE COUNT. COLOUR IS THE KIND OR THE RATE. The national prism said
+ * that already; the other two said something else entirely — the beam's length
+ * was the number of markers on screen (960 of them, all 55.8 px, all saying
+ * nothing) and the count was on a disc diameter worth 0.44 px between a 2-plug
+ * car park and a 6-plug one. The count now stands up: a site's beam is its
+ * charge points on a frozen square-root domain, the disc is one constant per
+ * regime, and the maillage beam is uniform BECAUSE a maillage mark stands for
+ * a cell rather than for itself. Every argument, every measurement and every
+ * clamp is beside the code — {@link irveBeamPdcPx}, {@link IRVE_SITE_POINT_PX},
+ * `BEAM_MAX_M`.
+ *
+ * AND THERE IS A FILTER. Four rungs of the band ladder — TOUT, > 22, > 50,
+ * > 150 kW — because 960 marks that all mean "charging exists here" do not
+ * answer the question a driver has (G1). The exact regime flips a
+ * `filteredOut` flag and never rebuilds its collection (G2); the maillage
+ * re-picks, because the floor changes which site represents a cell and what
+ * the cell totals. {@link IRVE_POWER_FLOORS} carries the shares.
+ *
+ * The national regime draws the bundled IGN département polygons that
+ * `meteoFranceVigilance.js` and `franceEnergy.js` also paint — but EXTRUDED
+ * rather than clamped, which is a different Cesium object with different rules,
+ * and the section below is that argument. The maillage's cell rule is
+ * `cctvLod.js`'s ambient-ring distribution transposed from screen space to
+ * geographic space, over a lattice that is now world-locked (see `irveMesh.js`).
  *
  * ── The national regime is a prism, and each channel says one thing ─────────
  *
@@ -138,8 +160,19 @@
  * each of them separately.
  *
  * A thinned map that does not say it is thinned is a map claiming France has
- * 1 100 charge points, so the middle regime always prints how many sites it
- * drew against how many are in view.
+ * 1 100 charge points, so the middle regime always prints how many marks it
+ * drew against how many sites are in view — AND the criterion, which used to
+ * be missing: « sampled maillage » said how many were dropped and never which
+ * ones. It also called lattice cells "sites", which is the same word for two
+ * different units. Both are fixed in {@link buildIrveLoadingLabel}.
+ *
+ * WHAT THE KEY SAYS ABOUT ITS OWN CLOCK. `fetchedAt` is when the proxy swept —
+ * a fact about this server. The key prints `date_maj`, the operators' own
+ * filing date, because a tenth of this file has not been touched since 2023
+ * and E1 is P0. Future-dated filings are refused on both sides: measured
+ * 2026-09-10, 56 rows of 227 007 are stamped 2026-12-30, and the plain maximum
+ * would date the whole national key three months ahead. See
+ * {@link irveLatestFiling} and the proxy's `fetchIrveLastFiling`.
  *
  * WHAT IS DRAWN PER DOT. One dot per SITE — per coordinate, not per station.
  * That is forced by the data rather than chosen: Q-Park's Grande Arche car
@@ -167,9 +200,11 @@ import { markViewportRead, releaseCameraSettle, watchCameraSettle } from './came
 import {
   PRISM_BASE_HEIGHT_M,
   PRISM_BODY_ALPHA,
+  PRISM_HEIGHT_SWATCH_COLOR,
   PRISM_NO_RATIO_COLOR,
   PRISM_TOP_ALPHA,
   createPrismScale,
+  prismHeightGlyph,
   prismLegend,
   prismRatioColor,
   prismRow,
@@ -199,12 +234,14 @@ import {
 import {
   meshSiteId,
   irveMeshBudget,
+  irveMeshCellKm,
   selectIrveMesh,
   MESH_BAND,
   MESH_LAT,
   MESH_LON,
   MESH_PDC,
 } from './irveMesh.js';
+import { sizeRingGlyph } from './sizeLegendGlyphs.js';
 
 /** Layer id — also the share-link registry key and the voice-tool enum value. */
 export const IRVE_FR_LAYER_ID = 'irve-fr';
@@ -283,22 +320,77 @@ const GROUND_WARM_LIMIT = 600;
 
 // --- Presentation -----------------------------------------------------------
 /**
- * Power ramp, cold to hot. Read as a RAMP rather than as categories — the
- * whole point of the colour is that 300 kW and 7 kW are the same kind of thing
- * at different magnitudes, so the eye should sort them without the legend.
+ * Power ramp, five rungs, ORDERED IN LIGHTNESS.
  *
- * `inconnue` is deliberately outside the ramp, in neutral slate: a site whose
- * published power is 7 360 in a kilowatt column has not told us how fast it
- * charges, and guessing a rung would be worse than admitting that.
+ * ── WHY THE OLD RAMP WAS REPLACED, IN NUMBERS ──────────────────────────────
+ *
+ * The previous ramp was `#4c6ef5 #22b8cf #94d82d #fab005 #fa5252` and it was
+ * chosen as "cold to hot", which is a HUE story. B4 is blunt about hue: *« la
+ * variation de couleur est uniquement différenciatrice […] l'œil ne peut pas
+ * établir d'ordre »*. An ordered scale has to vary in VALUE. Measured in CIE
+ * L* on the shipped hexes:
+ *
+ *     lente 51.0 → normale 68.8 → accelere 79.4 → rapide 76.9 → hpc 58.9
+ *
+ * The ladder climbs, then turns round and falls 20 points. Converted to greys
+ * — B4's own test — the fastest charging in France reads DARKER than the
+ * slowest, and `rapide` reads darker than `accelere`. The ramp was not an
+ * ordering, it was five hues in an order only the legend knew.
+ *
+ * Two of those five inks were also already spoken for elsewhere on this globe,
+ * exactly: `#4c6ef5` is Sitadel's « Travaux achevés » (`sitadelFeed.js:314`)
+ * and `#7c8899` is the schools layer's « autre » (`schoolsFrance.js:290`).
+ *
+ * ── WHAT REPLACES IT, AND HOW IT WAS CHECKED ───────────────────────────────
+ *
+ * A monotonic value ramp, blue → cyan → green → chartreuse, every rung at
+ * least 10 L* above the one below:
+ *
+ *     30.6 → 48.7 → 61.9 → 72.9 → 83.0     (Δ 18.2 · 13.1 · 11.0 · 10.1)
+ *
+ * B4's two tests pass rather than being asserted. Greyscale: 31 < 49 < 62 < 73
+ * < 83, the order survives. Deuteranopia (Viénot 1999): 28.7 → 40.6 → 46.5 →
+ * 58.2 → 80.8, still strictly increasing.
+ *
+ * B3's test — *« deux classes adjacentes restent-elles séparables une fois
+ * compositées ? »* — run at the beam's own 0.82 alpha over three control
+ * backdrops (eau `#12324f`, forêt `#2f4a24`, urbain clair `#c8c4bc`). Smallest
+ * adjacent ΔE76 of the twelve pairs: **19.3**, against a just-noticeable
+ * difference of about 2.3.
+ *
+ * Against the 415 distinct inks the rest of `src/data` uses, the nearest
+ * neighbour of any rung is now ΔE 8.0 (`#4a4fa8`, amenities) where two rungs
+ * used to be at ΔE 0.
+ *
+ * ── AND `inconnue` LEAVES THE RAMP ALTOGETHER ──────────────────────────────
+ *
+ * It was neutral slate at L* 56.3, sitting 2.6 L* from `hpc` at 58.9: the one
+ * class that means "we could not read this" was, in greys, the same mark as
+ * the fastest charging in the country. D3 asks for a MOTIF and not a tint
+ * where a value is refused, so the mark is now a HOLLOW RING — see
+ * {@link IRVE_UNKNOWN_INK} — and the ink is the graphite this repo already
+ * reserves for a refusal. A motif is also the one encoding that survives the
+ * NVG and FLIR passes.
  */
 const BAND_COLORS = Object.freeze({
-  lente: '#4c6ef5',
-  normale: '#22b8cf',
-  accelere: '#94d82d',
-  rapide: '#fab005',
-  hpc: '#fa5252',
-  inconnue: '#7c8899',
+  lente: '#3b3f8f',
+  normale: '#3f6fd8',
+  accelere: '#2ba2c2',
+  rapide: '#5ec962',
+  hpc: '#c6d94a',
+  inconnue: PRISM_NO_RATIO_COLOR,
 });
+/**
+ * The ink of the refusal ring. `PRISM_NO_RATIO_COLOR`, deliberately: this repo
+ * has ONE graphite for "published nothing", and a layer that minted a second
+ * would be telling a reader that two identical situations are different. The
+ * ring's meaning is carried by its SHAPE, so sharing the ink costs nothing.
+ */
+export const IRVE_UNKNOWN_INK = PRISM_NO_RATIO_COLOR;
+/** The band drawn as a ring rather than as a disc. */
+const UNKNOWN_BAND = 'inconnue';
+/** Ring stroke, in pixels. Thicker than the 1 px hairline every disc wears. */
+const UNKNOWN_RING_WIDTH_PX = 2.2;
 /**
  * Density ramp, low to high — a violet-to-pink sequential scale.
  *
@@ -376,26 +468,98 @@ export const IRVE_PRISM_SCALE = createPrismScale({
 const FLAT_FOOTPRINT_ALPHA = 0.45;
 const SELECTED_COLOR = '#00ffff';
 const OUTLINE_COLOR = Cesium.Color.BLACK.withAlpha(0.35);
-const SITE_POINT_MIN_PX = 5;
-const SITE_POINT_MAX_PX = 14;
-const SELECTED_POINT_PX = 17;
 /**
- * Mesh dots are smaller and flatter than exact sites. They stand for a
- * sampled network rather than a counted inventory, and a mesh dot the size of
- * a site dot would invite the eye to read one as the other.
+ * THE DOT IS A POSITION, AND ONLY A POSITION — A3.
+ *
+ * It used to be a size channel: `SITE_POINT_MIN_PX + √min(pdc,120) · 0.9`, and
+ * the maillage ran a second one at `3.4 + √min(pdc,200) · 0.42`. Measured on
+ * the maillage, which is the regime a reader spends most of their zoom range
+ * in, the whole encoding was worth **0.44 px**: a 2-plug car park drew 3.99 px
+ * and a 6-plug one 4.43 px, and the 9 px ceiling needed 178 charge points to
+ * reach. A channel nobody can read is not a quiet channel, it is a channel
+ * that is spent — and the same figure now moves the BEAM, where it is worth
+ * 13.5 px over the same pair.
+ *
+ * So the disc is one constant per regime, sized only for legibility: a site is
+ * a counted inventory and a maillage mark stands for a whole cell, so the two
+ * stay told apart by size the way they always were — but by ONE size each,
+ * which asserts nothing about how many plugs are under it.
  */
-const MESH_POINT_MIN_PX = 3.4;
-const MESH_POINT_MAX_PX = 9;
+export const IRVE_SITE_POINT_PX = 7;
+export const IRVE_MESH_POINT_PX = 5;
+const SELECTED_POINT_PX = 17;
 
 /** One-line explanations behind each power swatch. */
 const BAND_BLURBS = Object.freeze({
-  lente: 'Wall boxes and kerbside sockets — an overnight charge.',
-  normale: 'Three-phase AC, the standard on-street and car-park rung.',
-  accelere: 'Fast AC or entry-level DC — a useful top-up over a shop.',
-  rapide: 'DC rapid charging, the motorway-service rung.',
-  hpc: 'High-power DC. Published up to 400 kW, the envelope of real hardware.',
-  inconnue: 'Published power outside any real envelope — ≤ 0 kW, or watts in a kilowatt column. Counted, never rescaled.',
+  lente: 'Prise murale ou borne de trottoir — une charge de nuit.',
+  normale: 'Triphasé, le barreau courant en voirie et en parking.',
+  accelere: 'AC rapide ou DC d’entrée de gamme — un appoint le temps d’une course.',
+  rapide: 'DC rapide, le barreau des aires d’autoroute.',
+  hpc: 'DC haute puissance, publié jusqu’à 400 kW.',
+  inconnue: 'Puissance publiée hors gabarit — ≤ 0 kW, ou des watts dans une colonne de kilowatts. Comptée, jamais reconvertie.',
 });
+
+/**
+ * THE FILTER — G1's missing link, and the two implementations G2 forces.
+ *
+ * G1 names filtering as the most valuable component the corpus points at and
+ * as the one GEV does not have; this layer is the case that makes it obvious.
+ * 960 marks over the Basque Country all answer "there is charging here", and
+ * none of them answers "where can I actually fill up", which is a question
+ * about POWER and is one chip away.
+ *
+ * THE RUNGS ARE THE BAND LADDER'S OWN BOUNDARIES, not round numbers laid over
+ * it. `irveFeed.js` classes a charge point by its published kW into bands
+ * whose ceilings are 7.4 / 22 / 50 / 150 / 400, so a floor of « ≥ 22 kW »
+ * would be undecidable — an 11 kW point is `normale`, whose ceiling IS 22.
+ * Written as the ladder's own cuts the chips are exact against the data:
+ *
+ *   TOUT        les 6 classes         40 028 sites
+ *   > 22 kW     accélérée et au-delà  20 317 sites   50.7 %
+ *   > 50 kW     rapide et au-delà      9 658 sites   24.1 %
+ *   > 150 kW    haute puissance seule  4 376 sites   10.9 %
+ *
+ * (Shares measured over the national site set of 2026-09-10, by each site's
+ * TOP band — the fastest charging it publishes, which is what a driver asking
+ * the question means.)
+ *
+ * WHERE `inconnue` GOES UNDER A FLOOR, and it is A1. 1 306 sites — 3.3 % —
+ * publish a power outside any real envelope. They cannot be shown as clearing
+ * a floor, because nothing says they do; they cannot be quietly dropped as if
+ * measured below it either. They are hidden AND COUNTED, and the row's line
+ * says how many, so the reader knows the filtered map is missing something
+ * rather than believing it is complete.
+ */
+export const IRVE_POWER_FLOORS = Object.freeze([
+  Object.freeze({ id: 'all', label: 'TOUT', band: null }),
+  Object.freeze({ id: 'kw22', label: '> 22 kW', band: 'accelere' }),
+  Object.freeze({ id: 'kw50', label: '> 50 kW', band: 'rapide' }),
+  Object.freeze({ id: 'kw150', label: '> 150 kW', band: 'hpc' }),
+]);
+/** Index into {@link IRVE_BAND_KEYS} a floor admits, or `-1` for no floor. */
+export function irveFloorBandIndex(floorId) {
+  const floor = IRVE_POWER_FLOORS.find((entry) => entry.id === floorId);
+  if (!floor?.band) return -1;
+  return IRVE_BAND_KEYS.indexOf(floor.band);
+}
+/**
+ * Whether one band clears a floor.
+ *
+ * `inconnue` sits at the END of `IRVE_BAND_KEYS`, past `hpc`, so a plain index
+ * comparison would make the one unreadable class clear EVERY floor — the
+ * inverse of what it means. It is rejected explicitly, and the caller counts
+ * what it rejected.
+ *
+ * @param {string} band Band key.
+ * @param {number} floorIndex From {@link irveFloorBandIndex}.
+ * @returns {boolean}
+ */
+export function irveBandClearsFloor(band, floorIndex) {
+  if (!(floorIndex >= 0)) return true;
+  if (band === UNKNOWN_BAND) return false;
+  const index = IRVE_BAND_KEYS.indexOf(band);
+  return index >= 0 && index >= floorIndex;
+}
 
 /**
  * `MAP_STACKS` ids that render imagery on the SHOWN Cesium globe. An explicit
@@ -490,6 +654,15 @@ let _summary = null;
  * @type {?{at: ?number, sites: Map<string, object>, unavailable: boolean}}
  */
 let _live = null;
+/** Active power floor, one of {@link IRVE_POWER_FLOORS}' ids. */
+let _floorId = 'all';
+/** Centre latitude of the last maillage box — the key measures its cell there (C3). */
+let _lastMeshLat = 46.5;
+/** Marks the floor is hiding right now, per regime, for the row's line. */
+let _siteHidden = 0;
+let _meshHidden = 0;
+/** Repaint-my-chips callback, installed by `manager.js` once the module loads. */
+let _rowControlsListener = null;
 
 // National regime.
 let _national = null;
@@ -584,18 +757,13 @@ export function irveNationalPrismRows(national = _national) {
 }
 
 /**
- * Rendered size for a site, by how many charge points are installed.
- *
- * Square-rooted and capped: SAEMES publishes 606 charge points under the
- * Madeleine, and a linear ramp would make that one dot swallow the arrondissement.
- *
- * @param {number} pdc Charge points at the site.
- * @returns {number} Pixel size.
+ * Rendered size for a mark. One constant per regime — see
+ * {@link IRVE_SITE_POINT_PX} for why the size channel was given up.
+ * @param {boolean} mesh Whether this is a maillage mark.
+ * @returns {number} Pixel diameter.
  */
-export function irveSitePointSize(pdc) {
-  const count = Number(pdc);
-  if (!Number.isFinite(count) || count <= 0) return SITE_POINT_MIN_PX;
-  return Math.min(SITE_POINT_MAX_PX, SITE_POINT_MIN_PX + Math.sqrt(Math.min(count, 120)) * 0.9);
+export function irvePointSize(mesh = false) {
+  return mesh ? IRVE_MESH_POINT_PX : IRVE_SITE_POINT_PX;
 }
 
 /**
@@ -718,6 +886,49 @@ function fr(value) {
   return Number(value).toLocaleString('fr-FR');
 }
 
+/** `YYYY-MM-DD` → `JJ/MM/AAAA`, or `null` for anything that is not one. */
+export function irveFilingDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value ?? ''));
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : null;
+}
+
+/**
+ * The latest date an operator declared, over the sites currently drawn.
+ *
+ * E1 is P0, and the two clocks this layer runs on are NOT interchangeable
+ * (E4). `_lastUpdate` is when the proxy answered — a fact about this server.
+ * `date_maj` is when an operator last filed, and a tenth of this register has
+ * not been touched since 2023, so it is the one a key may print.
+ *
+ * FUTURE DATES ARE REFUSED, because the register carries some: measured on
+ * 2026-09-10, 56 rows of 227 007 are stamped 2026-12-30. One typo would
+ * otherwise date a whole viewport. Same guard, same reason, as the national
+ * clock the proxy computes in `fetchIrveLastFiling`.
+ *
+ * @param {Iterable<object>} records Rendered records.
+ * @param {string} [today] `YYYY-MM-DD`, injectable so a test is not a clock.
+ * @returns {?string} `YYYY-MM-DD`, or null when nothing published a date.
+ */
+export function irveFutureFilings(records, today = new Date().toISOString().slice(0, 10)) {
+  let ahead = 0;
+  for (const record of records || []) {
+    const filed = record?.site?.updatedTo;
+    if (typeof filed === 'string' && filed.length >= 10 && filed > today) ahead += 1;
+  }
+  return ahead;
+}
+
+export function irveLatestFiling(records, today = new Date().toISOString().slice(0, 10)) {
+  let latest = null;
+  for (const record of records || []) {
+    const filed = record?.site?.updatedTo;
+    if (typeof filed !== 'string' || filed.length < 10) continue;
+    if (filed > today) continue;
+    if (!latest || filed > latest) latest = filed;
+  }
+  return latest;
+}
+
 /**
  * Build the card copy for a selected site. Every line is a published value or
  * a stated count of published values; nothing here is inferred.
@@ -800,13 +1011,24 @@ export function buildIrveSelectionLabel(record, live = null) {
 export function buildIrveMeshLabel(record) {
   const site = record?.site || {};
   const pdc = Number(site.pdcDistinct) || 0;
-  return [
-    'Station de recharge',
-    `🔌 ${fr(pdc)} point${pdc === 1 ? '' : 's'} de charge`,
-    `⚡ ${irveBandLabel(site.topBand)}`,
-    'Zoomez pour l\u2019opérateur, les prises et les conditions d\u2019accès',
-    'Capacité installée — ce fichier ne publie pas la disponibilité',
-  ].join('\n');
+  const cell = record?.cell || null;
+  const details = [];
+  if (cell) {
+    // THE CELL FIRST, because the cell is what the mark stands for. Every site
+    // inside it was summed — a complete aggregate, not the sample the maillage
+    // used to draw — and the mark's own figures follow, so a reader can see
+    // which of the two numbers belongs to which.
+    const km = irveMeshCellKm(cell.stepDeg, site.lat);
+    details.push(`▦ Cellule de ${cell.stepDeg}° — ${km.latKm.toFixed(1)} × ${km.lonKm.toFixed(1)} km`);
+    details.push(`🔌 ${fr(cell.pdc)} point${cell.pdc === 1 ? '' : 's'} de charge sur ${fr(cell.sites)} site${cell.sites === 1 ? '' : 's'}`);
+    details.push(`📍 Marque posée sur un site réel de la cellule — ${fr(pdc)} point${pdc === 1 ? '' : 's'} de charge, ${irveBandLabel(site.topBand).toLowerCase()}`);
+  } else {
+    details.push(`🔌 ${fr(pdc)} point${pdc === 1 ? '' : 's'} de charge`);
+    details.push(`⚡ ${irveBandLabel(site.topBand)}`);
+  }
+  details.push('Zoomez pour l\u2019opérateur, les prises et les conditions d\u2019accès');
+  details.push('Capacité installée — ce fichier ne publie pas la disponibilité');
+  return [cell ? 'Maillage des bornes' : 'Station de recharge', ...details].join('\n');
 }
 
 /**
@@ -960,10 +1182,41 @@ export function selectIrveLabelCohort(entries, limit = IRVE_FR_LABEL_COHORT_LIMI
     .slice(0, cap);
 }
 
+/**
+ * Fill, stroke and stroke width for one band's mark.
+ *
+ * A measured band is a filled disc with the hairline every mark on this globe
+ * wears. `inconnue` is a HOLLOW RING — transparent fill, the refusal graphite
+ * on the stroke — and Cesium draws that natively: a `PointPrimitive` shades
+ * the outline band from `outlineColor` and the interior from `color`, so an
+ * alpha-zero interior leaves the ring and nothing else. That is D3's motif,
+ * and unlike a tint it survives the NVG and FLIR passes.
+ *
+ * @param {string} band Band key.
+ * @returns {{ring:boolean, color:Cesium.Color, outlineColor:Cesium.Color, outlineWidth:number}}
+ */
+function bandMarkStyle(band) {
+  const ring = band === UNKNOWN_BAND;
+  return {
+    ring,
+    color: ring ? Cesium.Color.TRANSPARENT : Cesium.Color.fromCssColorString(irveBandColor(band)),
+    outlineColor: ring ? Cesium.Color.fromCssColorString(IRVE_UNKNOWN_INK) : OUTLINE_COLOR,
+    outlineWidth: ring ? UNKNOWN_RING_WIDTH_PX : 1,
+  };
+}
+
 function restoreRecordStyle(record) {
   if (!record?.point) return;
-  record.point.color = Cesium.Color.fromCssColorString(record.baseColor);
-  record.point.pixelSize = record.baseSize;  styleBeam(record, false);
+  // A ring's identity is its EMPTY middle, so restoring it has to put the
+  // transparency back rather than repaint `baseColor` into the fill — which
+  // would leave a selected-then-deselected refusal drawn as a solid disc in
+  // the refusal grey, i.e. as a sixth step of the ramp.
+  const style = bandMarkStyle(record.site?.topBand);
+  record.point.color = style.color;
+  record.point.outlineColor = style.outlineColor;
+  record.point.outlineWidth = style.outlineWidth;
+  record.point.pixelSize = record.baseSize;
+  styleBeam(record, false);
 }
 
 function clearSelection() {
@@ -990,7 +1243,12 @@ function selectSite(id) {
   if (!record || !_viewer) return;
   _selectedId = id;
   if (record.point) {
-    record.point.color = Cesium.Color.fromCssColorString(SELECTED_COLOR);
+    // A selected refusal ring keeps its hole and lights its STROKE: filling it
+    // would be the one moment the map drew a value where it has none.
+    const ring = record.site?.topBand === UNKNOWN_BAND;
+    const cyan = Cesium.Color.fromCssColorString(SELECTED_COLOR);
+    record.point.color = ring ? Cesium.Color.TRANSPARENT : cyan;
+    record.point.outlineColor = ring ? cyan : OUTLINE_COLOR;
     record.point.pixelSize = SELECTED_POINT_PX;
   }
   styleBeam(record, true);
@@ -1164,7 +1422,23 @@ export const IRVE_BEAM_MIN_PX = 38;
 /** In-view counts the budget interpolates between. */
 export const IRVE_BEAM_SPARSE_COUNT = 300;
 export const IRVE_BEAM_DENSE_COUNT = 2400;
-/** Metres a beam may never fall below or exceed, whatever the pixel budget says. */
+/**
+ * Metres a beam may never fall below or exceed, whatever the pixel budget says.
+ *
+ * THE CEILING IS NOT A ROUND NUMBER AND IT IS NOT RAISED. A pixel-length rule
+ * turns into metres by multiplying by the camera distance, so at the top of
+ * the maillage — a France-wide view, ~1 400 km out — 64 px is **129 km** of
+ * beam. F7(b) reserves 4 km … 120 km for the frozen thematic prisms of
+ * `schools-fr`, `sup-fr` and `france-energy`, any of which can be lit at the
+ * same time as this layer's maillage, and a beam taller than the tallest prism
+ * on the globe is a second height register wearing the first one's amplitude.
+ * 40 km keeps every beam under that ceiling; the cost is that a maillage beam
+ * stops being a ruler past ~490 km of camera distance, which is exactly why
+ * the maillage beam carries no quantity to be a ruler for.
+ *
+ * In the EXACT regime the clamp never bites: that regime ends at 45 km of
+ * altitude, where 64 px is about 4 km even at the flattest tilt.
+ */
 const BEAM_MIN_M = 60;
 const BEAM_MAX_M = 40_000;
 /** Sub-metre tip noise is not worth a geometry write. */
@@ -1191,6 +1465,13 @@ const BEAM_SWEEP_PROBE_INTERVAL_MS = 2000;
  * Linear between the two anchors and clamped outside them. The shape is not
  * the point — the point is that it is MONOTONIC DECREASING, so the layer can
  * never make a dense view taller than a sparse one.
+ *
+ * SINCE THE CHANGE BELOW THIS DRIVES THE MAILLAGE ONLY. In the exact regime
+ * the beam carries a quantity and its length comes from
+ * {@link irveBeamPdcPx}; a maillage mark stands for a whole lattice cell, and
+ * what it says is "an occupied cell is here", so its beam is one uniform
+ * length that asserts nothing — declared as such in the key.
+ *
  * @param {number} count Markers currently rendered.
  * @returns {number} Target beam length in CSS pixels.
  */
@@ -1200,6 +1481,91 @@ export function irveBeamTargetPx(count) {
   if (n >= IRVE_BEAM_DENSE_COUNT) return IRVE_BEAM_MIN_PX;
   const t = (n - IRVE_BEAM_SPARSE_COUNT) / (IRVE_BEAM_DENSE_COUNT - IRVE_BEAM_SPARSE_COUNT);
   return IRVE_BEAM_MAX_PX - t * (IRVE_BEAM_MAX_PX - IRVE_BEAM_MIN_PX);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * THE HEIGHT BECOMES THE COUNT — B2, and the channel that was empty
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * B2 says the screen SIZE of a mark on a globe is already spoken for by depth,
+ * so a quantity belongs on the vertical. This layer had a 64 px vertical
+ * channel — the tallest, most visible thing it draws — and it carried the
+ * NUMBER OF MARKERS ON SCREEN. Measured over the Basque Country: 960 beams,
+ * all of them 55.8 px, differing in nothing. The biggest channel on the map
+ * said the same word 960 times.
+ *
+ * Meanwhile the count of charge points — the one number a reader of this layer
+ * wants — was on the disc diameter, worth 0.44 px between a 2-plug car park
+ * and a 6-plug one. The information does not appear here; it MOVES, from
+ * 0.44 px of diameter to 13.5 px of height over the same pair.
+ *
+ * ── SQUARE ROOT, AND THE MEASUREMENT THAT FORCED IT ────────────────────────
+ *
+ * Measured over the 40 028 sites of 2026-09-10: median 4 charge points, p75 6,
+ * p90 10, p95 16, p99 33, max 606 (SAEMES under the Madeleine). A 1 : 606
+ * domain. On a LINEAR rule with a 24-plug domain the floor would swallow
+ * everything under 3 plugs, which is **57 % of the register**; pulled down to
+ * a 12-plug domain to save the floor, the top clips **6.7 %** of sites. Either
+ * way one end of the scale stops being a scale for a large share of the map.
+ *
+ * The square root escapes both: a 1-plug site draws 13.1 px — visible, and no
+ * floor is needed — and the domain reaches 24 plugs, above **98.1 %** of
+ * sites. It is also the mode `choroplethPrism.js` already publishes and
+ * already has a legend sentence for, so the national prism regime and this one
+ * speak the same grammar. The cost is stated in the key, in that module's own
+ * words: *deux fois plus haut vaut quatre fois plus*.
+ *
+ *     1 plug 13.1 px · 2 → 18.5 · 4 → 26.1 · 6 → 32.0 · 12 → 45.3 · 24+ → 64
+ *
+ * ── AND THE RULE IS NOT IN PIXELS UNTIL IT IS CORRECTED FOR PITCH ──────────
+ *
+ * A beam is vertical IN THE WORLD, so what a reader measures on screen is
+ * `L · cos(pitch)` — 87 % of it at the −30° the globe opens on, 50 % at −60°,
+ * and NOTHING at the nadir, where a vertical line projects to a point. A key
+ * that printed a pixel ruler would therefore be wrong the moment anybody
+ * tilted. {@link irveBeamPitchScale} divides it back out, clamped at −70°
+ * because the correction diverges at the nadir; past that the key stops
+ * claiming a ruler and says to tilt.
+ */
+
+/** Charge points at which a beam reaches its full length. Frozen (C1). */
+export const IRVE_BEAM_PDC_DOMAIN = 24;
+/** Beyond this tilt the correction is capped and the height stops being a ruler. */
+export const IRVE_BEAM_PITCH_LIMIT_RAD = Cesium.Math.toRadians(70);
+
+/**
+ * Beam length in pixels for a site holding `pdc` charge points.
+ *
+ * Square root over a frozen domain, clamped at both ends: a site above the
+ * domain is drawn at full length and DECLARED as clipped by the key (A5),
+ * never rescaled — the domain is a literal so the same site is the same height
+ * from one session to the next (C1).
+ *
+ * @param {number} pdc Charge points at the site.
+ * @returns {number} Target beam length in CSS pixels.
+ */
+export function irveBeamPdcPx(pdc) {
+  const count = Number(pdc);
+  if (!Number.isFinite(count) || count <= 0) return 0;
+  const fraction = Math.min(1, count / IRVE_BEAM_PDC_DOMAIN);
+  return IRVE_BEAM_MAX_PX * Math.sqrt(fraction);
+}
+
+/**
+ * How much longer a beam has to be drawn so it still reads `targetPx` on
+ * screen at this tilt.
+ *
+ * `1 / cos(pitch)`, clamped: at the nadir the factor is infinite because a
+ * vertical line projects to a point, and no length of beam fixes that.
+ *
+ * @param {number} pitchRad Camera pitch, radians (negative below the horizon).
+ * @returns {number} Multiplier ≥ 1.
+ */
+export function irveBeamPitchScale(pitchRad) {
+  const pitch = Number(pitchRad);
+  if (!Number.isFinite(pitch)) return 1;
+  const clamped = Math.min(IRVE_BEAM_PITCH_LIMIT_RAD, Math.abs(pitch));
+  return 1 / Math.max(Math.cos(clamped), Math.cos(IRVE_BEAM_PITCH_LIMIT_RAD));
 }
 
 /**
@@ -1230,12 +1596,23 @@ function sweepBeams() {
   const fov = scene?.camera?.frustum?.fovy;
   if (!Number.isFinite(fov)) return;
   const metresPerPixelFactor = (2 * Math.tan(fov * 0.5)) / canvasHeight;
-  const targetPx = irveBeamTargetPx(_records.size);
+  // One uniform length for the maillage, one length per site in the exact
+  // regime. Resolved once for the whole sweep in the first case, per record in
+  // the second — see {@link irveBeamPdcPx}.
+  const uniformPx = _regime === 'mesh' ? irveBeamTargetPx(_records.size) : 0;
+  // A beam is vertical in the WORLD; what the reader measures is its
+  // projection. Divided back out here, once, because the camera has one pitch.
+  const pitchScale = irveBeamPitchScale(camera?.pitch);
   const occluder = horizonOccluder(camera);
 
   let index = 0;
   for (const record of _records.values()) {
-    const visible = occluder.isPointVisible(record.position);
+    // THE ONLY WRITER OF `show`, and that is the architecture G2's corollary
+    // asks for. Occlusion and the power filter are two different reasons a
+    // mark is not on screen; if both wrote here they would fight, and a
+    // filtered site would come back at the next camera move. The filter writes
+    // `filteredOut` and this line reads it.
+    const visible = occluder.isPointVisible(record.position) && record.filteredOut !== true;
     if (record.point) record.point.show = visible;
     const line = _beams.get(index);
     index += 1;
@@ -1247,8 +1624,16 @@ function sweepBeams() {
       line.show = false;
       continue;
     }
+    const wanted = uniformPx || irveBeamPdcPx(record.site?.pdcDistinct);
+    if (!wanted) {
+      // A1 — the beam is the COUNT, so a site that published none gets no
+      // beam rather than the metres floor, which would be a height asserting a
+      // measurement nobody made. The disc still marks the position.
+      line.show = false;
+      continue;
+    }
     const distance = Cesium.Cartesian3.distance(camera.positionWC, record.position);
-    const height = irveBeamHeightM(distance, targetPx, metresPerPixelFactor);
+    const height = irveBeamHeightM(distance, wanted * pitchScale, metresPerPixelFactor);
     const carto = record.carto;
     Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, carto.height + height, undefined, _beamTipScratch);
     // Skip the write when the tip has not meaningfully moved. At the shipped
@@ -1707,16 +2092,10 @@ async function loadNational({ force = false } = {}) {
   repaintDepartements();
   publishDepartementOverlay();
   governorRequestRender('irve-fr-national');
+  publishRowControls();
 }
 
 // --- Mesh regime ------------------------------------------------------------
-
-/** Pixel size for a mesh dot — smaller than an exact site, and flatter. */
-export function irveMeshPointSize(pdc) {
-  const count = Number(pdc);
-  if (!Number.isFinite(count) || count <= 0) return MESH_POINT_MIN_PX;
-  return Math.min(MESH_POINT_MAX_PX, MESH_POINT_MIN_PX + Math.sqrt(Math.min(count, 200)) * 0.42);
-}
 
 /** Fetch the national point set once per session; the proxy caches it for a day. */
 async function ensureMesh() {
@@ -1755,37 +2134,70 @@ async function ensureMesh() {
  * against a round trip that would cost a few hundred.
  */
 function reconcileMesh(box) {
-  const pick = selectIrveMesh(_mesh?.sites, {
+  const floorIndex = irveFloorBandIndex(_floorId);
+  // THE FLOOR IS APPLIED BEFORE THE PICK, and that ordering is the whole
+  // correctness of the maillage filter. Applied AFTER, a « > 150 kW » floor
+  // would hide the marks of every cell whose representative happens to be a
+  // 22 kW car park — and the representative is the cell's MODAL band by
+  // design, so those are most of them. The reader would be shown the high-
+  // power network minus the cells where high power is the minority, which is
+  // the opposite of the question. Filtering the tuples first re-elects a
+  // representative among the sites that clear the floor, and re-totals the
+  // cell over those alone.
+  //
+  // It costs a re-pick, which G2 forbids for a filter — and the exception is
+  // measured rather than assumed. `selectIrveMesh` over the 40 028 national
+  // tuples runs in **1 to 12 ms** (12 ms for a France-wide box), against a
+  // camera settle that already re-picks on every pan behind a 450 ms debounce.
+  // G2's own test is a DRAGGED SLIDER at 60 fps; this is four discrete chips,
+  // and the exact regime beside it does use `filteredOut` because there the
+  // pick is not a function of the floor.
+  const source = _mesh?.sites || [];
+  const filtered = floorIndex >= 0
+    ? source.filter((site) => irveBandClearsFloor(IRVE_BAND_KEYS[site[MESH_BAND]], floorIndex))
+    : source;
+  const pick = selectIrveMesh(filtered, {
     box,
     // § 3.5 — see `profileCountBudget`. Coverage first, density second.
     budget: profileCountBudget(irveMeshBudget(box.north - box.south)),
   });
   _meshPick = pick;
+  _lastMeshLat = (box.north + box.south) / 2;
+  // What the floor took out of THIS view, counted before it was removed, so
+  // the row's line can say it rather than let the map look complete.
+  _meshHidden = floorIndex >= 0
+    ? countMeshInBox(source, box) - pick.inBox
+    : 0;
 
   clearSelection();
   _points.removeAll();
   _records.clear();
 
-  for (const site of pick.picked) {
-    if (_records.size >= MAX_RENDERED_SITES) break;
+  pick.picked.forEach((site, order) => {
+    if (_records.size >= MAX_RENDERED_SITES) return;
     const lat = site[MESH_LAT];
     const lon = site[MESH_LON];
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
     const id = meshSiteId(site);
-    if (_records.has(id)) continue;
-    const band = IRVE_BAND_KEYS[site[MESH_BAND]] || 'inconnue';
+    if (_records.has(id)) return;
+    const band = IRVE_BAND_KEYS[site[MESH_BAND]] || UNKNOWN_BAND;
     const color = irveBandColor(band);
-    const size = irveMeshPointSize(site[MESH_PDC]);
+    const size = irvePointSize(true);
+    const style = bandMarkStyle(band);
+    // The COMPLETE contents of the lattice cell this mark stands for — not an
+    // estimate and not a sample: every site in the cell was summed. It is what
+    // the card prints and what the analyst reads.
+    const cell = pick.aggregates?.[order] || null;
     // No ground warm-up here: at these altitudes a metre of vertical error is
     // invisible, and 2 200 terrain lookups per pan would not be.
     const position = Cesium.Cartesian3.fromDegrees(lon, lat, POINT_LIFT_M);
     const point = _points.add({
       id,
       position,
-      color: Cesium.Color.fromCssColorString(color),
+      color: style.color,
       pixelSize: size,
-      outlineColor: OUTLINE_COLOR,
-      outlineWidth: 1,
+      outlineColor: style.outlineColor,
+      outlineWidth: style.outlineWidth,
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
     });
     _records.set(id, {
@@ -1794,16 +2206,29 @@ function reconcileMesh(box) {
       // what lets the card say so instead of implying the rest is absent.
       mesh: true,
       site: { id, lat, lon, pdcDistinct: site[MESH_PDC], pdcPublished: site[MESH_PDC], topBand: band },
+      cell: cell ? { pdc: cell.total, sites: cell.rows, stepDeg: pick.stepDeg } : null,
       point,
       position,
       carto: Cesium.Cartographic.fromCartesian(position),
       baseColor: color,
       baseSize: size,
     });
-  }
+  });
   _count = _records.size;
   rebuildBeams();
   governorRequestRender('irve-fr-mesh');
+  publishRowControls();
+}
+
+/** Sites of the unfiltered national set inside a box — the filter's denominator. */
+function countMeshInBox(sites, box) {
+  let total = 0;
+  for (const site of sites) {
+    const lat = site[MESH_LAT];
+    const lon = site[MESH_LON];
+    if (lat >= box.south && lat <= box.north && lon >= box.west && lon <= box.east) total += 1;
+  }
+  return total;
 }
 
 /** Enter (or refresh) the mesh regime. */
@@ -1846,14 +2271,15 @@ function reconcile(payload) {
     if (!Number.isFinite(site.lat) || !Number.isFinite(site.lon)) continue;
     const position = sitePosition(site);
     const color = irveBandColor(site.topBand);
-    const size = irveSitePointSize(site.pdcDistinct);
+    const size = irvePointSize(false);
+    const style = bandMarkStyle(site.topBand);
     const point = _points.add({
       id,
       position,
-      color: Cesium.Color.fromCssColorString(color),
+      color: style.color,
       pixelSize: size,
-      outlineColor: OUTLINE_COLOR,
-      outlineWidth: 1,
+      outlineColor: style.outlineColor,
+      outlineWidth: style.outlineWidth,
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
       translucencyByDistance: new Cesium.NearFarScalar(500, 1.0, 60_000, 0.35),
     });
@@ -1871,9 +2297,35 @@ function reconcile(payload) {
   }
 
   _count = _records.size;
+  applySiteFloor();
   rebuildBeams();
   warmGroundFloor(warm.slice(0, GROUND_WARM_LIMIT));
   governorRequestRender('irve-fr-reconcile');
+  publishRowControls();
+}
+
+/**
+ * Mark every record the power floor excludes, WITHOUT touching the collection.
+ *
+ * G2 is P0 and its second test is literally "does the filter path call
+ * `removeAll()`" — that call sets `_createVertexArray` and rebuilds the whole
+ * vertex buffer on the next frame, which freezes the globe during exactly the
+ * gesture the filter exists to make fluid. Nothing here adds or removes a
+ * primitive: it writes one boolean per record and asks for a sweep, and
+ * {@link sweepBeams} — the single writer of `show` — puts it on screen.
+ *
+ * Exact regime only. The maillage re-picks instead, and `reconcileMesh` says
+ * why.
+ */
+function applySiteFloor() {
+  const floorIndex = irveFloorBandIndex(_floorId);
+  let hidden = 0;
+  for (const record of _records.values()) {
+    const out = !irveBandClearsFloor(record.site?.topBand, floorIndex);
+    record.filteredOut = out;
+    if (out) hidden += 1;
+  }
+  _siteHidden = hidden;
 }
 
 function clearSites() {
@@ -1886,6 +2338,10 @@ function clearSites() {
   _count = 0;
   _summary = null;
   _meshPick = null;
+  // The floor's tallies belong to a record set that no longer exists; left
+  // behind, the next regime's row line would print the last one's count.
+  _siteHidden = 0;
+  _meshHidden = 0;
 }
 
 /**
@@ -2009,6 +2465,23 @@ async function loadViewport({ force = false } = {}) {
   }
 }
 
+/**
+ * Tell the panel its key is out of date.
+ *
+ * THE THREE REGIMES PUBLISH THREE DIFFERENT KEYS, and until this existed
+ * nothing told the panel when one replaced another: `_refreshTogglePanel`
+ * repaints on its own cadence, so a camera that flew from France to a street
+ * left the DÉPARTEMENT PRISM key — its own height ruler, its own violet
+ * density ramp — sitting over a map of individual charge points until the next
+ * scheduled refresh. Two scales on screen at once is the one thing the three
+ * regimes were built never to do. Measured in the browser proof: the city shot
+ * showed « Hauteur — points de charge installés · 10 000 points de charge ·
+ * 100 km de haut » over a 4 km view of the Arc de Triomphe.
+ */
+function publishRowControls() {
+  _rowControlsListener?.();
+}
+
 /** Drop a département selection that the site regime can no longer show. */
 function dropDepartementSelection() {
   if (_selectedId?.startsWith('dep:')) clearSelection();
@@ -2079,41 +2552,47 @@ export function buildIrveLoadingLabel({
   summary = _summary,
   national = _national,
   meshPick = _meshPick,
+  hidden = regime === 'mesh' ? _meshHidden : _siteHidden,
 } = {}) {
   if (regime === 'mesh') {
-    if (loading) return 'reading the national maillage...';
+    if (loading) return 'lecture du maillage national\u2026';
     if (status === 'error') return '';
     if (!meshPick) return '';
-    if (!meshPick.inBox) return 'no charge point published in view';
-    // Naming both numbers is the whole contract of this regime: a thinned map
-    // that does not say it is thinned claims France has 1 100 charge points.
+    if (!meshPick.inBox) return 'aucune borne publiée dans la vue';
+    // NAMING THE CRITERION, not just the ratio. « 960 of 3 747 sites — sampled
+    // maillage » said how many were dropped and nothing about how, so the one
+    // question it raised — *which* 960? — had no answer on screen. It also
+    // said « sites » about marks that are lattice CELLS.
     const parts = meshPick.thinned
-      ? [`${fr(meshPick.picked.length)} of ${fr(meshPick.inBox)} sites — sampled maillage`]
-      : [`${fr(meshPick.inBox)} sites — all of them`];
-    parts.push('zoom in for detail');
+      ? [`${fr(meshPick.picked.length)} cellules pour ${fr(meshPick.inBox)} sites en vue`]
+      : [`${fr(meshPick.picked.length)} cellules · ${fr(meshPick.inBox)} sites, tous comptés`];
+    if (meshPick.stepDeg) parts.push(`maille ${meshPick.stepDeg}° verrouillée sur le monde`);
+    if (hidden > 0) parts.push(`${fr(hidden)} masqués par le filtre`);
+    parts.push('zoomez pour le détail');
     return parts.join(' · ');
   }
   if (regime === 'national') {
-    if (loading) return 'reading the national register...';
+    if (loading) return 'lecture du registre national\u2026';
     if (status === 'error') return '';
     if (!national) return '';
-    const parts = [`${fr(national.pdcAssigned ?? 0)} charge points · ${national.painted ?? 0} départements`];
-    if (national.pdcUnassigned > 0) parts.push(`${fr(national.pdcUnassigned)} outre-mer not mapped`);
-    if (national.truncated || national.stalledStripes > 0) parts.push('partial sweep');
-    if (national.stale) parts.push('cached');
-    parts.push('zoom in for sites');
+    const parts = [`${fr(national.pdcAssigned ?? 0)} points de charge · ${national.painted ?? 0} départements`];
+    if (national.pdcUnassigned > 0) parts.push(`${fr(national.pdcUnassigned)} outre-mer non cartographiés`);
+    if (national.truncated || national.stalledStripes > 0) parts.push('balayage partiel');
+    if (national.stale) parts.push('en cache');
+    parts.push('zoomez pour les sites');
     return parts.join(' · ');
   }
-  if (loading) return count ? 'refreshing register...' : 'reading IRVE register...';
-  if (status === 'empty') return 'no charge point published here';
+  if (loading) return count ? 'rafraîchissement du registre\u2026' : 'lecture du registre IRVE\u2026';
+  if (status === 'empty') return 'aucune borne publiée ici';
   if (status !== 'ready' || !summary) return '';
 
-  const parts = [`${fr(summary.pdcDistinct ?? 0)} charge points`];
+  const parts = [`${fr(summary.pdcDistinct ?? 0)} points de charge`];
   const duplicated = (summary.pdcPublished ?? 0) - (summary.pdcDistinct ?? 0);
-  if (duplicated > 0) parts.push(`${fr(duplicated)} double-published merged`);
-  if (summary.pdcWithheld > 0) parts.push(`${fr(summary.pdcWithheld)} misplaced withheld`);
-  if (summary.truncated) parts.push('capped');
-  if (summary.stale) parts.push('cached');
+  if (duplicated > 0) parts.push(`${fr(duplicated)} doublons fusionnés`);
+  if (summary.pdcWithheld > 0) parts.push(`${fr(summary.pdcWithheld)} mal placés écartés`);
+  if (hidden > 0) parts.push(`${fr(hidden)} sites masqués par le filtre`);
+  if (summary.truncated) parts.push('écrêté');
+  if (summary.stale) parts.push('en cache');
   return parts.join(' · ');
 }
 
@@ -2124,12 +2603,13 @@ export function buildIrveLoadingLabel({
 /**
  * One charge-point site, in the words a spoken answer uses.
  *
- * The layer draws three regimes — national départements, a thinned national
- * mesh, and full sites over a city. Only the third knows an operator, a name
- * or a connector list; a mesh dot knows how many charge points sit at a point
- * and nothing else. `detail` says which of the two the reader is holding, so
- * the model can answer "I only have the count from this altitude, zoom in for
- * the operator" instead of narrating absent fields as absent facts.
+ * The layer draws three regimes — national départements, a world-locked
+ * maillage, and full sites over a city. Only the third knows an operator, a
+ * name or a connector list; a maillage mark is a LATTICE CELL that knows its
+ * complete charge-point total and its site count and nothing else. `detail`
+ * says which of the two the reader is holding, so the model can answer "I only
+ * have the cell total from this altitude, zoom in for the operator" instead of
+ * narrating absent fields as absent facts.
  *
  * AVAILABILITY IS NOT HERE, and that is not an omission to be fixed later: the
  * national IRVE file is a static inventory, and live occupancy is per-operator
@@ -2146,8 +2626,14 @@ export function irveSiteReadout(record) {
   const num = (value) => (Number.isFinite(value) ? value : null);
   return {
     id: site.id,
-    kind: 'charge-point-site',
-    detail: mesh ? 'count-only' : 'full',
+    kind: mesh ? 'charge-point-cell' : 'charge-point-site',
+    detail: mesh ? 'cell-aggregate' : 'full',
+    // A maillage mark IS a lattice cell, and a spoken answer that called it a
+    // station would put a car park's name on a 28 km square. The complete
+    // aggregate travels with it; the mark's own figures stay below.
+    cell: mesh && record.cell
+      ? { chargePoints: record.cell.pdc, sites: record.cell.sites, stepDeg: record.cell.stepDeg }
+      : null,
     name: mesh ? null : (site.name || null),
     commune: mesh ? null : (site.commune || null),
     lat: num(site.lat),
@@ -2170,7 +2656,245 @@ export function irveSiteReadout(record) {
     // cannot answer. A sentence in the payload is read; a flag is not. Same
     // reason `medecins-fr` ships `countsEntries` as prose.
     availabilityNote: 'Live availability is NOT published for this layer: the national IRVE file is a static inventory, and real-time occupancy is per-operator OCPI behind a contract. Say so; do not query for it.',
+    // Same reason as `availabilityNote`, and the same failure it was written
+    // for: `chargePoints` on a maillage mark is the REPRESENTATIVE SITE's
+    // figure, and a model reading the field alone would answer "12 charge
+    // points" over a lattice cell that holds 412. The sentence names which
+    // number is which; a nested object on its own would be skimmed past.
+    cellNote: mesh && record.cell
+      ? `This is a MAILLAGE CELL of ${record.cell.stepDeg}°, not a station: the cell holds `
+        + `${record.cell.pdc} charge points across ${record.cell.sites} sites, and the mark stands `
+        + `on one real site inside it that has ${site.pdcDistinct}. Quote the CELL figures unless `
+        + 'asked about that one site, and say the operator and connectors need a closer zoom.'
+      : null,
   };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * THE KEY — two tiers, in French, with a clock and one unit per regime
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * WHAT WAS ON SCREEN BEFORE, measured over the Basque Country at 1440×900 on
+ * 2026-09-10. Six power classes were published and **three** were visible, the
+ * third cut mid-word; each of the six carried a 19-word sentence — *« Counted
+ * as SITES over the sampled maillage — a sample of the mix in view, not the
+ * national figure »* — repeated verbatim, in English, inside a French panel;
+ * and the block had **no clock at all**, over a register a tenth of which has
+ * not been touched since 2023 (E1, P0).
+ *
+ * The repair is the one the road key already had (#166: 23 rows and 559 words
+ * became 20 and 207). The repeated sentence leaves the six blurbs and becomes
+ * ONE `note` under the block — the A5 slot, "what this key had to leave out".
+ * The provenance and the clock become `legendNote`, the block's own sentence,
+ * which `manager.js` prints above the classes. Six short lines fit.
+ *
+ * AND THE LABEL SAYS ITS UNIT. The same word « sites » counted lattice CELLS
+ * in the maillage and CHARGE POINTS over a city, which is two questions under
+ * one caption. Each regime now names what it counted, in the row and in the
+ * key.
+ */
+
+/** Chips for the power floor — G1's filter, on the row strip. */
+function irvePowerChips() {
+  if (_regime === 'national') return [];
+  return IRVE_POWER_FLOORS.map((floor) => ({
+    id: floor.id,
+    label: floor.label,
+    active: _floorId === floor.id,
+    state: _floorId === floor.id ? 'active' : 'idle',
+    title: floor.band
+      ? `Ne garder que les sites dont la charge la plus rapide dépasse ${floor.label.replace('> ', '')}`
+      : 'Tout le registre, y compris les puissances non exploitables',
+    params: { powerFloor: floor.id },
+  }));
+}
+
+/** The block's own sentence: who published this, and when they last said so. */
+function irveLegendNote() {
+  const sites = _regime === 'sites';
+  const filing = sites
+    ? irveLatestFiling(_records.values())
+    : (_regime === 'mesh' ? _mesh?.lastFiling : _national?.lastFiling);
+  const ahead = sites
+    ? irveFutureFilings(_records.values())
+    : Number(_regime === 'mesh' ? _mesh?.futureDatedRows : _national?.futureDatedRows) || 0;
+  const dated = irveFilingDate(filing);
+  const parts = ['Registre consolidé transport.data.gouv.fr / ODRÉ'];
+  // NOT `_lastUpdate`, which is when the proxy answered — a fact about this
+  // server and not about the register (E4). When no filing date survives the
+  // future-date guard the key says so rather than falling back to the sweep.
+  parts.push(dated
+    ? `dernier dépôt opérateur le ${dated}`
+    : 'date de dépôt non exploitable');
+  // A1 — a filing dated in the future is a finding about the file, not a
+  // rounding, and the clock above is only honest because it excluded them.
+  // Measured 2026-09-10: 56 rows of 227 007 are stamped 2026-12-30.
+  if (ahead > 0) {
+    parts.push(sites
+      ? `${fr(ahead)} site${ahead === 1 ? '' : 's'} à une date future, écarté${ahead === 1 ? '' : 's'} du calcul`
+      : `${fr(ahead)} ligne${ahead === 1 ? '' : 's'} à une date future, écartée${ahead === 1 ? '' : 's'} du calcul`);
+  }
+  parts.push('capacité installée, jamais la disponibilité');
+  return parts.join(' · ');
+}
+
+/** Height ticks the beam scale is read against, in charge points. */
+const IRVE_BEAM_TICKS = Object.freeze([24, 12, 6, 2]);
+
+/**
+ * The band key for the two regimes that draw marks.
+ *
+ * Returns `{legend, note, legendNote}` — the three slots `manager.js` renders,
+ * and the reason they are three rather than one is that they answer three
+ * different questions: what the marks mean, what the key left out (A5), and
+ * who published it and when (E1).
+ */
+function irveBandLegend() {
+  const mesh = _regime === 'mesh';
+  const tally = new Map();
+  let clipped = 0;
+  for (const record of _records.values()) {
+    // THE KEY DESCRIBES WHAT IS ON SCREEN, which is the whole point of a key.
+    // Counted over the payload instead, a « > 150 kW » filter left 25 marks on
+    // the map under a key still claiming 411 charge points of « Normale » —
+    // and D1's contract is that the classes are readable AGAINST the map, not
+    // against a document the reader cannot see. What the filter removed is
+    // stated once, in the note, as a count.
+    if (record.filteredOut === true) continue;
+    if (mesh) {
+      // A maillage mark is one CELL of the lattice. Counting them as charge
+      // points would silently understate every big car park; counting them as
+      // sites would understate every cell that holds more than one.
+      const band = record.site?.topBand;
+      if (band) tally.set(band, (tally.get(band) || 0) + 1);
+      continue;
+    }
+    if (Number(record.site?.pdcDistinct) > IRVE_BEAM_PDC_DOMAIN) clipped += 1;
+    const bands = record.site?.bands || {};
+    for (const band of IRVE_BAND_KEYS) {
+      const count = Number(bands[band]) || 0;
+      if (count > 0) tally.set(band, (tally.get(band) || 0) + count);
+    }
+  }
+
+  const legend = [];
+  if (mesh) {
+    legend.push({
+      label: 'Hauteur — marque de position',
+      color: null,
+      blurb: 'Uniforme dans le maillage : le faisceau lève la marque au-dessus du fond, '
+        + 'il ne compte rien. Ce que contient la cellule est sur sa fiche.',
+    });
+  } else {
+    // F7(a) — the register is NAMED, in the key, in words. This is a SCREEN
+    // length and not a world height, and nothing else on the globe says so.
+    legend.push({
+      label: 'Hauteur — points de charge du site',
+      color: null,
+      blurb: `Échelle d\u2019écran gelée, en racine carrée : deux fois plus haut vaut quatre fois plus. `
+        + `${IRVE_BEAM_PDC_DOMAIN} points de charge remplissent la hauteur — un domaine gelé qui couvre `
+        + `98,1 % des sites du registre. La longueur est corrigée du tangage, et cesse d\u2019être une `
+        + `règle au-delà de 70° d\u2019inclinaison : à la verticale, un trait vertical se projette en un point.`,
+    });
+    for (const tick of IRVE_BEAM_TICKS) {
+      const px = irveBeamPdcPx(tick);
+      legend.push({
+        label: `${fr(tick)} points de charge`,
+        color: PRISM_HEIGHT_SWATCH_COLOR,
+        glyph: prismHeightGlyph(px / IRVE_BEAM_MAX_PX),
+        blurb: `${Math.round(px)} px de haut.`,
+      });
+    }
+    if (clipped > 0) {
+      // A5 — a value above the frozen domain stops being measured by the mark.
+      legend.push({
+        label: 'au-dessus du domaine gelé',
+        color: null,
+        count: clipped,
+        blurb: `Plus de ${IRVE_BEAM_PDC_DOMAIN} points de charge : le faisceau est à sa longueur `
+          + 'maximale et ne dit plus combien. La fiche donne le chiffre exact.',
+      });
+    }
+  }
+
+  legend.push({
+    label: mesh ? 'Couleur — bande dominante de la cellule' : 'Couleur — puissance publiée',
+    color: null,
+    blurb: 'Rampe ordonnée en clarté, du plus lent au plus rapide : l\u2019ordre survit en niveaux '
+      + 'de gris et en deutéranopie. Bornes de classe gelées, jamais recalculées sur ce qui est à l\u2019écran.',
+  });
+  for (const band of IRVE_BAND_KEYS) {
+    const count = tally.get(band) || 0;
+    if (!count) continue;
+    if (band === UNKNOWN_BAND) {
+      // D3 — a motif, not a tint. The mark on the globe is a hollow ring and
+      // the swatch is the same ring, so the key and the map agree on shape.
+      legend.push({
+        label: irveBandLabel(band),
+        color: IRVE_UNKNOWN_INK,
+        glyph: sizeRingGlyph(),
+        count,
+        blurb: BAND_BLURBS[band],
+      });
+      continue;
+    }
+    legend.push({
+      label: irveBandLabel(band),
+      color: irveBandColor(band),
+      count,
+      blurb: BAND_BLURBS[band],
+    });
+  }
+
+  return { legend, note: irveBandLegendNote(mesh), legendNote: irveLegendNote() };
+}
+
+/** A5's slot: what this key counted, how the marks were chosen, what is missing. */
+function irveBandLegendNote(mesh) {
+  const parts = [];
+  if (mesh) {
+    const pick = _meshPick;
+    const step = pick?.stepDeg;
+    if (step) {
+      const km = irveMeshCellKm(step, _lastMeshLat);
+      parts.push(`Comptés en CELLULES d\u2019un carroyage verrouillé sur le monde : ${step}° de côté, `
+        + `soit ${km.latKm.toFixed(1)} km du nord au sud et ${km.lonKm.toFixed(1)} km d\u2019est en ouest ici `
+        + '— une maille en degrés n\u2019est pas équi-aire, la largeur varie de 15 % entre Perpignan et Lille.');
+      parts.push('Une marque par cellule occupée, posée sur un site réel : le plus grand exemplaire '
+        + 'de la bande la plus fréquente de la cellule, pas le plus gros site, qui serait presque '
+        + 'toujours la station d\u2019autoroute.');
+      // A5 — the ladder publishes a step per zoom tier, and this view is not on
+      // it. Doubling is what keeps the pick from becoming "the biggest N
+      // cells", but a reader comparing two machines has to know it happened.
+      if (pick.coarsened > 0) {
+        parts.push(`Maille élargie ${pick.coarsened} fois par rapport au palier publié, `
+          + 'pour que chaque cellule occupée garde sa marque plutôt que les plus grosses seules.');
+      }
+    }
+    if (pick) {
+      parts.push(`${fr(pick.picked.length)} marque${pick.picked.length === 1 ? '' : 's'} pour `
+        + `${fr(pick.inBox)} site${pick.inBox === 1 ? '' : 's'} en vue.`);
+    }
+    if (_meshHidden > 0) {
+      parts.push(`${fr(_meshHidden)} site${_meshHidden === 1 ? '' : 's'} masqué${_meshHidden === 1 ? '' : 's'} `
+        + 'par le filtre de puissance, dont ceux dont la puissance publiée est inexploitable : '
+        + 'rien ne dit qu\u2019ils passent le seuil, et rien ne dit qu\u2019ils ne le passent pas.');
+    }
+    return parts.join(' ');
+  }
+  parts.push('Comptés en POINTS DE CHARGE, et une marque par SITE — par coordonnée, pas par station : '
+    + 'le registre publie jusqu\u2019à 127 identifiants de station au même point.');
+  if (_siteHidden > 0) {
+    // WHY SLOWER CLASSES SURVIVE A HIGH FLOOR, said once rather than left to
+    // look like a bug: the floor keeps a SITE by its fastest charging, and a
+    // motorway hub with four 300 kW bays also publishes its 22 kW ones. The
+    // classes above still count every charge point of every site still drawn.
+    parts.push(`${fr(_siteHidden)} site${_siteHidden === 1 ? '' : 's'} masqué${_siteHidden === 1 ? '' : 's'} `
+      + 'par le filtre de puissance, dont ceux dont la puissance publiée est inexploitable. '
+      + 'Le seuil retient un SITE sur sa charge la plus rapide : les classes ci-dessus comptent '
+      + 'ensuite tous les points de charge des sites retenus, lents compris.');
+  }
+  return parts.join(' ');
 }
 
 const irveFranceLayer = {
@@ -2209,6 +2933,9 @@ const irveFranceLayer = {
     _nationalPainted = false;
     _meshPick = null;
     _lastBox = null;
+    _floorId = 'all';
+    _siteHidden = 0;
+    _meshHidden = 0;
     _classificationType = irveClassificationTypeForScene(viewer?.scene);
     if (typeof window !== 'undefined' && !_mapStackListener) {
       _mapStackListener = (event) => {
@@ -2298,6 +3025,45 @@ const irveFranceLayer = {
     await loadViewport({ force: true });
   },
 
+  /**
+   * Runtime params. `powerFloor` hides the sites whose fastest published
+   * charging does not clear a rung of the band ladder, without losing them:
+   * the payload in hand always holds the whole view and the key keeps
+   * reporting what was hidden.
+   *
+   * The two regimes apply it differently and `reconcileMesh` carries the
+   * argument: the exact regime flips `filteredOut` and never touches the
+   * collection (G2), the maillage re-picks because the floor changes which
+   * site represents a cell and what the cell totals.
+   *
+   * @param {{powerFloor?: string}} [params]
+   * @returns {boolean}
+   */
+  setParams(params = {}) {
+    const next = params.powerFloor;
+    if (next === undefined) return false;
+    if (!IRVE_POWER_FLOORS.some((floor) => floor.id === next)) return false;
+    if (next === _floorId) return false;
+    _floorId = next;
+    if (_regime === 'mesh') {
+      const box = cameraMeshBox(_viewer);
+      if (box && _mesh) reconcileMesh(box);
+    } else if (_regime === 'sites') {
+      applySiteFloor();
+      // A selected site the floor just hid keeps its card open over an
+      // invisible mark otherwise.
+      if (_selectedId && _records.get(_selectedId)?.filteredOut) clearSelection();
+      markBeamSweepDirty();
+      governorRequestRender('irve-fr-floor');
+    }
+    publishRowControls();
+    return true;
+  },
+
+  setRowControlsListener(listener) {
+    _rowControlsListener = typeof listener === 'function' ? listener : null;
+  },
+
   getDetectableObjects(options = {}) {
     return collectDetectableObjects(options);
   },
@@ -2355,6 +3121,12 @@ const irveFranceLayer = {
       budget: _meshPick.budget,
       cells: _meshPick.cells,
       thinned: _meshPick.thinned,
+      // The lattice, so a reader of the attribution popover knows the marks
+      // are a carroyage of a stated size rather than a sample of sites.
+      stepDeg: _meshPick.stepDeg,
+      coarsened: _meshPick.coarsened,
+      hiddenByFloor: _meshHidden,
+      powerFloor: _floorId,
       nationalSites: _mesh?.siteCount ?? null,
     };
   },
@@ -2393,39 +3165,16 @@ const irveFranceLayer = {
       return {
         chips: [],
         legend: prismLegend(IRVE_PRISM_SCALE, tally),
+        // E1 — the prism regime ran with no clock either, and it draws the
+        // same register the other two do.
+        legendNote: irveLegendNote(),
         surfaceFill: flat > 0,
       };
     }
-    const tally = new Map();
-    for (const record of _records.values()) {
-      if (record.mesh) {
-        // A mesh record knows one band, not a split — so the maillage legend
-        // counts SITES by their top band, and says so in the blurb. Counting
-        // them as charge points would silently understate every big car park.
-        const band = record.site?.topBand;
-        if (band) tally.set(band, (tally.get(band) || 0) + 1);
-        continue;
-      }
-      const bands = record.site?.bands || {};
-      for (const band of IRVE_BAND_KEYS) {
-        const count = Number(bands[band]) || 0;
-        if (count > 0) tally.set(band, (tally.get(band) || 0) + count);
-      }
-    }
-    const meshRegime = _regime === 'mesh';
-    const legend = IRVE_BAND_KEYS
-      .filter((band) => tally.get(band) > 0)
-      .map((band) => ({
-        label: irveBandLabel(band),
-        color: irveBandColor(band),
-        count: tally.get(band),
-        blurb: meshRegime
-          // Naming the sample is the point: this mix is what the thinning
-          // drew, close to the real one but not it. See `irveMesh.js`.
-          ? `${BAND_BLURBS[band]} Counted as SITES over the sampled maillage — a sample of the mix in view, not the national figure.`
-          : BAND_BLURBS[band],
-      }));
-    return { chips: [], legend };
+    return {
+      chips: irvePowerChips(),
+      ...irveBandLegend(),
+    };
   },
 
   destroy(viewer) {
@@ -2535,6 +3284,9 @@ export function _clearIrveSelectionForTest() {
   _depEntities = new Map();
   _depMeta = new Map();
   _regime = 'sites';
+  _floorId = 'all';
+  _siteHidden = 0;
+  _meshHidden = 0;
 }
 
 /** Row-control legend, for tests that do not construct a viewer. */

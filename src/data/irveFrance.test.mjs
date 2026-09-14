@@ -22,7 +22,12 @@ import irveFranceLayer, {
   irveDensityColor,
   irveDepartementPrism,
   irveNationalPrismRows,
-  irveSitePointSize,
+  irvePointSize,
+  irveBandClearsFloor,
+  irveFilingDate,
+  irveFutureFilings,
+  irveFloorBandIndex,
+  irveLatestFiling,
   selectIrveLabelCohort,
   _clearIrveSelectionForTest,
   _irveDepartementOverlayForTest,
@@ -44,6 +49,10 @@ import irveFranceLayer, {
   IRVE_BEAM_DENSE_COUNT,
   irveBeamHeightM,
   irveBeamTargetPx,
+  irveBeamPdcPx,
+  irveBeamPitchScale,
+  IRVE_BEAM_PDC_DOMAIN,
+  IRVE_BEAM_PITCH_LIMIT_RAD,
 } from './irveFrance.js';
 import { IRVE_BAND_KEYS, IRVE_MAX_BOX_DEG } from './irveFeed.js';
 import {
@@ -108,7 +117,7 @@ function siteRecord(overrides = {}) {
     position: Cesium.Cartesian3.fromDegrees(site.lon, site.lat, 12),
     point: { color: null, pixelSize: 0, show: true },
     baseColor: irveBandColor(site.topBand),
-    baseSize: irveSitePointSize(site.pdcDistinct),
+    baseSize: irvePointSize(false),
   };
 }
 
@@ -259,15 +268,145 @@ test('every band has a colour and a label, including the out-of-envelope one', (
 test('an unknown band falls back to the neutral tint, not to a rung on the ramp', () => {
   assert.equal(irveBandColor('quantique'), irveBandColor('inconnue'));
   assert.equal(irveBandColor(undefined), irveBandColor('inconnue'));
+  // And that tint is the ONE graphite this repo reserves for a refusal — a
+  // layer that minted a second would tell a reader two identical situations
+  // are different.
+  assert.equal(irveBandColor('inconnue'), PRISM_NO_RATIO_COLOR);
 });
 
-test('site size grows with charge points and stays inside the cap', () => {
-  const one = irveSitePointSize(1);
-  const ten = irveSitePointSize(10);
-  const huge = irveSitePointSize(606);
-  assert.ok(one < ten && ten < huge, `${one} ${ten} ${huge}`);
-  assert.ok(huge <= 14, String(huge));
-  assert.equal(irveSitePointSize(0), irveSitePointSize(null));
+// ── The ramp, and B4's own two tests run as arithmetic ──────────────────────
+//
+// The ramp this replaced climbed in lightness, turned round and fell 20 L*, so
+// in greys the fastest charging in France read DARKER than the slowest. That
+// is not a defect a comment can prevent from coming back; it is a defect a
+// measurement can. Everything below is the check, not the claim.
+
+/** CIE L*a*b* of an sRGB hex, D65. */
+function lab(hex) {
+  const channels = [0, 2, 4].map((i) => parseInt(hex.replace('#', '').slice(i, i + 2), 16));
+  const [r, g, b] = channels.map((c) => {
+    const v = c / 255;
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  const x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047;
+  const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883;
+  const f = (t) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))];
+}
+const deltaE = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+/** Viénot 1999 deuteranopia, in linear RGB. */
+function deuteranope(hex) {
+  const channels = [0, 2, 4].map((i) => parseInt(hex.replace('#', '').slice(i, i + 2), 16));
+  const [r, g, b] = channels.map((c) => {
+    const v = c / 255;
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  const encode = (c) => {
+    const v = Math.max(0, Math.min(1, c));
+    const s = v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055;
+    return `0${Math.round(255 * s).toString(16)}`.slice(-2);
+  };
+  return `#${encode(0.625 * r + 0.375 * g)}${encode(0.7 * r + 0.3 * g)}${encode(0.3 * g + 0.7 * b)}`;
+}
+/** The five measured rungs, low power to high. `inconnue` is not one of them. */
+const RAMP = IRVE_BAND_KEYS.filter((band) => band !== 'inconnue').map(irveBandColor);
+
+test('the ramp is ordered in LIGHTNESS, so the order survives in greys (B4)', () => {
+  const ladder = RAMP.map((hex) => lab(hex)[0]);
+  for (let i = 1; i < ladder.length; i += 1) {
+    assert.ok(ladder[i] - ladder[i - 1] >= 9,
+      `rung ${i} is only ${(ladder[i] - ladder[i - 1]).toFixed(1)} L* above its neighbour`);
+  }
+  // B4's second test: simulate a deuteranopia, and the order has to hold there
+  // too — a ramp that only orders for trichromats orders for nobody it matters to.
+  const seen = RAMP.map((hex) => lab(deuteranope(hex))[0]);
+  for (let i = 1; i < seen.length; i += 1) {
+    assert.ok(seen[i] > seen[i - 1], `deuteranopia inverts rung ${i}: ${seen.join(' → ')}`);
+  }
+});
+
+test('adjacent rungs stay separable once composited over a basemap (B3)', () => {
+  // B3's own test: three control backdrops — water, forest, pale urban — at the
+  // beam's shipped alpha. Six or seven declared classes are not six or seven
+  // PERCEIVED ones once the alpha, the HDR and the sensor pass have run.
+  const backdrops = ['#12324f', '#2f4a24', '#c8c4bc'];
+  const over = (hex, backdrop) => {
+    const mix = [0, 2, 4].map((i) => {
+      const fg = parseInt(hex.replace('#', '').slice(i, i + 2), 16);
+      const bg = parseInt(backdrop.replace('#', '').slice(i, i + 2), 16);
+      return `0${Math.round(fg * 0.82 + bg * 0.18).toString(16)}`.slice(-2);
+    });
+    return `#${mix.join('')}`;
+  };
+  for (const backdrop of backdrops) {
+    for (let i = 1; i < RAMP.length; i += 1) {
+      const separation = deltaE(lab(over(RAMP[i - 1], backdrop)), lab(over(RAMP[i], backdrop)));
+      assert.ok(separation > 10,
+        `${RAMP[i - 1]} and ${RAMP[i]} are ΔE ${separation.toFixed(1)} apart over ${backdrop}`);
+    }
+  }
+});
+
+test('no rung is an ink another layer already spends on a measured class', () => {
+  // Two of the five used to be, exactly: `#4c6ef5` was Sitadel's « Travaux
+  // achevés » and `#7c8899` the schools layer's « autre ».
+  for (const hex of RAMP) {
+    assert.notEqual(hex, '#4c6ef5');
+    assert.notEqual(hex, '#7c8899');
+    assert.notEqual(hex, PRISM_NO_RATIO_COLOR);
+  }
+});
+
+test('the dot is a position and nothing else — one size per regime', () => {
+  // It used to be a size channel worth 0.44 px between a 2-plug car park and a
+  // 6-plug one, which is a channel spent rather than a channel used (A3). The
+  // count moved to the beam; the disc asserts only "a mark is here".
+  assert.equal(irvePointSize(false), irvePointSize(false));
+  assert.ok(irvePointSize(true) < irvePointSize(false),
+    'a maillage mark stands for a cell and must not be read as a counted site');
+});
+
+test('the beam height carries the charge points, on a frozen sqrt domain', () => {
+  // B2: on a globe the screen SIZE is already spoken for by depth, so the
+  // quantity belongs on the vertical. The domain is a literal (C1) — the same
+  // site is the same height from one session to the next.
+  const two = irveBeamPdcPx(2);
+  const six = irveBeamPdcPx(6);
+  assert.ok(six - two > 12, `2 vs 6 plugs is only ${(six - two).toFixed(2)} px apart`);
+  assert.ok(irveBeamPdcPx(1) > 12, 'a one-plug site must still lift off the basemap');
+  // Monotonic, and clipped rather than rescaled above the domain.
+  let previous = -1;
+  for (let pdc = 0; pdc <= 60; pdc += 1) {
+    const px = irveBeamPdcPx(pdc);
+    assert.ok(px >= previous, `${pdc} went back down`);
+    assert.ok(px <= IRVE_BEAM_MAX_PX, `${pdc} → ${px}px is over the ceiling`);
+    previous = px;
+  }
+  assert.equal(irveBeamPdcPx(IRVE_BEAM_PDC_DOMAIN), IRVE_BEAM_MAX_PX);
+  assert.equal(irveBeamPdcPx(606), IRVE_BEAM_MAX_PX);
+  // Square root and not linear: half the plugs is 1/√2 of the height.
+  assert.ok(Math.abs(irveBeamPdcPx(12) / IRVE_BEAM_MAX_PX - Math.SQRT1_2) < 1e-9);
+  // Nothing published, nothing drawn — never a NaN-tall beam.
+  for (const bad of [0, -3, NaN, null, undefined, 'six']) {
+    assert.equal(irveBeamPdcPx(bad), 0, String(bad));
+  }
+});
+
+test('the beam is corrected for pitch, and stops claiming a ruler at the nadir', () => {
+  // A beam is vertical in the WORLD, so its screen length is L·cos(pitch):
+  // 87 % at the −30° the globe opens on, 50 % at −60°, nothing straight down.
+  assert.equal(irveBeamPitchScale(0), 1);
+  assert.ok(Math.abs(irveBeamPitchScale(-Math.PI / 6) - 1 / Math.cos(Math.PI / 6)) < 1e-9);
+  assert.ok(Math.abs(irveBeamPitchScale(-Math.PI / 3) - 2) < 1e-9);
+  // Clamped rather than divergent: at the nadir no length of beam projects to
+  // anything, and an unclamped 1/cos would ask for an infinite one.
+  const limit = irveBeamPitchScale(-IRVE_BEAM_PITCH_LIMIT_RAD);
+  assert.equal(irveBeamPitchScale(-Math.PI / 2), limit);
+  assert.ok(limit < 3.1, String(limit));
+  // Sign-agnostic, and garbage leaves the length alone.
+  assert.equal(irveBeamPitchScale(Math.PI / 3), irveBeamPitchScale(-Math.PI / 3));
+  assert.equal(irveBeamPitchScale(NaN), 1);
 });
 
 test('the selected overlay entry is protected and carries the card copy', () => {
@@ -348,8 +487,8 @@ test('the panel line reports charge points, and names what was merged out', () =
     summary: { pdcDistinct: 3502, pdcPublished: 4015, pdcWithheld: 2, truncated: false },
   });
   assert.match(flat(label), /3 502|3 502/);
-  assert.match(label, /double-published merged/);
-  assert.match(label, /misplaced withheld/);
+  assert.match(label, /doublons fusionnés/);
+  assert.match(label, /mal placés écartés/);
 });
 
 test('a clean viewport does not advertise merges or withholdings it did not make', () => {
@@ -360,13 +499,13 @@ test('a clean viewport does not advertise merges or withholdings it did not make
     count: 12,
     summary: { pdcDistinct: 40, pdcPublished: 40, pdcWithheld: 0, truncated: false },
   });
-  assert.doesNotMatch(label, /merged|withheld|capped/);
+  assert.doesNotMatch(label, /fusionnés|écartés|écrêté/);
 });
 
 test('an empty or loading viewport says which of the two it is', () => {
-  assert.match(buildIrveLoadingLabel({ regime: 'sites', status: 'empty', loading: false }), /no charge point published/);
-  assert.match(buildIrveLoadingLabel({ regime: 'sites', status: 'idle', loading: true, count: 0 }), /reading IRVE register/);
-  assert.match(buildIrveLoadingLabel({ regime: 'sites', status: 'ready', loading: true, count: 5 }), /refreshing/);
+  assert.match(buildIrveLoadingLabel({ regime: 'sites', status: 'empty', loading: false }), /aucune borne publiée/);
+  assert.match(buildIrveLoadingLabel({ regime: 'sites', status: 'idle', loading: true, count: 0 }), /lecture du registre IRVE/);
+  assert.match(buildIrveLoadingLabel({ regime: 'sites', status: 'ready', loading: true, count: 5 }), /rafraîchissement/);
 });
 
 // ── The legend ──────────────────────────────────────────────────────────────
@@ -380,7 +519,9 @@ test('the legend counts charge points, not dots, and drops empty bands', () => {
     ],
   });
   const { legend, chips } = _irveRowControlsForTest();
-  assert.deepEqual(chips, []);
+  // G1's filter: four rungs of the band ladder, one of them active.
+  assert.deepEqual(chips.map((chip) => chip.label), ['TOUT', '> 22 kW', '> 50 kW', '> 150 kW']);
+  assert.equal(chips.filter((chip) => chip.active).length, 1);
   const byLabel = Object.fromEntries(legend.map((row) => [row.label, row.count]));
   assert.equal(byLabel['Lente (≤ 7,4 kW)'], 15);
   assert.equal(byLabel['Normale (≤ 22 kW)'], 2);
@@ -395,9 +536,84 @@ test('the legend reads low power to high, so the ramp is legible in order', () =
     viewer: viewerWithView(),
     records: [siteRecord({ bands: { lente: 1, normale: 1, accelere: 1, rapide: 1, hpc: 1, inconnue: 1 } })],
   });
-  const order = _irveRowControlsForTest().legend.map((row) => row.label);
-  assert.deepEqual(order, IRVE_BAND_KEYS.map(irveBandLabel));
+  const { legend, note, legendNote } = _irveRowControlsForTest();
+  const labels = legend.map((row) => row.label);
+  // Two tiers, in this order: the height and its ruler, then the colour and
+  // its classes. A prism-shaped key for a beam-shaped mark, deliberately —
+  // the two regimes now read the same way (F7 a).
+  assert.ok(labels[0].startsWith('Hauteur —'), labels.join(' | '));
+  assert.ok(labels.some((label) => label.startsWith('Couleur —')), labels.join(' | '));
+  const bands = labels.filter((label) => IRVE_BAND_KEYS.map(irveBandLabel).includes(label));
+  assert.deepEqual(bands, IRVE_BAND_KEYS.map(irveBandLabel));
+  // D3 — the refused class is a MOTIF, not a step of the ramp.
+  const refused = legend.find((row) => row.label === irveBandLabel('inconnue'));
+  assert.ok(refused.glyph, 'the unreadable band must carry a shape, not just a tint');
+
+  // A5's slot, once, instead of the same 19 words on all six classes.
+  assert.match(note, /POINTS DE CHARGE/);
+  assert.match(note, /par SITE/);
+  // E1 — the operators' clock, never the proxy's.
+  assert.match(legendNote, /transport\.data\.gouv\.fr/);
+  assert.match(legendNote, /dépôt opérateur le 30\/07\/2026/);
+  assert.match(legendNote, /jamais la disponibilité/);
   _clearIrveSelectionForTest();
+});
+
+test('the key never dates itself from a filing that has not happened', () => {
+  // Measured on the live register 2026-09-10: 56 rows of 227 007 are stamped
+  // 2026-12-30. One typo would otherwise date a whole viewport.
+  const records = [
+    { site: { updatedTo: '2026-07-30' } },
+    { site: { updatedTo: '2026-12-30' } },
+    { site: { updatedTo: null } },
+  ];
+  assert.equal(irveLatestFiling(records, '2026-09-10'), '2026-07-30');
+  // Excluded, and COUNTED — a date that cannot have happened is a finding
+  // about the file, and the key states it beside the clock it protected.
+  assert.equal(irveFutureFilings(records, '2026-09-10'), 1);
+  assert.equal(irveFutureFilings([], '2026-09-10'), 0);
+  assert.equal(irveLatestFiling([{ site: { updatedTo: '2026-12-30' } }], '2026-09-10'), null);
+  assert.equal(irveLatestFiling([], '2026-09-10'), null);
+  assert.equal(irveFilingDate('2026-08-31'), '31/08/2026');
+  assert.equal(irveFilingDate(null), null);
+});
+
+test('a power floor hides marks without touching the collection (G2)', () => {
+  const records = [
+    siteRecord({ id: 'slow', topBand: 'lente', bands: { lente: 4, normale: 0, accelere: 0, rapide: 0, hpc: 0, inconnue: 0 } }),
+    siteRecord({ id: 'fast', topBand: 'hpc', bands: { lente: 0, normale: 0, accelere: 0, rapide: 0, hpc: 6, inconnue: 0 } }),
+    siteRecord({ id: 'unreadable', topBand: 'inconnue', bands: { lente: 0, normale: 0, accelere: 0, rapide: 0, hpc: 0, inconnue: 2 } }),
+  ];
+  _setIrveStateForTest({ viewer: viewerWithView(), regime: 'sites', records });
+  assert.equal(irveFranceLayer.setParams({ powerFloor: 'kw150' }), true);
+  const state = Object.fromEntries(records.map((record) => [record.id, record.filteredOut]));
+  assert.deepEqual(state, { slow: true, fast: false, unreadable: true });
+  // A1 — a site whose power cannot be read is not asserted to clear the floor,
+  // and it is not silently dropped as if measured below it: it is counted.
+  assert.match(_irveRowControlsForTest().note, /2 sites masqués/);
+  // Idempotent, and an unknown rung is refused rather than applied.
+  assert.equal(irveFranceLayer.setParams({ powerFloor: 'kw150' }), false);
+  assert.equal(irveFranceLayer.setParams({ powerFloor: 'kw999' }), false);
+  assert.equal(irveFranceLayer.setParams({}), false);
+  assert.equal(irveFranceLayer.setParams({ powerFloor: 'all' }), true);
+  assert.equal(records.every((record) => record.filteredOut === false), true);
+  _clearIrveSelectionForTest();
+});
+
+test('the band ladder is what a kilowatt floor is expressed in', () => {
+  // « ≥ 22 kW » would be undecidable: an 11 kW point is `normale`, whose
+  // ceiling IS 22. The chips are the ladder's own cuts, so they are exact.
+  assert.equal(irveFloorBandIndex('all'), -1);
+  assert.equal(irveFloorBandIndex('kw22'), IRVE_BAND_KEYS.indexOf('accelere'));
+  assert.equal(irveFloorBandIndex('kw150'), IRVE_BAND_KEYS.indexOf('hpc'));
+  assert.equal(irveBandClearsFloor('lente', -1), true);
+  assert.equal(irveBandClearsFloor('accelere', irveFloorBandIndex('kw22')), true);
+  assert.equal(irveBandClearsFloor('normale', irveFloorBandIndex('kw22')), false);
+  // `inconnue` sits PAST `hpc` in the key order, so a plain index comparison
+  // would let the one unreadable class clear every floor.
+  assert.equal(IRVE_BAND_KEYS.indexOf('inconnue') > IRVE_BAND_KEYS.indexOf('hpc'), true);
+  assert.equal(irveBandClearsFloor('inconnue', irveFloorBandIndex('kw150')), false);
+  assert.equal(irveBandClearsFloor('inconnue', -1), true);
 });
 
 test('every legend row carries the sentence that explains its band', () => {
@@ -405,8 +621,10 @@ test('every legend row carries the sentence that explains its band', () => {
     viewer: viewerWithView(),
     records: [siteRecord({ bands: { lente: 1, normale: 0, accelere: 0, rapide: 0, hpc: 0, inconnue: 2 } })],
   });
+  // The class rows carry a sentence; the height TICKS carry a measurement,
+  // which is shorter on purpose — a ruler mark is a number, not a paragraph.
   for (const row of _irveRowControlsForTest().legend) {
-    assert.ok(row.blurb && row.blurb.length > 20, row.label);
+    assert.ok(row.blurb && row.blurb.length > 8, row.label);
   }
   _clearIrveSelectionForTest();
 });
@@ -692,10 +910,10 @@ test('the national row reports the country total and points at the other regime'
   const label = buildIrveLoadingLabel({
     regime: 'national', loading: false, status: 'ready', national: nationalRollup(),
   });
-  assert.match(label, /charge points/);
+  assert.match(label, /points de charge/);
   assert.match(label, /4 départements/);
-  assert.match(label, /outre-mer not mapped/);
-  assert.match(label, /zoom in for sites/);
+  assert.match(label, /outre-mer non cartographiés/);
+  assert.match(label, /zoomez pour les sites/);
 });
 
 test('the national row admits a sweep that did not finish', () => {
@@ -703,17 +921,17 @@ test('the national row admits a sweep that did not finish', () => {
     regime: 'national', loading: false, status: 'ready',
     national: nationalRollup({ truncated: true }),
   });
-  assert.match(partial, /partial sweep/);
+  assert.match(partial, /balayage partiel/);
   assert.doesNotMatch(
     buildIrveLoadingLabel({ regime: 'national', loading: false, status: 'ready', national: nationalRollup() }),
-    /partial sweep/,
+    /balayage partiel/,
   );
 });
 
 test('the national row says it is loading before it says anything else', () => {
   assert.match(
     buildIrveLoadingLabel({ regime: 'national', loading: true, national: null }),
-    /reading the national register/,
+    /lecture du registre national/,
   );
 });
 
@@ -785,7 +1003,10 @@ test('the site legend comes back the moment the regime does', () => {
     records: [siteRecord({ bands: { lente: 10, normale: 2, accelere: 0, rapide: 0, hpc: 0, inconnue: 0 } })],
   });
   const { legend } = _irveRowControlsForTest();
-  assert.deepEqual(legend.map((row) => row.label), ['Lente (≤ 7,4 kW)', 'Normale (≤ 22 kW)']);
+  const bands = legend
+    .map((row) => row.label)
+    .filter((label) => IRVE_BAND_KEYS.map(irveBandLabel).includes(label));
+  assert.deepEqual(bands, ['Lente (≤ 7,4 kW)', 'Normale (≤ 22 kW)']);
   _clearIrveSelectionForTest();
 });
 

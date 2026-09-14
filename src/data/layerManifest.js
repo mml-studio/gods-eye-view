@@ -330,7 +330,7 @@ export const LAYER_MANIFEST = Object.freeze([
     name: 'Bornes IRVE (FR)',
     icon: '🔌',
     source: 'transport.data.gouv.fr / ODRÉ',
-    capabilities: Object.freeze(['destroy', 'getStats']),
+    capabilities: Object.freeze(['destroy', 'getStats', 'setParams']),
     load: () => import('./irveFrance.js').then((module) => module.default),
   }),
   Object.freeze({

@@ -100,15 +100,22 @@ test('a charge-point site never claims an availability nobody publishes', () => 
   assert.match(full.availabilityNote, /NOT published/);
 });
 
-test('a thinned national dot says it only knows a count', () => {
+test('a maillage mark says it is a CELL, and which number belongs to which', () => {
   const mesh = irveSiteReadout({
     id: 'mesh-1',
     mesh: true,
+    cell: { pdc: 412, sites: 27, stepDeg: 0.0625 },
     site: { id: 'mesh-1', lat: 47, lon: 2, pdcDistinct: 3, pdcPublished: 3, topBand: 'ac' },
   });
-  assert.equal(mesh.detail, 'count-only');
+  assert.equal(mesh.kind, 'charge-point-cell');
+  assert.equal(mesh.detail, 'cell-aggregate');
+  assert.deepEqual(mesh.cell, { chargePoints: 412, sites: 27, stepDeg: 0.0625 });
+  // The flat field is still the MARK's figure, so the prose has to say which
+  // number is the answer — the same failure `availabilityNote` was written for.
   assert.equal(mesh.chargePoints, 3);
-  assert.equal(mesh.name, null, 'a mesh dot has no name to give, and must not invent one');
+  assert.match(mesh.cellNote, /MAILLAGE CELL/);
+  assert.match(mesh.cellNote, /412 charge points across 27 sites/);
+  assert.equal(mesh.name, null, 'a mesh mark has no name to give, and must not invent one');
   assert.equal(mesh.operators, null);
   assert.equal(irveSiteReadout(null), null);
   assert.equal(irveSiteReadout({ id: 'x' }), null);
