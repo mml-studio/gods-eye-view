@@ -42,11 +42,18 @@
  * was the number of markers on screen (960 of them, all 55.8 px, all saying
  * nothing) and the count was on a disc diameter worth 0.44 px between a 2-plug
  * car park and a 6-plug one. The count now stands up: a site's beam is its
- * charge points on a frozen square-root domain, the disc is one constant per
- * regime, and the maillage beam is uniform BECAUSE a maillage mark stands for
- * a cell rather than for itself. Every argument, every measurement and every
- * clamp is beside the code — {@link irveBeamPdcPx}, {@link IRVE_SITE_POINT_PX},
- * `BEAM_MAX_M`.
+ * charge points on a frozen square-root domain, and the maillage beam is
+ * uniform BECAUSE a maillage mark stands for a cell rather than for itself.
+ *
+ * AND THE MARK CARRIES ITS OWN LEGIBILITY, which the first attempt at this got
+ * wrong: it pinned the disc at 7 px on the reasoning that the beam was now
+ * doing the seeing, and over Bordeaux at 12 653 m that drew **318 marks nobody
+ * could find**. A beam is a WORLD vertical, so it dies exactly where a reader
+ * looks — the shortest one on screen in that view was 1.1 px. The mark is a
+ * PLATE with a bolt punched out of it now, sized against an ink budget rather
+ * than pinned, and `irveMarkIcons.js` carries that argument. Every measurement
+ * and every clamp is beside the code — {@link irveBeamPdcPx},
+ * {@link IRVE_MARK_SPARSE_PX}, `BEAM_MAX_M`.
  *
  * AND THERE IS A FILTER. Four rungs of the band ladder — TOUT, > 22, > 50,
  * > 150 kW — because 960 marks that all mean "charging exists here" do not
@@ -241,7 +248,7 @@ import {
   MESH_LON,
   MESH_PDC,
 } from './irveMesh.js';
-import { sizeRingGlyph } from './sizeLegendGlyphs.js';
+import { IRVE_MARK_PUNCH_MIN_PX, irveMarkGlyph } from './irveMarkIcons.js';
 
 /** Layer id — also the share-link registry key and the voice-tool enum value. */
 export const IRVE_FR_LAYER_ID = 'irve-fr';
@@ -387,10 +394,8 @@ const BAND_COLORS = Object.freeze({
  * ring's meaning is carried by its SHAPE, so sharing the ink costs nothing.
  */
 export const IRVE_UNKNOWN_INK = PRISM_NO_RATIO_COLOR;
-/** The band drawn as a ring rather than as a disc. */
+/** The band drawn as a hollow rim rather than as a filled plate. */
 const UNKNOWN_BAND = 'inconnue';
-/** Ring stroke, in pixels. Thicker than the 1 px hairline every disc wears. */
-const UNKNOWN_RING_WIDTH_PX = 2.2;
 /**
  * Density ramp, low to high — a violet-to-pink sequential scale.
  *
@@ -467,9 +472,8 @@ export const IRVE_PRISM_SCALE = createPrismScale({
  */
 const FLAT_FOOTPRINT_ALPHA = 0.45;
 const SELECTED_COLOR = '#00ffff';
-const OUTLINE_COLOR = Cesium.Color.BLACK.withAlpha(0.35);
 /**
- * THE DOT IS A POSITION, AND ONLY A POSITION — A3.
+ * THE MARK IS A POSITION, AND ONLY A POSITION — A3.
  *
  * It used to be a size channel: `SITE_POINT_MIN_PX + √min(pdc,120) · 0.9`, and
  * the maillage ran a second one at `3.4 + √min(pdc,200) · 0.42`. Measured on
@@ -480,14 +484,71 @@ const OUTLINE_COLOR = Cesium.Color.BLACK.withAlpha(0.35);
  * that is spent — and the same figure now moves the BEAM, where it is worth
  * 13.5 px over the same pair.
  *
- * So the disc is one constant per regime, sized only for legibility: a site is
- * a counted inventory and a maillage mark stands for a whole cell, so the two
- * stay told apart by size the way they always were — but by ONE size each,
- * which asserts nothing about how many plugs are under it.
+ * ── AND THEN THE MARK ITSELF COULD NOT BE FOUND ────────────────────────────
+ *
+ * Freeing the size channel is not the same as making the mark legible, and the
+ * first attempt conflated the two: the disc was pinned at a constant 7 px, down
+ * from a 14 px ceiling, on the reasoning that the beam was now doing the
+ * seeing. Over Bordeaux at 12 653 m, straight down, on photorealistic imagery,
+ * that produced **318 marks nobody could find** — including, when it was put in
+ * front of them, the person who wrote it.
+ *
+ * The beam could not cover for it, and the reason is geometric rather than
+ * incidental: a beam is a WORLD vertical, so its screen length is
+ * `L · cos(tangage)`, and in that same view the shortest beam on screen was
+ * **1.1 px**. Beams survive at the edges of the frame and die in the middle,
+ * which is where a reader looks. The mark has to stand on its own at every
+ * camera attitude.
+ *
+ * So the disc became a PLATE with a bolt punched out of it — the treatment
+ * `militarySiteIcons.js` and `plantFiliereIcons.js` each arrived at against
+ * their own measurements, and `irveMarkIcons.js` carries the argument. What
+ * stays true is the A3 claim above: the plate says WHERE, never HOW MANY.
+ *
+ * ── ITS SIZE IS A LEGIBILITY RULE, AND IT HOLDS AN INK BUDGET ──────────────
+ *
+ * A 26 px plate is right for a market town and wrong for a city: 2 575 sites
+ * inside 0.35° of central Paris at that size would lay 130 % of the canvas in
+ * plate. The first curve fell linearly with the in-view COUNT, on the beam's
+ * own anchors, and that was the wrong variable — a plate's cost is its AREA, so
+ * a rule linear in the count overshoots exactly in the middle of the range,
+ * where most views live. Measured over Bordeaux: 602 marks drew 28.1 % of the
+ * frame.
+ *
+ * The size therefore holds an INK BUDGET: `√(budget / count)`, clamped between
+ * a legibility floor and a ceiling. Coverage is then flat at
+ * {@link IRVE_MARK_INK_BUDGET} — 15.6 % of the app's own 1 440 × 900 viewport —
+ * from the ceiling right down to the floor, and the canvas is read rather than
+ * assumed, so a small window gets smaller plates instead of a solid mat.
+ *
+ * BELOW THE FLOOR THE ANSWER IS THE FILTER, NOT A SMALLER PLATE. The floor
+ * takes over at **792 marks** — past that the budget asks for less than 16 px,
+ * and at the densest real viewport in France it asks for 9, which is back under
+ * the size nobody could find. The floor holds at
+ * {@link IRVE_MARK_DENSE_PX} and that view simply is full — which is a finding
+ * about central Paris, not a defect — and the row now carries four power-floor
+ * chips that take it from 2 575 marks to a few hundred. G1's filter is the
+ * answer to saturation; shrinking the mark below legibility is not.
+ *
+ * This is not a second encoding (A3): it says nothing about any one site, it is
+ * the same answer to "how much room is there", and `amenitiesFrance.js` states
+ * the identical rule in its own words. Both regimes draw the same plate: a
+ * charge point is a charge point, and which UNIT is being counted is a question
+ * the key, the card and the row line answer in words.
  */
-export const IRVE_SITE_POINT_PX = 7;
-export const IRVE_MESH_POINT_PX = 5;
-const SELECTED_POINT_PX = 17;
+export const IRVE_MARK_SPARSE_PX = 26;
+export const IRVE_MARK_DENSE_PX = 16;
+/**
+ * Plate area the layer is allowed to lay down, in square CSS pixels.
+ *
+ * `300 × 26²` — the count and the size of the sparse anchor, so the ceiling is
+ * exactly where the budget starts binding and the curve is continuous there.
+ * 15.6 % of a 1 440 × 900 frame.
+ */
+export const IRVE_MARK_INK_BUDGET = 300 * 26 * 26;
+/** The viewport the budget above was measured on. */
+const IRVE_MARK_REFERENCE_CANVAS_PX2 = 1440 * 900;
+const SELECTED_MARK_BONUS_PX = 9;
 
 /** One-line explanations behind each power swatch. */
 const BAND_BLURBS = Object.freeze({
@@ -610,7 +671,7 @@ let _overlayHost = DEFAULT_OVERLAY_HOST;
 
 // --- Runtime state ----------------------------------------------------------
 let _viewer = null;
-let _points = null;
+let _marks = null;
 /** The beams. Allocated once, recycled across rebuilds — never churned. */
 let _beams = null;
 /** Set when the next frame owes a beam sweep (camera settle, or a rebuild). */
@@ -757,13 +818,56 @@ export function irveNationalPrismRows(national = _national) {
 }
 
 /**
- * Rendered size for a mark. One constant per regime — see
- * {@link IRVE_SITE_POINT_PX} for why the size channel was given up.
- * @param {boolean} mesh Whether this is a maillage mark.
- * @returns {number} Pixel diameter.
+ * Plate side in pixels for a view holding `count` marks.
+ *
+ * Holds the ink budget — see {@link IRVE_MARK_INK_BUDGET} for why the variable
+ * is area and not count — clamped between a legibility floor and a ceiling.
+ * Monotonic decreasing, so a busier view can never draw a bigger plate than a
+ * quiet one.
+ *
+ * @param {number} count Marks currently rendered.
+ * @param {number} [canvasPx2] Canvas area in square CSS pixels. Defaults to the
+ *   viewport the budget was measured on, so a caller with no scene still gets
+ *   the shipped answer.
+ * @returns {number} Plate side in CSS pixels.
  */
-export function irvePointSize(mesh = false) {
-  return mesh ? IRVE_MESH_POINT_PX : IRVE_SITE_POINT_PX;
+export function irveMarkSizePx(count, canvasPx2 = IRVE_MARK_REFERENCE_CANVAS_PX2) {
+  const n = Number.isFinite(count) ? count : 0;
+  if (n <= 0) return IRVE_MARK_SPARSE_PX;
+  const area = Number.isFinite(canvasPx2) && canvasPx2 > 0
+    ? canvasPx2
+    : IRVE_MARK_REFERENCE_CANVAS_PX2;
+  const budget = IRVE_MARK_INK_BUDGET * (area / IRVE_MARK_REFERENCE_CANVAS_PX2);
+  const wanted = Math.sqrt(budget / n);
+  return Math.max(IRVE_MARK_DENSE_PX, Math.min(IRVE_MARK_SPARSE_PX, wanted));
+}
+
+/** Canvas area in square CSS pixels, or null when there is no scene to ask. */
+function canvasAreaPx2() {
+  const canvas = _viewer?.scene?.canvas;
+  const w = canvas?.clientWidth || 0;
+  const h = canvas?.clientHeight || 0;
+  return w > 0 && h > 0 ? w * h : undefined;
+}
+
+/**
+ * The raster one band draws at one size.
+ *
+ * Four rasters serve the whole fleet whatever the mix — solid or hollow, bolt
+ * or bare — because the band colour rides on `billboard.color` and is never
+ * baked in. See `irveMarkIcons.js`.
+ *
+ * @param {string} band Band key.
+ * @param {number} sizePx On-screen side of the mark.
+ * @param {boolean} [key=false] Omit the casing, for the masked key swatch.
+ * @returns {string} Data URI.
+ */
+export function irveMarkImage(band, sizePx, key = false) {
+  return irveMarkGlyph({
+    hollow: band === UNKNOWN_BAND,
+    punched: sizePx >= IRVE_MARK_PUNCH_MIN_PX,
+    key,
+  });
 }
 
 /**
@@ -1183,39 +1287,41 @@ export function selectIrveLabelCohort(entries, limit = IRVE_FR_LABEL_COHORT_LIMI
 }
 
 /**
- * Fill, stroke and stroke width for one band's mark.
+ * Add one plate to the shared billboard collection.
  *
- * A measured band is a filled disc with the hairline every mark on this globe
- * wears. `inconnue` is a HOLLOW RING — transparent fill, the refusal graphite
- * on the stroke — and Cesium draws that natively: a `PointPrimitive` shades
- * the outline band from `outlineColor` and the interior from `color`, so an
- * alpha-zero interior leaves the ring and nothing else. That is D3's motif,
- * and unlike a tint it survives the NVG and FLIR passes.
+ * THE MARK IS DRAWN OVER THE SURFACE, not depth-tested against it — the same
+ * `disableDepthTestDistance` the discs carried, and for the same reason
+ * `edfPowerPlants.js` records: a billboard carries ONE depth for its whole
+ * quad, so a finite threshold turns every mark above it into a flat-bottomed
+ * dome where the ground in front of the anchor is nearer than the anchor is.
  *
- * @param {string} band Band key.
- * @returns {{ring:boolean, color:Cesium.Color, outlineColor:Cesium.Color, outlineWidth:number}}
+ * @param {string} id Render id — also the pick key.
+ * @param {Cesium.Cartesian3} position
+ * @param {string} band Band key, which decides solid plate or refusal rim.
+ * @param {string} color CSS band colour.
+ * @param {number} size On-screen side, in CSS pixels.
+ * @returns {Cesium.Billboard}
  */
-function bandMarkStyle(band) {
-  const ring = band === UNKNOWN_BAND;
-  return {
-    ring,
-    color: ring ? Cesium.Color.TRANSPARENT : Cesium.Color.fromCssColorString(irveBandColor(band)),
-    outlineColor: ring ? Cesium.Color.fromCssColorString(IRVE_UNKNOWN_INK) : OUTLINE_COLOR,
-    outlineWidth: ring ? UNKNOWN_RING_WIDTH_PX : 1,
-  };
+function addMark(id, position, band, color, size) {
+  return _marks.add({
+    id,
+    position,
+    image: irveMarkImage(band, size),
+    width: size,
+    height: size,
+    // The artwork is white and the casing is black, so this multiply IS the
+    // band colour and nothing is baked in. See `irveMarkIcons.js`.
+    color: Cesium.Color.fromCssColorString(color),
+    disableDepthTestDistance: Number.POSITIVE_INFINITY,
+    translucencyByDistance: new Cesium.NearFarScalar(500, 1.0, 60_000, 0.55),
+  });
 }
 
 function restoreRecordStyle(record) {
   if (!record?.point) return;
-  // A ring's identity is its EMPTY middle, so restoring it has to put the
-  // transparency back rather than repaint `baseColor` into the fill — which
-  // would leave a selected-then-deselected refusal drawn as a solid disc in
-  // the refusal grey, i.e. as a sixth step of the ramp.
-  const style = bandMarkStyle(record.site?.topBand);
-  record.point.color = style.color;
-  record.point.outlineColor = style.outlineColor;
-  record.point.outlineWidth = style.outlineWidth;
-  record.point.pixelSize = record.baseSize;
+  record.point.color = Cesium.Color.fromCssColorString(record.baseColor);
+  record.point.width = record.baseSize;
+  record.point.height = record.baseSize;
   styleBeam(record, false);
 }
 
@@ -1243,13 +1349,14 @@ function selectSite(id) {
   if (!record || !_viewer) return;
   _selectedId = id;
   if (record.point) {
-    // A selected refusal ring keeps its hole and lights its STROKE: filling it
-    // would be the one moment the map drew a value where it has none.
-    const ring = record.site?.topBand === UNKNOWN_BAND;
-    const cyan = Cesium.Color.fromCssColorString(SELECTED_COLOR);
-    record.point.color = ring ? Cesium.Color.TRANSPARENT : cyan;
-    record.point.outlineColor = ring ? cyan : OUTLINE_COLOR;
-    record.point.pixelSize = SELECTED_POINT_PX;
+    // A billboard has no outline to thicken, so a selection is the cyan tint
+    // AND a size bonus — the same pair `edfPowerPlants.js` settled on. A
+    // selected refusal keeps its hollow middle, because its raster is the
+    // hollow one and tinting does not fill it: the one moment the map could
+    // have drawn a value where it has none.
+    record.point.color = Cesium.Color.fromCssColorString(SELECTED_COLOR);
+    record.point.width = record.baseSize + SELECTED_MARK_BONUS_PX;
+    record.point.height = record.baseSize + SELECTED_MARK_BONUS_PX;
   }
   styleBeam(record, true);
   const entry = createIrveSelectedOverlayEntry(record, liveForRecord(record));
@@ -2170,9 +2277,13 @@ function reconcileMesh(box) {
     : 0;
 
   clearSelection();
-  _points.removeAll();
+  _marks.removeAll();
   _records.clear();
 
+  // Resolved ONCE for the rebuild, from what this view is about to hold, so
+  // every plate in one view is the same size and no mark changes size while
+  // the reader is only looking at it.
+  const size = irveMarkSizePx(Math.min(pick.picked.length, MAX_RENDERED_SITES), canvasAreaPx2());
   pick.picked.forEach((site, order) => {
     if (_records.size >= MAX_RENDERED_SITES) return;
     const lat = site[MESH_LAT];
@@ -2182,8 +2293,6 @@ function reconcileMesh(box) {
     if (_records.has(id)) return;
     const band = IRVE_BAND_KEYS[site[MESH_BAND]] || UNKNOWN_BAND;
     const color = irveBandColor(band);
-    const size = irvePointSize(true);
-    const style = bandMarkStyle(band);
     // The COMPLETE contents of the lattice cell this mark stands for — not an
     // estimate and not a sample: every site in the cell was summed. It is what
     // the card prints and what the analyst reads.
@@ -2191,15 +2300,7 @@ function reconcileMesh(box) {
     // No ground warm-up here: at these altitudes a metre of vertical error is
     // invisible, and 2 200 terrain lookups per pan would not be.
     const position = Cesium.Cartesian3.fromDegrees(lon, lat, POINT_LIFT_M);
-    const point = _points.add({
-      id,
-      position,
-      color: style.color,
-      pixelSize: size,
-      outlineColor: style.outlineColor,
-      outlineWidth: style.outlineWidth,
-      disableDepthTestDistance: Number.POSITIVE_INFINITY,
-    });
+    const point = addMark(id, position, band, color, size);
     _records.set(id, {
       id,
       // A mesh record carries only what the national sweep knows. The flag is
@@ -2260,10 +2361,13 @@ function reconcile(payload) {
   const sites = Array.isArray(payload?.sites) ? payload.sites : [];
 
   clearSelection();
-  _points.removeAll();
+  _marks.removeAll();
   _records.clear();
 
   const warm = [];
+  // Same rule as the maillage: one size for the whole rebuild, from what this
+  // view is about to hold.
+  const size = irveMarkSizePx(Math.min(sites.length, MAX_RENDERED_SITES), canvasAreaPx2());
   for (const site of sites) {
     if (_records.size >= MAX_RENDERED_SITES) break;
     const id = site?.id;
@@ -2271,18 +2375,7 @@ function reconcile(payload) {
     if (!Number.isFinite(site.lat) || !Number.isFinite(site.lon)) continue;
     const position = sitePosition(site);
     const color = irveBandColor(site.topBand);
-    const size = irvePointSize(false);
-    const style = bandMarkStyle(site.topBand);
-    const point = _points.add({
-      id,
-      position,
-      color: style.color,
-      pixelSize: size,
-      outlineColor: style.outlineColor,
-      outlineWidth: style.outlineWidth,
-      disableDepthTestDistance: Number.POSITIVE_INFINITY,
-      translucencyByDistance: new Cesium.NearFarScalar(500, 1.0, 60_000, 0.35),
-    });
+    const point = addMark(id, position, site.topBand, color, size);
     _records.set(id, {
       id,
       site,
@@ -2330,7 +2423,7 @@ function applySiteFloor() {
 
 function clearSites() {
   if (_selectedId && !_selectedId.startsWith('dep:')) clearSelection();
-  if (_points) _points.removeAll();
+  if (_marks) _marks.removeAll();
   // The national regime draws départements, not sites, so every beam has to go
   // dark. Hidden rather than removed: the collection is a pool.
   if (_beams) for (let i = 0; i < _beams.length; i += 1) _beams.get(i).show = false;
@@ -2512,7 +2605,7 @@ function onCameraSettled() {
 
 /** Deterministic subsample of rendered sites for the detection overlay. */
 function collectDetectableObjects(options = {}) {
-  if (!_enabled || !_points?.show || !_records.size) return [];
+  if (!_enabled || !_marks?.show || !_records.size) return [];
   const records = [];
   for (const record of _records.values()) {
     if (!record.point?.show && record.id !== _selectedId) continue;
@@ -2832,7 +2925,11 @@ function irveBandLegend() {
       legend.push({
         label: irveBandLabel(band),
         color: IRVE_UNKNOWN_INK,
-        glyph: sizeRingGlyph(),
+        // THE MARK ITSELF, masked — a hollow rim, which is what is on the map.
+        // `key: true` drops the casing: the on-map key masks its swatch and a
+        // CSS mask reads ALPHA, so an opaque casing would flatten every band
+        // into the same plain dot and take the shape channel away.
+        glyph: irveMarkImage(band, IRVE_MARK_SPARSE_PX, true),
         count,
         blurb: BAND_BLURBS[band],
       });
@@ -2841,6 +2938,7 @@ function irveBandLegend() {
     legend.push({
       label: irveBandLabel(band),
       color: irveBandColor(band),
+      glyph: irveMarkImage(band, IRVE_MARK_SPARSE_PX, true),
       count,
       blurb: BAND_BLURBS[band],
     });
@@ -2906,10 +3004,16 @@ const irveFranceLayer = {
 
   init(viewer) {
     _viewer = viewer;
-    _points = new Cesium.PointPrimitiveCollection({ blendOption: Cesium.BlendOption.TRANSLUCENT });
-    _points.show = false;
-    viewer.scene.primitives.add(_points);
-    registerSpriteCollection(IRVE_FR_LAYER_ID, _points);
+    // A BILLBOARD collection, not points: the mark is a plate with artwork in
+    // it now, and a `PointPrimitive` can only be a disc. `heightReference` is
+    // deliberately not passed — it makes Cesium reach into
+    // `scene.frameState.mode` inside the Billboard constructor, which is a live
+    // render loop this layer's unit tests do not have, and these marks are
+    // lifted by `groundFloor.js` rather than clamped anyway.
+    _marks = new Cesium.BillboardCollection({ blendOption: Cesium.BlendOption.TRANSLUCENT });
+    _marks.show = false;
+    viewer.scene.primitives.add(_marks);
+    registerSpriteCollection(IRVE_FR_LAYER_ID, _marks);
     // NOT registered with the sprite order: that registry arbitrates
     // near-plane-clamped sprite collections, and a beam is depth-bearing
     // geometry that has to sort against the world rather than against sprites.
@@ -2954,7 +3058,7 @@ const irveFranceLayer = {
   enable(viewer) {
     _enabled = true;
     _error = null;
-    _points.show = true;
+    _marks.show = true;
     if (_beams) _beams.show = true;
     markBeamSweepDirty();
     if (_depDataSource) _depDataSource.show = true;
@@ -3013,7 +3117,7 @@ const irveFranceLayer = {
       _preRenderRemover = null;
     }
 
-    _points.show = false;
+    _marks.show = false;
     if (_beams) _beams.show = false;
     _loading = false;
     _status = 'idle';
@@ -3205,10 +3309,10 @@ const irveFranceLayer = {
     _depEntities.clear();
     _depMeta = new Map();
     _depShapesPromise = null;
-    if (_points) {
-      unregisterSpriteCollection(IRVE_FR_LAYER_ID, _points);
-      viewer.scene.primitives.remove(_points);
-      _points = null;
+    if (_marks) {
+      unregisterSpriteCollection(IRVE_FR_LAYER_ID, _marks);
+      viewer.scene.primitives.remove(_marks);
+      _marks = null;
     }
     if (_beams) {
       viewer?.scene?.primitives?.remove?.(_beams);

@@ -304,6 +304,23 @@ function probe(page) {
       legendFooter: module.getRowControls().note || '',
       chips: (module.getRowControls().chips || []).map((chip) => chip.label),
       rendered: module.getDetectableObjects({ maxCount: 100000 }).length,
+      marks: (() => {
+        const ids = new Set(module.getDetectableObjects({ maxCount: 100000 }).map((o) => o.sourceId));
+        const prims = window.__godsEyeView.viewer.scene.primitives;
+        for (let i = 0; i < prims.length; i += 1) {
+          const c = prims.get(i);
+          if (!c || typeof c.get !== 'function' || !c.length) continue;
+          let mine = false; let shown = 0; const sizes = new Set(); const rasters = new Set();
+          for (let j = 0; j < c.length; j += 1) {
+            const b = c.get(j);
+            if (b && typeof b.id === 'string' && ids.has(b.id)) mine = true;
+            if (!b?.show || b.width === undefined) continue;
+            shown += 1; sizes.add(Math.round(b.width)); rasters.add(String(b.image));
+          }
+          if (mine && shown) return { shown, sizes: [...sizes], rasters: rasters.size };
+        }
+        return null;
+      })(),
       polygonsShown: shownCodes.size,
       polygonsHidden: hiddenCodes.size,
       polygonParts: shown,
@@ -515,8 +532,22 @@ async function main() {
       if (siteRequests >= 1 && !loaded.stats.loading && loaded.stats.count > 0) break;
     }
     check('the viewport request is issued once inside the gate', siteRequests >= 1, `${siteRequests}`);
-    check('one dot per site, not one per charge point',
+    check('one mark per site, not one per charge point',
       loaded.rendered === SITES.length, `${loaded.rendered} for ${SITES.length} sites / 275 charge points`);
+    // THE MARK A READER HAS TO FIND. It was a 7 px disc, and over Bordeaux at
+    // 12 653 m it drew 318 of them that nobody could see — including the author.
+    // It is a plate with a bolt punched out of it now, and the two properties
+    // that make it findable are asserted rather than assumed: a size in the
+    // legible band, and ONE raster for the whole fleet (the band colour rides
+    // on `billboard.color`, so 4 000 marks cost four atlas entries, not 4 000).
+    check('the mark is a plate big enough to find without squinting',
+      loaded.marks && loaded.marks.shown === SITES.length
+      && loaded.marks.sizes.every((px) => px >= 16 && px <= 26),
+      JSON.stringify(loaded.marks));
+    // FOUR RASTERS FOR THE WHOLE FLEET, whatever the mix — solid or hollow,
+    // bolt or bare. This view holds a refusal, so it draws two of the four.
+    check('and the fleet costs a fixed handful of atlas entries, not one per mark',
+      loaded.marks?.rasters > 1 && loaded.marks.rasters <= 4, JSON.stringify(loaded.marks));
     check('and the layer counts sites, not charge points',
       loaded.stats.count === SITES.length, `count=${loaded.stats.count}`);
     check('the choropleth stands down rather than fighting the dots',
