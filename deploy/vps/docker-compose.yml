@@ -29,6 +29,14 @@ services:
       # kernel OOM-kills the process instead of V8 collecting. 768 MiB leaves
       # ~256 MiB for the C++ side, buffers and the gzip streams.
       NODE_OPTIONS: ${GEV_NODE_OPTIONS:---max-old-space-size=768}
+      # The everyday-amenity pack is built OUT of this process, always. Folding
+      # the BPE in-process peaks around 1.3 GB of RSS: measured 2026-09-14 the
+      # container went 327 → 941 MiB in fourteen seconds and died of
+      # `Ineffective mark-compacts near heap limit`, exit 134, restart — once per
+      # visitor who switched the layer on. With this at 0 the proxy answers 503
+      # and names `npm run amenities:pack` instead of taking the site down.
+      # See docs/DEPLOY.md for how the pack gets onto the volume.
+      GEV_AMENITIES_INPROCESS_BUILD: ${GEV_AMENITIES_INPROCESS_BUILD:-0}
     # Bounds, because this box is shared with the Enerlens production database.
     #
     # Measured 2026-09-09: the container idles at ~197 MiB and ~2% CPU with NO

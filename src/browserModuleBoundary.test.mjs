@@ -30,6 +30,7 @@ function browserModules(directory = SRC_ROOT) {
  */
 const SERVER_ONLY = new Map([
   ['data/vigicruesFeed.js', 'node:crypto, for the geometryVersion hash the /api/vigicrues proxy stamps'],
+  ['data/amenitiesPack.js', 'node:fs/zlib, for the BPE fold and the sharded pack the /api/amenities-fr proxy reads'],
 ]);
 
 test('no browser-built module imports a Node core module', () => {

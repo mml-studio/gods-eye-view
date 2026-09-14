@@ -136,6 +136,7 @@
     "filosofi:ramp": "node scripts/build-filosofi-ramp.mjs",
     "filosofi:territoires": "node scripts/build-filosofi-territoires.mjs",
     "filosofi:pack-2021": "node scripts/build-filosofi-2021-pack.mjs",
+    "amenities:pack": "node scripts/build-amenities-pack.mjs",
     "territoires:pack": "node scripts/build-fr-territoires.mjs",
     "energy-markets:pack": "node scripts/build-energy-market-areas.mjs",
     "qa:filosofi": "node scripts/qa-filosofi.mjs",

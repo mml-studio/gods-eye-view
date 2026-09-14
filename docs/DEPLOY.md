@@ -108,6 +108,41 @@ the first time this ran: staging kept answering 2019 until the cache was wiped
 The build streams the three CSVs straight out of the archive: no `unzip` (the
 image has none) and no 473 MB of expanded intermediates on the volume.
 
+### The everyday-amenity pack
+
+`amenities-fr` draws 445 380 points folded from the INSEE BPE and FINESS. The
+fold peaks around **1.3 GB of RSS**, which does not fit in this container, and
+until 2026-09-14 the proxy did it in-process on the first request: measured that
+day, memory went 327 → 941 MiB in fourteen seconds and the container died of
+`Ineffective mark-compacts near heap limit`, exit 134, and restarted. Switching
+the layer on took staging down, for everyone, every time.
+
+So `GEV_AMENITIES_INPROCESS_BUILD=0` is set in the compose file and the pack is
+built **on the host**, then moved into the cache volume:
+
+```bash
+ssh vps '
+  cd /opt/gev/src &&
+  NODE_OPTIONS=--max-old-space-size=2048 npm run amenities:pack &&      # ~2 min, 187 MB in
+  docker cp .gev-cache/amenities-fr gev:/app/.gev-cache/ &&
+  docker exec gev npm run amenities:pack -- --check
+'
+```
+
+It writes `pack.json` (mesh, rollup, provenance, shard index — ~10 MB) plus 356
+gzipped `sites/<cell>.json.gz` shards (~14 MB). The server holds the first and
+reads at most four shards per `/sites` request: **405 MB RSS** with the layer
+live, against 644 MB of heap for the single-document pack it replaced.
+
+**Rebuild it whenever `AMENITIES_CACHE_VERSION` changes.** That is the other half
+of the 2026-09-14 outage: version 2 shipped on 2026-09-08, nobody rebuilt, and
+the version-1 file sat in the volume being refused for six days. `--check` reports
+the version and the age; `/api/amenities-fr/status` reports `pack: null` when
+there is nothing usable, and the proxy now logs *why* it refused a file.
+
+BPE is published once a year and FINESS once a month, so a pack is fresh for 30
+days and served stale for 120.
+
 ### Day to day
 
 ```bash
