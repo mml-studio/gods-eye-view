@@ -6,6 +6,40 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-14
 
 ### Changed
+- **La légende des îlots de fraîcheur tenait 18 lignes, et toute la couche
+  glissait sur les toits dès qu'on bougeait la carte.** Deux défauts sans
+  rapport l'un avec l'autre, sauf qu'ils se voient sur le même écran.
+
+  **Les points n'étaient pas sur le sol.** Chaque objet était posé à la hauteur
+  0 de l'ellipsoïde plus un mètre — sous Paris, 70 à 80 m sous la rue qu'il
+  décrit. Le test de profondeur étant désactivé sur cette couche, un point
+  enterré est peint quand même, et sa position à l'écran devient une fonction
+  de la pose de la caméra : on déplace la carte, et les arbres, les fontaines et
+  les refuges glissent sur les toits avant de sauter en place. Mesuré au-dessus
+  des Tuileries, caméra inclinée à −35° à 900 m : les 14 pastilles dessinées
+  passent de 1,0 m ellipsoïdal à **72,3–81,7 m**, zéro sur l'ellipsoïde, et le
+  glissement sur un panoramique aller-retour de 300 m tombe à **0,0 px**.
+
+  **Et la clé demandait 18 lignes pour quatre registres peints en même temps.**
+  Sur une vue de Paris, les arbres seuls prennent jusqu'à 12 500 des ~14 300
+  points — 95 % de l'encre et trois des lignes, pour le registre qui dit le
+  moins par objet — et les 23 parcs qui déclarent une ouverture canicule, le
+  constat pour lequel cette couche existe, étaient dessous. La canopée passe de
+  six bandes plus un gris à **deux**, coupées à un quart du sol : six échelons
+  d'une seule teinte tracés à alpha 0,34 sur une ville photoréaliste ne sont pas
+  séparables les uns des autres. Les refuges passent de cinq mécanismes à
+  **trois**, pliés sur la question posée — on entre (225), on se met dessous
+  (156), il y a de l'eau (154). Et chaque registre gagne un bouton
+  (`PARCS · REFUGES · FONTAINES · ARBRES`) : la clé n'imprime que ce qui
+  dessine, soit **8 lignes** par défaut et 11 avec les arbres.
+
+  **Les arbres sont éteints par défaut**, et le bouton coupe la requête et pas
+  seulement la peinture : c'est le seul registre acheté par vue (1,7 Mo décodés
+  sur la boîte centrale mesurée). Rien n'est perdu : les 66 espaces à exactement
+  zéro de canopée sont nommés dans l'infobulle de la bande basse, le seul espace
+  sans indice publié est reporté dans la note du bloc, et le `type` publié de
+  chaque refuge reste verbatim sur sa fiche.
+
 - **La couche des prix s'appelait « Immobilier (DVF) », ses deux puces de type
   ne filtraient rien, et son symbole € disparaissait dans les toits.** Trois
   défauts d'un même écran, relevés rue des Basques à Bayonne le 14/09/2026.

@@ -7919,8 +7919,17 @@ const FRAICHEUR_TREE_DISK_DIR = path.join(FRAICHEUR_DISK_DIR, 'arbres');
  * Shape version of both cached folds. Bump whenever `projectFraicheurRefuges`
  * or `projectFraicheurTrees` changes what it returns — the memory cache lives
  * for an hour but the disk cache outlives the edit by a week otherwise.
+ *
+ * 2 — the canopy fold went from six bands to two and the equipment families
+ * from five to three, and BOTH ids are baked into the cached rows (`band`,
+ * `family`). A version-1 pack served after this edit would hand the layer
+ * `band: 'rare'` and `family: 'brume'`, neither of which exists any more: every
+ * green space would be painted in the grey reserved for "the register did not
+ * measure this", and every refuge would fall through to the residual colour.
+ * The failure is silent and looks like a data problem, which is exactly the
+ * kind this counter is for.
  */
-const FRAICHEUR_CACHE_VERSION = 1;
+const FRAICHEUR_CACHE_VERSION = 2;
 
 /** @type {?{version:number, at:number, payload:object}} */
 let _fraicheurRefuges = null;

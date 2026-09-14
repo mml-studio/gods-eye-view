@@ -515,6 +515,10 @@ export function treeCardLines(tree) {
  * @returns {?string}
  */
 export function fraicheurTreeLabel({ status, totalInBox, drawn, budget = FRAICHEUR_TREE_BUDGET } = {}) {
+  // Not a refusal and not a failure: the reader switched this register off, or
+  // never switched it on. It is the DEFAULT state of the layer, so the line has
+  // to say what the button is rather than sound like something went wrong.
+  if (status === 'off') return 'Arbres masqués — bouton ARBRES pour les charger';
   if (status === 'too-high') {
     return `Descends sous ${FRAICHEUR_TREE_MAX_ALTITUDE_M.toLocaleString('fr-FR')} m pour charger les arbres`;
   }
