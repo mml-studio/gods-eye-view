@@ -12,6 +12,15 @@ import { cameraViewBox } from './data/viewGate.js';
 import { isLayerModuleUnavailable } from './data/lazyLayer.js';
 import { initCoverageBriefing } from './coverageBriefing.js';
 import {
+  STALE_BUILD_COUNTDOWN_MS,
+  STALE_BUILD_MANUAL_DWELL_MS,
+  claimStaleBuildAutoReload,
+  rememberStaleBuildReload,
+  staleBuildNotice,
+  staleBuildReloadHash,
+  staleBuildSecondsLeft,
+} from './staleBuildRecovery.js';
+import {
   aircraftTrackingTarget,
   enterCockpitWithTracking,
 } from './cockpitTracking.js';
@@ -2583,6 +2592,11 @@ export class StyleManager {
     this._cctvSyncLabel = document.getElementById('cctv-sync-label');
     this._cctvSyncProgress = document.getElementById('cctv-sync-progress');
     this._toast = document.getElementById('toast');
+    this._toastMessage = document.getElementById('toast-message');
+    this._toastAction = document.getElementById('toast-action');
+    this._toastActionHandler = null;
+    this._staleBuildRecovery = null;
+    this._toastAction?.addEventListener('click', () => this._toastActionHandler?.());
     this._locationSearch = document.getElementById('location-search');
     this._searchToggle = document.getElementById('search-toggle');
     this._locationPills = document.getElementById('location-pills');
@@ -5499,6 +5513,25 @@ export class StyleManager {
     return `${change.layerId} could not ${change.enabled ? 'start' : 'stop'} cleanly`;
   }
 
+  /**
+   * Announce one failed transition, and act on the one that has a cure.
+   *
+   * A layer that ran and did not settle has nothing for the reader to do, so
+   * it stays a plain toast. A layer whose CHUNK never arrived is cured by a
+   * reload and nothing else, so it gets the recovery that performs one.
+   *
+   * @param {object} change A `visibility-failed` manager event.
+   * @param {string} message Copy from `_layerFailureMessage`.
+   * @returns {void}
+   */
+  _announceLayerFailure(change, message) {
+    if (isLayerModuleUnavailable(change?.error)) {
+      this._beginStaleBuildRecovery(change);
+      return;
+    }
+    this._showToast(message);
+  }
+
   _handleContextLayerChange(change) {
     // The first enable of CCTV or radio is what brings its module — and with it
     // the `subscribe` the HUD needs. Cheap and idempotent once bound.
@@ -5601,13 +5634,13 @@ export class StyleManager {
             // The wrapper owns failure announcements. On a successful rollback
             // announce the original activation failure here so the same direct
             // action still produces exactly one accessible notification.
-            this._showToast(failureMessage);
+            this._announceLayerFailure(change, failureMessage);
             return true;
           },
           failureMessage,
         ));
       } else if (!this._userFacingContextNotificationTokens.has(change.notificationToken)) {
-        this._showToast(failureMessage);
+        this._announceLayerFailure(change, failureMessage);
       }
       this._syncContextModeButtons();
       return;
@@ -10336,17 +10369,172 @@ export class StyleManager {
   }
 
   /**
-   * Displays a temporary toast notification for 2 seconds.
-   * @param {string} message - Text to show in the toast.
+   * Displays a temporary toast notification.
+   *
+   * Two seconds is the dwell for a toast that only reports — long enough to
+   * read a confirmation, and short enough that it never sits on the globe. A
+   * toast the reader has to ACT on passes its own dwell and an action button;
+   * see `_renderStaleBuildToast`.
+   *
+   * @param {string} message Text to show in the toast.
+   * @param {object} [options] Presentation.
+   * @param {number} [options.durationMs] Dwell; non-finite keeps it up.
+   * @param {{label: string, onClick: Function}|null} [options.action] Button.
+   * @param {string|null} [options.owner] Which flow this toast belongs to.
    * @returns {void}
    */
-  _showToast(message) {
-    this._toast.textContent = message;
+  _showToast(message, { durationMs = 2000, action = null, owner = null } = {}) {
+    // Any other announcement replaces the stale-build notice on screen, so the
+    // reload it scheduled must go with it — a countdown the reader can no
+    // longer see is a page that reloads for no stated reason.
+    if (this._staleBuildRecovery && owner !== 'stale-build') this._cancelStaleBuildRecovery();
+    if (this._toastMessage) this._toastMessage.textContent = message;
+    else this._toast.textContent = message;
+    if (this._toastAction) {
+      this._toastActionHandler = typeof action?.onClick === 'function' ? action.onClick : null;
+      this._toastAction.textContent = action?.label || '';
+      this._toastAction.hidden = !this._toastActionHandler;
+    }
+    this._toast.classList.toggle('has-action', Boolean(this._toastActionHandler));
     this._toast.classList.add('visible');
     clearTimeout(this._toastTimer);
-    this._toastTimer = setTimeout(() => {
-      this._toast.classList.remove('visible');
-    }, 2000);
+    this._toastTimer = null;
+    if (Number.isFinite(durationMs)) {
+      this._toastTimer = setTimeout(() => this._hideToast(), durationMs);
+    }
+  }
+
+  _hideToast() {
+    clearTimeout(this._toastTimer);
+    this._toastTimer = null;
+    this._toast.classList.remove('visible', 'has-action');
+    if (this._toastAction) this._toastAction.hidden = true;
+    this._toastActionHandler = null;
+  }
+
+  /**
+   * A layer whose CODE never arrived, handled instead of described.
+   *
+   * The old behaviour told the reader to reload the page and then cleared
+   * itself after two seconds — an instruction shown for less time than it
+   * takes to read. This runs the instruction: the notice stays up, counts
+   * down, and reloads with the layer they clicked switched ON, so the reload
+   * completes the click rather than returning them to a working app with the
+   * same row still off. Every reason NOT to reload automatically lives in
+   * `claimStaleBuildAutoReload`; in those cases the same notice stays up for
+   * thirty seconds with the button, and nothing happens unasked.
+   *
+   * Repeated failures merge into the ONE pending recovery: a reader who clicks
+   * three dead rows gets one countdown that restores all three.
+   *
+   * @param {object} change A `visibility-failed` manager event.
+   * @returns {void}
+   */
+  _beginStaleBuildRecovery(change) {
+    const layerId = change?.layerId;
+    if (!layerId) return;
+    const label = (this._dataManager?.getAll?.() || [])
+      .find((layer) => layer.id === layerId)?.label || layerId;
+    if (this._staleBuildRecovery) {
+      this._staleBuildRecovery.layerIds.add(layerId);
+      this._staleBuildRecovery.label = label;
+      this._renderStaleBuildToast();
+      return;
+    }
+    const auto = claimStaleBuildAutoReload({
+      storage: this._sessionStorageRef(),
+      nowMs: Date.now(),
+      visibility: typeof document === 'undefined' ? 'visible' : document.visibilityState,
+      voiceStatus: document.getElementById('gev-voice-control')?.dataset?.status || null,
+    });
+    this._staleBuildRecovery = {
+      layerIds: new Set([layerId]),
+      label,
+      mode: auto ? 'auto' : 'manual',
+      deadline: Date.now() + STALE_BUILD_COUNTDOWN_MS,
+      timer: null,
+    };
+    if (auto) {
+      // Quarter-second ticks so the printed second is never a second stale;
+      // six of them are free next to a Cesium frame.
+      this._staleBuildRecovery.timer = setInterval(() => this._tickStaleBuildRecovery(), 250);
+    }
+    this._renderStaleBuildToast();
+  }
+
+  _sessionStorageRef() {
+    try {
+      return globalThis.sessionStorage || null;
+    } catch {
+      return null;
+    }
+  }
+
+  _renderStaleBuildToast() {
+    const recovery = this._staleBuildRecovery;
+    if (!recovery) return;
+    const auto = recovery.mode === 'auto';
+    this._showToast(
+      staleBuildNotice({
+        label: recovery.label,
+        mode: recovery.mode,
+        secondsLeft: staleBuildSecondsLeft(recovery.deadline, Date.now()),
+      }),
+      {
+        owner: 'stale-build',
+        // The manual notice still clears itself: it has been read or it has
+        // not, and a permanent bar over the globe is its own annoyance.
+        durationMs: auto ? Infinity : STALE_BUILD_MANUAL_DWELL_MS,
+        action: auto
+          ? { label: 'ANNULER', onClick: () => this._declineStaleBuildReload() }
+          : { label: 'RECHARGER', onClick: () => this._performStaleBuildReload() },
+      },
+    );
+  }
+
+  _tickStaleBuildRecovery() {
+    const recovery = this._staleBuildRecovery;
+    if (!recovery) return;
+    if (Date.now() >= recovery.deadline) {
+      this._performStaleBuildReload();
+      return;
+    }
+    this._renderStaleBuildToast();
+  }
+
+  /** The reader said no. Keep the cure in reach, stop acting on its own. */
+  _declineStaleBuildReload() {
+    const recovery = this._staleBuildRecovery;
+    if (!recovery) return;
+    clearInterval(recovery.timer);
+    recovery.timer = null;
+    recovery.mode = 'manual';
+    this._renderStaleBuildToast();
+  }
+
+  _cancelStaleBuildRecovery() {
+    if (!this._staleBuildRecovery) return;
+    clearInterval(this._staleBuildRecovery.timer);
+    this._staleBuildRecovery = null;
+  }
+
+  _performStaleBuildReload() {
+    const recovery = this._staleBuildRecovery;
+    if (!recovery) return;
+    const layerIds = [...recovery.layerIds];
+    this._cancelStaleBuildRecovery();
+    // Spend the budget on every path, manual included: the reloaded page
+    // restores these layers and may fail the same way on boot, and that
+    // second failure must not be allowed to reload again on its own.
+    rememberStaleBuildReload(this._sessionStorageRef(), Date.now());
+    // The address trails the screen by up to the share debounce, and it is the
+    // only thing the reload restores from.
+    this.shareLinkManager?.flushHash?.();
+    const nextHash = staleBuildReloadHash(window.location.hash, layerIds);
+    if (nextHash) history.replaceState(null, '', nextHash);
+    // Same document, new hash: only an explicit reload refetches the index and
+    // with it the chunk names this tab is missing.
+    window.location.reload();
   }
 
   // ── HUD Toggle ───────────────────────────────

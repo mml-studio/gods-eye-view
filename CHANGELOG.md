@@ -6,6 +6,31 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-14
 
 ### Changed
+- **La seule panne que le lecteur pouvait réparer lui-même s'affichait deux
+  secondes.** Quand une mise en ligne remplace le build sous un onglet resté
+  ouvert, la première couche allumée demande un fichier que le serveur ne sert
+  plus, et le navigateur retient cet échec pour toute la vie de l'onglet :
+  recliquer ne peut pas marcher, recharger marche toujours. Le message le
+  disait — « Bornes de recharge : code non chargé — recharge la page », 55
+  caractères — et l'effaçait au bout de **2 000 ms**. Deux sessions ont été
+  perdues dessus le 14/09, chacune en recliquant la même ligne.
+
+  La consigne s'exécute maintenant toute seule. La bannière reste affichée,
+  décompte **6 secondes** et recharge la page — avec la couche demandée
+  rallumée, écrite dans l'adresse avant le départ, pour que le rechargement
+  termine le clic au lieu de ramener le lecteur à l'état qu'il essayait de
+  quitter. Un bouton **ANNULER** arrête le compte à rebours ; la bannière
+  devient alors **RECHARGER** et tient **30 secondes**.
+
+  Quatre situations retirent la recharge automatique, et laissent le bouton :
+  un onglet qui a déjà rechargé dans les **10 dernières minutes** (sans quoi un
+  fichier réellement absent ferait boucler l'onglet indéfiniment), un onglet en
+  arrière-plan, un tour de voix en cours, et un navigateur qui refuse d'écrire
+  son stockage de session — sans cette marque, il n'y a pas de garde-fou, donc
+  pas d'automatisme. `npm run qa:stale-build` rejoue la panne en coupant le
+  fichier d'une couche : 14 vérifications, dont le décompte visible, la couche
+  rallumée après recharge, et l'onglet qui ne reboucle pas.
+
 - **Neuf marqueurs sur dix de la couche Stations météo n'avaient rien à
   répondre, et l'un d'eux servait un relevé vieux de cinq jours.** Le réseau
   temps réel de Météo-France compte **2 144 stations** ; **190 publient leurs
