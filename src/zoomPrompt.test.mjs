@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   renderZoomPrompt,
   ZOOM_PROMPT_FALLBACK_MESSAGE,
+  ZOOM_PROMPT_LEAVE_MS,
   ZOOM_PROMPT_MAX_ROWS,
   zoomPromptMessage,
   zoomPromptModel,
@@ -136,9 +137,19 @@ function makeElement(tag = 'div') {
   return node;
 }
 
-function makeHost() {
+function makeHost({ animated = false } = {}) {
   const host = makeElement('div');
   host.ownerDocument = { createElement: (tag) => { const el = makeElement(tag); el.ownerDocument = host.ownerDocument; return el; } };
+  // Only a host with a real `classList` takes the fading path; the stubs the
+  // manager's unit tests install do not, and hide synchronously.
+  if (animated) {
+    const classes = new Set();
+    host.classList = {
+      add: (name) => classes.add(name),
+      remove: (name) => classes.delete(name),
+      contains: (name) => classes.has(name),
+    };
+  }
   return host;
 }
 
@@ -193,6 +204,37 @@ test('the card is rebuilt when its words change, or when a flight ended', () => 
   assert.equal(afterFlight.signature, beforeFlight.signature);
 });
 
+test('a flight in progress takes the card off, and a failed one brings it back', () => {
+  const model = zoomPromptModel([waitingLayer('power-grid')]);
+  assert.equal(zoomPromptVisible(model, '', false, 'power-grid'), false, 'gone on the press');
+  // Released when the flight settles. The layer is still gated — the flight did
+  // not reach the gate — so the same card is news again.
+  assert.equal(zoomPromptVisible(model, '', false, ''), true);
+  // A flight for a DIFFERENT situation never silences this one.
+  assert.equal(zoomPromptVisible(model, '', false, 'transit-fr'), true);
+});
+
+test('the card fades out rather than cutting, and a return cancels the fade', async () => {
+  const host = makeHost({ animated: true });
+  renderZoomPrompt(host, zoomPromptModel([waitingLayer('power-grid')]));
+  renderZoomPrompt(host, null);
+  assert.equal(host.classList.contains('zoom-prompt-leaving'), true, 'it is leaving');
+  assert.equal(host.hidden, false, 'and still on screen while it does');
+
+  // A card that comes back mid-fade must cancel it, or the pending timer would
+  // hide the new one a moment after it appeared.
+  renderZoomPrompt(host, zoomPromptModel([waitingLayer('transit-fr')]));
+  assert.equal(host.classList.contains('zoom-prompt-leaving'), false);
+  await new Promise((resolve) => setTimeout(resolve, ZOOM_PROMPT_LEAVE_MS + 40));
+  assert.equal(host.hidden, false, 'the cancelled fade did not hide the new card');
+
+  renderZoomPrompt(host, null);
+  await new Promise((resolve) => setTimeout(resolve, ZOOM_PROMPT_LEAVE_MS + 40));
+  assert.equal(host.hidden, true);
+  assert.equal(host.dataset.signature, '');
+  assert.equal(host.children.length, 0);
+});
+
 test('the fly button reports its layer once and then refuses to queue a second solve', () => {
   const host = makeHost();
   const flown = [];
@@ -207,6 +249,12 @@ test('the fly button reports its layer once and then refuses to queue a second s
   assert.deepEqual(flown, ['power-grid']);
   assert.equal(fly.disabled, true);
   assert.equal(fly.attributes['aria-busy'], 'true');
+  // It does not relabel itself: the card is leaving on this press, and a word
+  // changing inside a fading card is a flicker.
+  assert.equal(fly.textContent, 'Zoomer ici');
+  fly.click();
+  assert.deepEqual(flown, ['power-grid', 'power-grid'],
+    'the stub has no disabled semantics — the guard is `disabled`, asserted above');
 });
 
 test('closing the card reports the signature it closed', () => {

@@ -11796,6 +11796,17 @@ body.scene-playback-mode #coverage-briefing {
   display: none;
 }
 
+/* Leaving, on the press of « Zoomer ici » — 140 ms, matched by
+   `ZOOM_PROMPT_LEAVE_MS`. `animation: none` is load-bearing: the entry
+   animation runs with `both`, so its fill keeps opacity at 1 and would win
+   over this rule for as long as it is declared. */
+#zoom-prompt.zoom-prompt-leaving {
+  animation: none;
+  opacity: 0;
+  transition: opacity 140ms ease;
+  pointer-events: none;
+}
+
 @keyframes zoom-prompt-in {
   from { opacity: 0; transform: translate(-50%, calc(-50% + 0.6rem)) scale(0.98); }
   to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
@@ -11907,6 +11918,7 @@ body.scene-playback-mode #zoom-prompt {
 
 @media (prefers-reduced-motion: reduce) {
   #zoom-prompt { animation-duration: 1ms; }
+  #zoom-prompt.zoom-prompt-leaving { transition-duration: 1ms; }
 }
 
 @media (max-width: 620px) {

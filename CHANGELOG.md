@@ -527,6 +527,13 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   caméra**, parce qu'à l'instant du `moveEnd` la couche n'a pas encore conclu ;
   et la fermer vaut **pour la situation**, pas pour la session.
 
+  Et elle **part sur la pression du bouton, en 140 ms** — pas à la fin du vol.
+  Elle attendait que la COUCHE cesse d'être hors cadre : 1,6 s de caméra, puis
+  les relectures programmées derrière, pendant lesquelles le bouton restait
+  planté à l'écran. Presser « Zoomer ici » est la réponse à la question que la
+  carte pose ; elle s'en va avec. Elle ne revient que si le vol n'a pas atteint
+  le plafond — bouton réarmé.
+
   Au passage, **tous les messages de zoom passent au français et au même
   verbe** : onze couches sur treize disaient autre chose — trois en anglais
   (« descend below 120 km »), les autres « descends », « descendez » ou
