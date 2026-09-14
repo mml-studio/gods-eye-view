@@ -3250,6 +3250,29 @@ absence is worded the same way: "aucune servitude à ce point" only where the
 register answered that point, and "aucune des N servitudes du repère n'atteint
 ce point" everywhere else.
 
+**One row, two registers, and since 2026-09-14 two switches.** The row carries
+a chip per half — *Zonage PLU* and *Servitudes* — and they are independent
+rather than a three-state selector, because "zoning only", "easements only" and
+"both" are three questions a reader actually has. Over a village centre the
+wash covers every square metre of the block and the dashed envelopes run across
+it, and the only way to see under one used to be to switch off the answer
+entirely. Both are `drawOnlyParams`: one request carries both halves — 1,4 MB at
+the measured worst case — so hiding one rebuilds the entities from the payload
+in hand and spends neither a request nor a rate-limit slot. The chips govern
+the GEOMETRY and nothing else: the scan marker and every ground card keep the
+whole register answer, and the marker's card names what is hidden ("zonage
+masqué sur la carte") so five easements listed over a bare photograph read as a
+switched-off half rather than as a broken layer. Turning both off is allowed and
+leaves the marker, so a row that is ON never draws nothing. The key follows the
+chips — a swatch for a shape nobody can see is the same defect as a key for a
+dormant scan — and the marker falls back to the easement red, then to neutral,
+rather than wearing a zone hue the key no longer decodes. **The key itself had
+never once painted**: it arrived in #78 declaring `rowControls(payload)` in the
+very commit that moved the shell to `rowControls(runtime, summary, payload)` —
+the two halves of a rebase — so the family tally ran over the runtime object and
+every scan published an empty key: eight zoning families painted on the ground
+with nothing anywhere to decode them.
+
 Because the wash is ground-classification geometry, and a classification
 surface is read once when the primitive is BUILT, `urbanisme-gpu` is also the
 one address layer that sets `redrawOnMapStack`. Switching to the photoreal

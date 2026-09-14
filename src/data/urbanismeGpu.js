@@ -253,6 +253,94 @@ const ZONE_SENTENCE_INDEX = byUpperKey(ZONE_FAMILY_SENTENCES);
 /** Servitude families worth pulling to the front of a reader's attention. */
 const LOUD_SUP_CODES = new Set(['t1', 't4', 't5', 't7', 'i1', 'i3', 'i4', 'pm1', 'pm3']);
 
+/* ── the two halves ───────────────────────────────────────────────────────── */
+
+/**
+ * ONE ROW, TWO ANSWERS, AND UNTIL THIS BRANCH ONE SWITCH FOR BOTH.
+ *
+ * The register answers two different questions at an address and this layer
+ * draws both of them on the same ground: a zoning wash that covers every
+ * square metre of the block, and easement envelopes that run across it in
+ * dashed red — one measured `pm1` is 759 polygons spanning kilometres. Over a
+ * village centre the two together are twenty polygons deep, and the reader who
+ * wants to know how far the railway strip reaches has no way to ask for it
+ * without switching off the answer entirely.
+ *
+ * So each half takes a chip, and the chips are INDEPENDENT rather than a
+ * three-state selector. "Zoning only", "easements only" and "both" are three
+ * questions a reader actually has, and a single-select strip would have needed
+ * a fourth chip to say "both" — one control reading as a mode when it is two
+ * switches.
+ *
+ * TURNING BOTH OFF IS ALLOWED, and leaves the scan marker: the register was
+ * asked and answered here, the card still carries the whole answer, and the
+ * row never reads zero on a layer that is on. That is also why the marker and
+ * the ground card are NOT filtered by these chips — see `render`. A chip that
+ * hid what the register said, rather than what the map paints, would delete
+ * information the reader never asked to lose.
+ *
+ * DRAW-ONLY, both of them. The proxy is asked one question and answers both
+ * halves in one payload — `gpuFeed.js` runs the zoning and easement calls
+ * together — so a chip here is a subset of rows already in memory. See
+ * `drawOnlyParams` in `addressScanLayer.js`.
+ */
+export const GPU_HALVES = Object.freeze([
+  Object.freeze({
+    key: 'plu',
+    field: 'zoning',
+    label: 'Zonage PLU',
+    subject: 'le zonage du PLU',
+    blurb: 'l’aplat coloré, ses contours et les codes écrits au sol',
+  }),
+  Object.freeze({
+    key: 'sup',
+    field: 'servitudes',
+    label: 'Servitudes',
+    subject: 'les servitudes d’utilité publique',
+    blurb: 'les emprises tiretées rouges, posées par-dessus le zonage',
+  }),
+]);
+
+/** The value a chip carries: a closed pair, because it rides a share link. */
+const HALF_VALUES = Object.freeze(['on', 'off']);
+
+/**
+ * Which halves of the answer are on screen right now.
+ *
+ * DEFAULTS ON, and read defensively: `render` is called with the runtime the
+ * shell holds, and a layer that has never been given a parameter gets the
+ * declared default — but a payload redraw triggered before any `setParams`
+ * must not black out the map on an `undefined`.
+ * @param {?Record<string, string>} runtime
+ * @returns {{zoning: boolean, servitudes: boolean}}
+ */
+export function gpuVisibleHalves(runtime) {
+  return {
+    zoning: String(runtime?.plu ?? 'on') !== 'off',
+    servitudes: String(runtime?.sup ?? 'on') !== 'off',
+  };
+}
+
+/**
+ * The scan marker's colour, which must stay decodable from the key beside it.
+ *
+ * The marker has always been painted the colour of the zone under it, and that
+ * is only legible while the zoning key is published — `legende-couleur-oui`:
+ * a colour on the map is an entry in the key or it is decoration. With the
+ * zoning half switched off the key has no zone rows, so the marker falls back
+ * to the easement red while that half is lit and carries something, and to the
+ * neutral grey when the reader has switched off both.
+ * @param {?object} zone The zone under the scan point, if any.
+ * @param {{zoning: boolean, servitudes: boolean}} halves
+ * @param {number} servitudeCount Easements the register returned here.
+ * @returns {string} CSS colour.
+ */
+export function gpuMarkerColorCss(zone, halves, servitudeCount = 0) {
+  if (halves.zoning) return zoneColorCss(zone?.kind);
+  if (halves.servitudes && servitudeCount > 0) return SERVITUDE_COLOR;
+  return ZONE_FALLBACK;
+}
+
 /**
  * Colour a zoning polygon by its national type letter.
  * @param {string|null} kind
@@ -763,6 +851,276 @@ function publishZoneAt(payload, point) {
   ));
 }
 
+/**
+ * The row's controls: the two half-chips, and the key to what they light.
+ *
+ * THE CHIPS BUILD WITH NO PAYLOAD AND THE KEY DOES NOT. A chip says what
+ * pressing it would mean, which is true before the first scan has landed and
+ * stays true while the camera is above the ceiling; a key describes a wash
+ * that is on screen, and publishing one for a scan that has gone dormant
+ * describes a map nobody is looking at. The shell hands over a null payload in
+ * exactly those two cases — see `getRowControls` in `addressScanLayer.js`.
+ *
+ * AND THE KEY FOLLOWS THE CHIPS. A swatch for a shape nobody can see is the
+ * same defect as a key for a dormant scan, seen from the other end. What is
+ * hidden is said in the note instead, WITH ITS COUNT, because "no easements
+ * here" and "you are not being shown the easements" are opposite claims about
+ * the same ground.
+ *
+ * @param {?Record<string, string>} runtime Parameters in force.
+ * @param {?object} payload The scan actually drawn, or null.
+ * @returns {{chips: Array<object>, legend?: Array<object>, surfaceFill?: boolean,
+ *   note?: string}}
+ */
+export function gpuRowControls(runtime, payload) {
+  const halves = gpuVisibleHalves(runtime);
+  const chips = GPU_HALVES.map((half) => {
+    const lit = halves[half.field];
+    return {
+      id: `half:${half.key}`,
+      label: half.label,
+      active: lit,
+      // The OPPOSITE value, computed from the runtime the strip was built
+      // from: a chip is a switch, and the manager turns its `params` straight
+      // into `setLayerParams`.
+      params: { [half.key]: lit ? 'off' : 'on' },
+      // Deliberately not `fanOut`: `plu` and `sup` are this layer's own keys,
+      // and no other member of any row speaks them.
+      title: `${lit ? 'Masquer' : 'Afficher'} ${half.subject} — ${half.blurb}`,
+    };
+  });
+  if (!payload) return { chips };
+  const zones = payload.zones || [];
+  const servitudes = payload.servitudes || [];
+  const legend = [];
+  if (halves.zoning) {
+    const byKind = new Map();
+    for (const zone of zones) {
+      const kind = String(zone?.kind || '').toUpperCase() || '?';
+      byKind.set(kind, (byKind.get(kind) || 0) + 1);
+    }
+    legend.push(...[...byKind.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([kind, count]) => ({
+        label: kind === '?' ? 'Famille non publiée' : kind,
+        color: zoneColorCss(kind),
+        count,
+        // The national grammar, which IS standard across communes — the one
+        // part of a PLU that can be spelled out without inventing.
+        blurb: zoneFamilySentence(kind)
+          || 'Le registre publie une lettre que cette grammaire ne connaît pas — '
+            + 'la zone est dessinée, pas expliquée.',
+      })));
+  }
+  if (halves.servitudes && servitudes.length) {
+    legend.push({
+      label: 'Servitude d’utilité publique',
+      color: SERVITUDE_COLOR,
+      count: servitudes.length,
+      blurb: 'Contour tireté, sans aplat : une seule enveloppe mesurée fait '
+        + '759 polygones sur des kilomètres, et la remplir teinterait la vue '
+        + 'au lieu d’une parcelle.',
+    });
+  }
+  const hidden = [
+    !halves.zoning && zones.length
+      ? `${zones.length} zone${zones.length > 1 ? 's' : ''} de PLU masquée${zones.length > 1 ? 's' : ''}`
+      : null,
+    !halves.servitudes && servitudes.length
+      ? `${servitudes.length} servitude${servitudes.length > 1 ? 's' : ''} masquée${servitudes.length > 1 ? 's' : ''}`
+      : null,
+  ].filter(Boolean);
+  return {
+    chips,
+    legend,
+    // `surfaceFill` marks the key as a ground-classified area wash, so the
+    // manager adds the shared note about the drape over the photorealistic
+    // mesh — and only while there IS a wash to drape.
+    surfaceFill: halves.zoning,
+    ...(hidden.length
+      ? { note: `${hidden.join(' · ')} — le repère porte toujours la réponse du registre.` }
+      : {}),
+  };
+}
+
+/**
+ * Draw one scan: the marker that carries the register's answer, then whichever
+ * halves of the map the reader has left lit.
+ *
+ * Exported so the two chips can be pinned by a test rather than by a
+ * screenshot — no Cesium entity of this application paints in a headless
+ * browser, so "the servitudes are gone from the map" has to be proved on the
+ * entity collection. Signature is the shell's `render` contract, see
+ * `addressScanLayer.js`.
+ * @param {{payload: object, dataSource: object, point: ?object, viewer: ?object,
+ *   runtime: ?Record<string, string>}} context
+ * @returns {number} Entities drawn.
+ */
+export function gpuRender({
+  payload, dataSource, point, viewer, runtime,
+}) {
+  const classificationType = gpuClassificationTypeForScene(viewer?.scene);
+  // WHAT IS PAINTED, NOT WHAT IS KNOWN. The chips govern the GEOMETRY —
+  // the wash, the codes on the ground, the dashed envelopes — and nothing
+  // else: the marker below and the ground cards keep the whole register
+  // answer, because a reader who asked for a quieter map did not ask to be
+  // told less. See {@link GPU_HALVES}.
+  const halves = gpuVisibleHalves(runtime);
+  let drawn = 0;
+  const zones = payload.zones || [];
+  // The zone under the operator's own feet, which under a box is one of
+  // many. `projectZones` already sorted it first, but reading the flag says
+  // what is meant instead of trusting an order.
+  const here = zones.filter((entry) => entry.atPoint);
+  const zone = here[0] || null;
+  const servitudes = payload.servitudes || [];
+  const enclaves = zones.reduce((sum, entry) => sum + (entry.holes || 0), 0);
+  const boxed = payload.regime === 'box';
+  if (point && (zone || zones.length || servitudes.length)) {
+    dataSource.entities.add({
+      id: 'gpu:scan-point',
+      position: Cesium.Cartesian3.fromDegrees(point.lon, point.lat),
+      billboard: {
+        // A PLAN SHEET. A zoning rule is a drawing ABOUT ground rather than
+        // an object standing on it, and the sheet is what tells this marker
+        // apart from the euro, the DPE badge and the hazard triangle that
+        // land on the same address.
+        image: addressMarkerGlyph('plan'),
+        width: 26,
+        height: 26,
+        color: Cesium.Color.fromCssColorString(gpuMarkerColorCss(zone, halves, servitudes.length)),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+      properties: { kind: 'plu-scan-point' },
+      name: zone ? `${zone.code || 'Zone'} — ${zone.label || 'zonage PLU'}` : 'Servitudes à cette adresse',
+      description: [
+        zoneFamilySentence(zone?.kind),
+        zone?.approvedOn ? `PLU approuvé le ${zoneApprovalDate(zone.approvedOn)}` : null,
+        zone?.regulationFile,
+        // The register contradicting itself, said plainly. Two communes
+        // digitise their shared limit independently and the Géoportail
+        // stacks both documents, so the strip between the two versions of
+        // the boundary carries two zonings. Measured around Ustaritz: 17 of
+        // 34 126 sampled points, every one at a commune limit.
+        here.length > 1
+          ? `${here.length} zonages se superposent ici — deux communes ne placent pas leur limite au même endroit`
+          : null,
+        // What is on screen BESIDES the answer, so a map of fifty polygons
+        // is not mistaken for fifty answers about this address. Three lines
+        // about the DRAW, so all three go quiet when the zoning is not drawn
+        // — "12 autres zones autour" over an unpainted block names something
+        // the reader cannot see.
+        halves.zoning && boxed && zones.length > here.length
+          ? `${zones.length - here.length} autres zones autour, dans le bloc`
+          : null,
+        // Said out loud because the reader is about to see unpainted islands
+        // inside a painted zone and deserves to know they are the register's,
+        // not a gap in the draw.
+        halves.zoning && enclaves
+          ? `${enclaves} enclave${enclaves > 1 ? 's' : ''} découpée${enclaves > 1 ? 's' : ''} — un autre zonage s'y applique`
+          : null,
+        halves.zoning && payload.zoningRefused
+          ? `zonage non dessiné : ${payload.zoningRefused.found} zones dans ce cadre, au-delà des ${payload.zoningRefused.limit} que le service renvoie`
+          : null,
+        servitudes.length
+          ? `${servitudes.length} servitude${servitudes.length > 1 ? 's' : ''} : `
+            + [...new Set(servitudes.map((entry) => entry.label))].join(', ')
+          : 'aucune servitude relevée',
+        halves.servitudes && servitudes.some((entry) => entry.simplified)
+          ? 'contours simplifiés pour l\'affichage — voir le règlement' : null,
+        // WHY THE GROUND IS BARE. The register answered and the card above
+        // says what it answered; without this line the reader reads "3
+        // servitudes : PM1, AC1, T1" over a photograph with nothing on it
+        // and takes the map for broken rather than for switched off.
+        !halves.zoning && zones.length ? 'zonage masqué sur la carte' : null,
+        !halves.servitudes && servitudes.length ? 'servitudes masquées sur la carte' : null,
+      ].filter(Boolean).join(' · '),
+    });
+    drawn += 1;
+  }
+  for (const entry of (halves.zoning ? zones : [])) {
+    // The code, written on the ground, the way the paper document does it.
+    // Without it a block of fifty polygons is a colour chart: the FAMILY is
+    // legible from the hue, but `UB` against `UYc` — both orange, one
+    // residential and one industrial — is not.
+    if (entry.anchor && entry.anchor.widthDeg >= ZONE_LABEL_MIN_WIDTH_DEG && entry.code) {
+      dataSource.entities.add({
+        id: `gpu:zone:${entry.id}:label`,
+        position: Cesium.Cartesian3.fromDegrees(entry.anchor.lon, entry.anchor.lat),
+        // The zone's own card, so clicking the code opens the rule. This is
+        // also the only PICKABLE thing a zone has: clamped polylines are
+        // ground primitives and `scene.pick` returns null on them, measured
+        // at every one of 62 vertices of a ring on screen.
+        name: `${entry.code} — ${entry.label || 'zonage PLU'}`,
+        description: zoneDescription(entry),
+        properties: { kind: 'plu-zone-label', zoneKind: entry.kind },
+        label: {
+          text: entry.code,
+          font: 'bold 13px "Roboto Mono", monospace',
+          fillColor: Cesium.Color.fromCssColorString(zoneColorCss(entry.kind)),
+          // Black, not a lighter outline: it survives over both a pale
+          // orthophoto and the dark end of the wash, and it is the same
+          // discipline the marker glyphs use.
+          outlineColor: Cesium.Color.BLACK.withAlpha(0.85),
+          outlineWidth: 3,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          // Fade out where the zone is too small on screen to hold text,
+          // rather than piling codes on top of each other over a city.
+          scaleByDistance: new Cesium.NearFarScalar(500, 1.0, 6000, 0.55),
+          translucencyByDistance: new Cesium.NearFarScalar(3000, 1.0, 9000, 0.0),
+        },
+      });
+    }
+    drawn += drawGpuParts(dataSource, `gpu:zone:${entry.id}`, entry.parts, {
+      css: zoneColorCss(entry.kind),
+      fillAlpha: zoneFillAlpha(entry.kind),
+      width: ZONE_OUTLINE_WIDTH_PX,
+      dashed: false,
+      classificationType,
+      name: `${entry.code || 'Zone'} — ${entry.label || 'zonage PLU'}`,
+      properties: { kind: 'plu-zone', zoneKind: entry.kind, simplified: entry.simplified },
+      description: zoneDescription(entry),
+    });
+  }
+  for (const servitude of (halves.servitudes ? servitudes : [])) {
+    drawn += drawGpuParts(dataSource, `gpu:sup:${servitude.id}`, servitude.parts, {
+      css: SERVITUDE_COLOR,
+      // No wash. See the module header: one measured envelope is 759
+      // polygons spanning kilometres, and a wash of it tints the view rather
+      // than a plot.
+      fillAlpha: 0,
+      width: LOUD_SUP_CODES.has(servitude.code) ? 5 : 4,
+      dashed: true,
+      classificationType,
+      name: servitude.label || servitude.code || 'Servitude',
+      properties: {
+        kind: 'servitude',
+        code: servitude.code,
+        simplified: servitude.simplified,
+        regulationUrl: servitude.regulationUrl,
+      },
+      description: [
+        servitude.name,
+        servitude.assietteType,
+        servitude.bufferM ? `zone tampon de ${servitude.bufferM} m` : null,
+        // Two different simplifications, said apart. A dropped PIECE is a
+        // part of the envelope that is not on screen at all; a decimated
+        // ring is the whole shape, drawn straighter. Reporting "1/1 pièces"
+        // for a shape that lost only vertices would name the wrong loss.
+        servitude.servedParts < servitude.sourceParts
+          ? `${servitude.servedParts} des ${servitude.sourceParts} pièces de l'emprise dessinées`
+          : null,
+        servitude.simplified
+          ? `contour simplifié (${servitude.sourceVertices} sommets à l'amont)`
+          : null,
+        servitude.regulationUrl ? `règlement : ${servitude.regulationUrl}` : null,
+      ].filter(Boolean).join(' · '),
+    });
+  }
+  return drawn;
+}
+
 const urbanismeGpuScanLayer = createAddressScanLayer({
   id: 'urbanisme-gpu',
   name: 'Urbanisme (PLU & servitudes)',
@@ -771,6 +1129,17 @@ const urbanismeGpuScanLayer = createAddressScanLayer({
   endpoint: '/api/gpu',
   updateInterval: UPDATE_INTERVAL_MS,
   params: gpuScanParams,
+  // The two halves of the answer, each on its own switch. See {@link GPU_HALVES}.
+  runtimeParams: {
+    plu: { values: HALF_VALUES, defaultValue: 'on' },
+    sup: { values: HALF_VALUES, defaultValue: 'on' },
+  },
+  // DELIBERATELY ABSENT FROM `gpuScanParams`. One request carries both halves,
+  // so hiding one is a subset of what is already in memory: putting these in
+  // the query string would move the signature, refetch an identical reply —
+  // 1.4 MB at the measured worst case — and spend a rate-limit slot to draw
+  // less of it.
+  drawOnlyParams: ['plu', 'sup'],
   // The wash is ground-classification geometry and a classification type is
   // read once, when the primitive is built. Switching from IGN ortho to the
   // Google photoreal tileset hides the globe, and a wash built for TERRAIN
@@ -784,49 +1153,22 @@ const urbanismeGpuScanLayer = createAddressScanLayer({
   groundCard: gpuGroundCard,
 
   /**
-   * The key to the ground wash.
+   * The key to the ground wash, and the two switches that decide what is on it.
    *
-   * This layer paints eight zoning families in eight hues, plus a dashed red
-   * servitude outline with no fill, and carried no legend at all — hue was
-   * doing all the work with nothing to decode it. Tallied over the zones
-   * ACTUALLY DRAWN in this scan, in descending order, so the key never lists a
-   * family that is not on screen.
+   * THE SIGNATURE IS THE SHELL'S, AND IT WAS NOT. This read `rowControls(payload)`
+   * while the shell calls `rowControls(runtime, summary, payload)` — written on
+   * either side of the same rebase, in the same commit — so the tally ran over
+   * the RUNTIME object and this key has never once painted. Eight zoning
+   * families on the ground with nothing anywhere to decode them.
    *
-   * `surfaceFill` marks it as a ground-classified area wash, so the manager
-   * adds the shared note about the drape over the photorealistic mesh.
-   * @param {{zones?: Array<object>, servitudes?: Array<object>}} payload Drawn scan payload.
-   * @returns {{legend: Array<object>, surfaceFill: boolean}}
+   * Built in {@link gpuRowControls}, which is pure and therefore testable.
+   * @param {Record<string, string>} runtime Parameters in force.
+   * @param {?object} _summary Unused: the key is tallied over the shapes, not the summary.
+   * @param {?object} payload The scan actually drawn, or null.
+   * @returns {{chips: Array<object>, legend?: Array<object>, surfaceFill?: boolean}}
    */
-  rowControls(payload) {
-    const byKind = new Map();
-    for (const zone of payload.zones || []) {
-      const kind = String(zone?.kind || '').toUpperCase() || '?';
-      byKind.set(kind, (byKind.get(kind) || 0) + 1);
-    }
-    const legend = [...byKind.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([kind, count]) => ({
-        label: kind === '?' ? 'Famille non publiée' : kind,
-        color: zoneColorCss(kind),
-        count,
-        // The national grammar, which IS standard across communes — the one
-        // part of a PLU that can be spelled out without inventing.
-        blurb: zoneFamilySentence(kind)
-          || 'Le registre publie une lettre que cette grammaire ne connaît pas — '
-            + 'la zone est dessinée, pas expliquée.',
-      }));
-    const servitudes = (payload.servitudes || []).length;
-    if (servitudes) {
-      legend.push({
-        label: 'Servitude d’utilité publique',
-        color: SERVITUDE_COLOR,
-        count: servitudes,
-        blurb: 'Contour tireté, sans aplat : une seule enveloppe mesurée fait '
-          + '759 polygones sur des kilomètres, et la remplir teinterait la vue '
-          + 'au lieu d’une parcelle.',
-      });
-    }
-    return { legend, surfaceFill: true };
+  rowControls(runtime, _summary, payload) {
+    return gpuRowControls(runtime, payload);
   },
 
   // Published from here rather than from `render`, because `afterDraw` runs
@@ -836,153 +1178,7 @@ const urbanismeGpuScanLayer = createAddressScanLayer({
     publishZoneAt(payload, point);
   },
 
-  render({ payload, dataSource, point, viewer }) {
-    const classificationType = gpuClassificationTypeForScene(viewer?.scene);
-    let drawn = 0;
-    const zones = payload.zones || [];
-    // The zone under the operator's own feet, which under a box is one of
-    // many. `projectZones` already sorted it first, but reading the flag says
-    // what is meant instead of trusting an order.
-    const here = zones.filter((entry) => entry.atPoint);
-    const zone = here[0] || null;
-    const servitudes = payload.servitudes || [];
-    const enclaves = zones.reduce((sum, entry) => sum + (entry.holes || 0), 0);
-    const boxed = payload.regime === 'box';
-    if (point && (zone || zones.length || servitudes.length)) {
-      dataSource.entities.add({
-        id: 'gpu:scan-point',
-        position: Cesium.Cartesian3.fromDegrees(point.lon, point.lat),
-        billboard: {
-          // A PLAN SHEET. A zoning rule is a drawing ABOUT ground rather than
-          // an object standing on it, and the sheet is what tells this marker
-          // apart from the euro, the DPE badge and the hazard triangle that
-          // land on the same address.
-          image: addressMarkerGlyph('plan'),
-          width: 26,
-          height: 26,
-          color: Cesium.Color.fromCssColorString(zoneColorCss(zone?.kind)),
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        },
-        properties: { kind: 'plu-scan-point' },
-        name: zone ? `${zone.code || 'Zone'} — ${zone.label || 'zonage PLU'}` : 'Servitudes à cette adresse',
-        description: [
-          zoneFamilySentence(zone?.kind),
-          zone?.approvedOn ? `PLU approuvé le ${zoneApprovalDate(zone.approvedOn)}` : null,
-          zone?.regulationFile,
-          // The register contradicting itself, said plainly. Two communes
-          // digitise their shared limit independently and the Géoportail
-          // stacks both documents, so the strip between the two versions of
-          // the boundary carries two zonings. Measured around Ustaritz: 17 of
-          // 34 126 sampled points, every one at a commune limit.
-          here.length > 1
-            ? `${here.length} zonages se superposent ici — deux communes ne placent pas leur limite au même endroit`
-            : null,
-          // What is on screen BESIDES the answer, so a map of fifty polygons
-          // is not mistaken for fifty answers about this address.
-          boxed && zones.length > here.length
-            ? `${zones.length - here.length} autres zones autour, dans le bloc`
-            : null,
-          // Said out loud because the reader is about to see unpainted islands
-          // inside a painted zone and deserves to know they are the register's,
-          // not a gap in the draw.
-          enclaves
-            ? `${enclaves} enclave${enclaves > 1 ? 's' : ''} découpée${enclaves > 1 ? 's' : ''} — un autre zonage s'y applique`
-            : null,
-          payload.zoningRefused
-            ? `zonage non dessiné : ${payload.zoningRefused.found} zones dans ce cadre, au-delà des ${payload.zoningRefused.limit} que le service renvoie`
-            : null,
-          servitudes.length
-            ? `${servitudes.length} servitude${servitudes.length > 1 ? 's' : ''} : `
-              + [...new Set(servitudes.map((entry) => entry.label))].join(', ')
-            : 'aucune servitude relevée',
-          servitudes.some((entry) => entry.simplified)
-            ? 'contours simplifiés pour l\'affichage — voir le règlement' : null,
-        ].filter(Boolean).join(' · '),
-      });
-      drawn += 1;
-    }
-    for (const entry of zones) {
-      // The code, written on the ground, the way the paper document does it.
-      // Without it a block of fifty polygons is a colour chart: the FAMILY is
-      // legible from the hue, but `UB` against `UYc` — both orange, one
-      // residential and one industrial — is not.
-      if (entry.anchor && entry.anchor.widthDeg >= ZONE_LABEL_MIN_WIDTH_DEG && entry.code) {
-        dataSource.entities.add({
-          id: `gpu:zone:${entry.id}:label`,
-          position: Cesium.Cartesian3.fromDegrees(entry.anchor.lon, entry.anchor.lat),
-          // The zone's own card, so clicking the code opens the rule. This is
-          // also the only PICKABLE thing a zone has: clamped polylines are
-          // ground primitives and `scene.pick` returns null on them, measured
-          // at every one of 62 vertices of a ring on screen.
-          name: `${entry.code} — ${entry.label || 'zonage PLU'}`,
-          description: zoneDescription(entry),
-          properties: { kind: 'plu-zone-label', zoneKind: entry.kind },
-          label: {
-            text: entry.code,
-            font: 'bold 13px "Roboto Mono", monospace',
-            fillColor: Cesium.Color.fromCssColorString(zoneColorCss(entry.kind)),
-            // Black, not a lighter outline: it survives over both a pale
-            // orthophoto and the dark end of the wash, and it is the same
-            // discipline the marker glyphs use.
-            outlineColor: Cesium.Color.BLACK.withAlpha(0.85),
-            outlineWidth: 3,
-            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            // Fade out where the zone is too small on screen to hold text,
-            // rather than piling codes on top of each other over a city.
-            scaleByDistance: new Cesium.NearFarScalar(500, 1.0, 6000, 0.55),
-            translucencyByDistance: new Cesium.NearFarScalar(3000, 1.0, 9000, 0.0),
-          },
-        });
-      }
-      drawn += drawGpuParts(dataSource, `gpu:zone:${entry.id}`, entry.parts, {
-        css: zoneColorCss(entry.kind),
-        fillAlpha: zoneFillAlpha(entry.kind),
-        width: ZONE_OUTLINE_WIDTH_PX,
-        dashed: false,
-        classificationType,
-        name: `${entry.code || 'Zone'} — ${entry.label || 'zonage PLU'}`,
-        properties: { kind: 'plu-zone', zoneKind: entry.kind, simplified: entry.simplified },
-        description: zoneDescription(entry),
-      });
-    }
-    for (const servitude of payload.servitudes || []) {
-      drawn += drawGpuParts(dataSource, `gpu:sup:${servitude.id}`, servitude.parts, {
-        css: SERVITUDE_COLOR,
-        // No wash. See the module header: one measured envelope is 759
-        // polygons spanning kilometres, and a wash of it tints the view rather
-        // than a plot.
-        fillAlpha: 0,
-        width: LOUD_SUP_CODES.has(servitude.code) ? 5 : 4,
-        dashed: true,
-        classificationType,
-        name: servitude.label || servitude.code || 'Servitude',
-        properties: {
-          kind: 'servitude',
-          code: servitude.code,
-          simplified: servitude.simplified,
-          regulationUrl: servitude.regulationUrl,
-        },
-        description: [
-          servitude.name,
-          servitude.assietteType,
-          servitude.bufferM ? `zone tampon de ${servitude.bufferM} m` : null,
-          // Two different simplifications, said apart. A dropped PIECE is a
-          // part of the envelope that is not on screen at all; a decimated
-          // ring is the whole shape, drawn straighter. Reporting "1/1 pièces"
-          // for a shape that lost only vertices would name the wrong loss.
-          servitude.servedParts < servitude.sourceParts
-            ? `${servitude.servedParts} des ${servitude.sourceParts} pièces de l'emprise dessinées`
-            : null,
-          servitude.simplified
-            ? `contour simplifié (${servitude.sourceVertices} sommets à l'amont)`
-            : null,
-          servitude.regulationUrl ? `règlement : ${servitude.regulationUrl}` : null,
-        ].filter(Boolean).join(' · '),
-      });
-    }
-    return drawn;
-  },
+  render: gpuRender,
 
   summarize(payload) {
     const servitudes = payload.servitudes || [];
@@ -1003,7 +1199,10 @@ const urbanismeGpuScanLayer = createAddressScanLayer({
       // the Géoportail stacks both documents without reconciling them, so the
       // strip between the two versions of the boundary carries two zonings.
       zoneCount: here.length,
-      // Everything drawn, including the neighbours.
+      // Everything the register returned for the box, neighbours included —
+      // and NOT what the half-chips leave on screen. The summary is the
+      // ANSWER; what is painted is the row's own count, which `render`
+      // returns. See {@link GPU_HALVES}.
       zonesDrawn: zones.length,
       // A zoning half refused rather than truncated. See `gpuFeed.js`.
       zoningRefused: payload.zoningRefused ?? null,

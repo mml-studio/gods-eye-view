@@ -15,15 +15,19 @@ import {
   GPU_BOX_MAX_ALTITUDE_M, GPU_MAX_BOX_DEG, projectGpu, projectZones,
 } from './gpuFeed.js';
 import { pointInPolygons } from './ringGeometry.js';
-import {
+import urbanismeGpuLayer, {
   ZONE_FAMILY_SENTENCES,
   ZONE_FILL_MAX_ALPHA,
   drawGpuParts,
   gpuAnswerAt,
   gpuClassificationTypeForScene,
   gpuGroundCard,
+  gpuMarkerColorCss,
+  gpuRender,
+  gpuRowControls,
   gpuScanBox,
   gpuScanParams,
+  gpuVisibleHalves,
   servitudeLines,
   servitudeSentence,
   zoneApprovalDate,
@@ -446,4 +450,154 @@ test('with nothing scanned there is nothing to answer, and no empty card', () =>
   assert.equal(gpuAnswerAt(null, 2, 48, null), null);
   assert.equal(gpuAnswerAt({ zones: [] }, NaN, 48, null), null);
   assert.equal(gpuGroundCard({ payload: null, lon: 2, lat: 48 }), null);
+});
+
+/* ── deux moitiés, deux puces ─────────────────────────────────────────────── */
+//
+// Reported 2026-09-14, over Ustaritz: « j'aimerais un pin pour activer ou
+// désactiver les servitudes, et un autre pour les zones de PLU, afin de rendre
+// les deux sous-couches activables séparément ». One row, two registers, one
+// switch — and over a village centre the dashed easement envelopes and the
+// zoning wash are painted on the same ground, twenty polygons deep.
+
+const BOTH_HALVES = () => projectGpu({
+  zoning: PARIS_ZONING, servitudes: SERVITUDES, point: PARIS, box: null,
+});
+
+/** Draw one scan and report what landed in the collection, by id prefix. */
+function drawnWith(runtime, payload = BOTH_HALVES()) {
+  const source = new Cesium.CustomDataSource('gpu-halves');
+  const count = gpuRender({
+    payload, dataSource: source, point: PARIS, viewer: null, runtime,
+  });
+  const ids = source.entities.values.map((entity) => String(entity.id));
+  return {
+    count,
+    marker: ids.filter((id) => id === 'gpu:scan-point').length,
+    zones: ids.filter((id) => id.startsWith('gpu:zone:')).length,
+    servitudes: ids.filter((id) => id.startsWith('gpu:sup:')).length,
+    entity: (id) => source.entities.getById(id),
+  };
+}
+
+test('the two halves default to on, and each one switches off on its own', () => {
+  assert.deepEqual(gpuVisibleHalves(undefined), { zoning: true, servitudes: true },
+    'a redraw before any chip press must not black out the map');
+  assert.deepEqual(gpuVisibleHalves({}), { zoning: true, servitudes: true });
+  assert.deepEqual(gpuVisibleHalves({ plu: 'off' }), { zoning: false, servitudes: true });
+  assert.deepEqual(gpuVisibleHalves({ sup: 'off' }), { zoning: true, servitudes: false });
+  assert.deepEqual(gpuVisibleHalves({ plu: 'off', sup: 'off' }),
+    { zoning: false, servitudes: false });
+});
+
+test('switching a half off takes it off the map, and leaves the other one alone', () => {
+  // No Cesium entity of this application paints in a headless browser, so the
+  // claim is proved on the collection: the shapes are gone, not faded.
+  const both = drawnWith({ plu: 'on', sup: 'on' });
+  assert.ok(both.zones > 0 && both.servitudes > 0, 'the fixture draws both halves');
+
+  const zoningOnly = drawnWith({ plu: 'on', sup: 'off' });
+  assert.equal(zoningOnly.servitudes, 0, 'the easements are off the map');
+  assert.equal(zoningOnly.zones, both.zones, 'and the zoning is untouched');
+
+  const easementsOnly = drawnWith({ plu: 'off', sup: 'on' });
+  assert.equal(easementsOnly.zones, 0, 'no wash, no stroke, no code on the ground');
+  assert.equal(easementsOnly.servitudes, both.servitudes);
+});
+
+test('both off leaves the marker, so a row that is ON never draws nothing', () => {
+  const neither = drawnWith({ plu: 'off', sup: 'off' });
+  assert.equal(neither.zones + neither.servitudes, 0);
+  assert.equal(neither.marker, 1, 'the register was asked here and answered');
+  assert.equal(neither.count, 1, 'and the row counts what is on screen');
+});
+
+test('the marker keeps the whole register answer, and says what is hidden', () => {
+  // A chip hides what the map PAINTS, never what the register said: a reader
+  // who asked for a quieter map did not ask to be told less. But a card
+  // listing five easements over a photograph with nothing on it reads as a
+  // broken layer, so the draw says so in its own words.
+  const shown = drawnWith({ plu: 'on', sup: 'on' }).entity('gpu:scan-point').description.getValue();
+  const hidden = drawnWith({ plu: 'off', sup: 'off' }).entity('gpu:scan-point').description.getValue();
+  for (const card of [shown, hidden]) {
+    assert.match(card, /5 servitudes :/, 'the easements are named either way');
+  }
+  assert.ok(!shown.includes('masqué') && !shown.includes('masquées'),
+    'nothing is hidden, so nothing is announced');
+  assert.match(hidden, /zonage masqué sur la carte/);
+  assert.match(hidden, /servitudes masquées sur la carte/);
+});
+
+test('the marker never wears a colour the key cannot decode', () => {
+  // `legende-couleur-oui-forme-non`: a colour on the map is an entry in the
+  // key or it is decoration. With the zoning half off the key has no zone
+  // rows, so the marker cannot go on wearing a zone hue.
+  const zone = { kind: 'U' };
+  assert.equal(gpuMarkerColorCss(zone, { zoning: true, servitudes: true }, 5), zoneColorCss('U'));
+  assert.equal(gpuMarkerColorCss(zone, { zoning: false, servitudes: true }, 5), '#ff4d3d',
+    'the easement red, which IS on the key');
+  assert.equal(gpuMarkerColorCss(zone, { zoning: false, servitudes: true }, 0),
+    gpuMarkerColorCss(zone, { zoning: false, servitudes: false }, 5),
+    'an easement half with nothing in it is not a colour either');
+});
+
+test('the chips exist before the first scan, and carry the opposite value', () => {
+  // A chip says what pressing it would mean, which is true before any answer
+  // has landed — and a control a reader cannot find until the layer has
+  // answered is a control they will not find.
+  const { chips, legend } = gpuRowControls({ plu: 'on', sup: 'on' }, null);
+  assert.equal(legend, undefined, 'no key for a wash that is not on screen');
+  assert.deepEqual(chips.map((chip) => chip.label), ['Zonage PLU', 'Servitudes']);
+  assert.deepEqual(chips.map((chip) => chip.active), [true, true]);
+  assert.deepEqual(chips.map((chip) => chip.params), [{ plu: 'off' }, { sup: 'off' }]);
+  const off = gpuRowControls({ plu: 'off', sup: 'off' }, null).chips;
+  assert.deepEqual(off.map((chip) => chip.active), [false, false]);
+  assert.deepEqual(off.map((chip) => chip.params), [{ plu: 'on' }, { sup: 'on' }]);
+});
+
+test('a chip and the parameter gate are one mechanism seen from its two ends', () => {
+  // The enum is the layer's own and the panel cannot see it: a chip offering a
+  // value the gate rejects is a control that logs `ParamsRejected` and does
+  // nothing. Every value on the strip, in both states, has to be accepted.
+  for (const runtime of [{ plu: 'on', sup: 'on' }, { plu: 'off', sup: 'off' }]) {
+    for (const chip of gpuRowControls(runtime, null).chips) {
+      assert.ok(urbanismeGpuLayer.acceptsParams(chip.params),
+        `the gate refuses ${JSON.stringify(chip.params)}`);
+    }
+  }
+  assert.equal(urbanismeGpuLayer.acceptsParams({ plu: 'maybe' }), false,
+    'reject, do not clamp — everything here is reachable from a share link');
+});
+
+test('a hidden half costs no request, so its key must not ride the query string', () => {
+  // `drawOnlyParams`: one call carries both halves — 1.4 MB at the measured
+  // worst case — so hiding one is a subset of what is already in memory. A key
+  // that leaked into `params` would move the signature and refetch an
+  // identical reply to draw less of it.
+  const asked = Object.keys(gpuScanParams(
+    { ...USTARITZ, altitudeM: 400 }, viewerAt(USTARITZ.lon, USTARITZ.lat, 400),
+  ));
+  for (const chip of gpuRowControls({}, null).chips) {
+    for (const key of Object.keys(chip.params)) {
+      assert.ok(!asked.includes(key), `${key} is in the query string`);
+    }
+  }
+});
+
+test('the key follows the chips, because it describes what is on screen', () => {
+  const payload = BOTH_HALVES();
+  const both = gpuRowControls({ plu: 'on', sup: 'on' }, payload);
+  assert.ok(both.legend.length > 1, 'the key that was empty on every scan since #78');
+  assert.equal(both.surfaceFill, true);
+  assert.equal(both.note, undefined, 'nothing hidden, nothing to disclose');
+
+  const noSup = gpuRowControls({ plu: 'on', sup: 'off' }, payload);
+  assert.ok(!noSup.legend.some((entry) => entry.label.startsWith('Servitude')),
+    'a key row for a shape nobody can see');
+  assert.match(noSup.note, /5 servitudes masquées/);
+
+  const noPlu = gpuRowControls({ plu: 'off', sup: 'on' }, payload);
+  assert.deepEqual(noPlu.legend.map((entry) => entry.label), ['Servitude d’utilité publique']);
+  assert.equal(noPlu.surfaceFill, false, 'no wash left to drape over the mesh');
+  assert.match(noPlu.note, /zone/);
 });

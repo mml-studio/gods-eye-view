@@ -6,6 +6,35 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-14
 
 ### Changed
+- **Une ligne, deux registres, et un seul interrupteur pour les deux.** La
+  couche « Urbanisme (PLU & servitudes) » dessine deux réponses sur le même sol :
+  un aplat de zonage qui couvre chaque mètre carré du bloc, et des emprises de
+  servitude tiretées qui le traversent — une seule enveloppe `pm1` mesurée fait
+  759 polygones sur des kilomètres. Au-dessus d'un centre-bourg les deux
+  s'empilent, et pour regarder sous l'une il fallait éteindre la réponse
+  entière.
+
+  Chaque moitié prend sa **puce** sur la ligne : *Zonage PLU* et *Servitudes*,
+  indépendantes — « le zonage seul », « les servitudes seules » et « les deux »
+  sont trois questions qu'un lecteur se pose vraiment. Elles ne coûtent **aucune
+  requête** : une seule interrogation rapporte les deux moitiés (1,4 Mo au pire
+  cas mesuré), donc masquer l'une redessine depuis la réponse déjà en mémoire,
+  sans créneau de rate-limit. Les puces commandent le **dessin** et rien
+  d'autre : le repère de scan et toutes les fiches de sol gardent la réponse
+  complète du registre, et la fiche du repère dit ce qui est masqué — sinon
+  « 5 servitudes : … » au-dessus d'une photo vide se lit comme une couche
+  cassée. Éteindre les deux est permis et laisse le repère : une ligne allumée
+  ne dessine jamais rien.
+
+- **Et la légende de cette couche n'a jamais rien affiché.** Arrivée le
+  3 septembre, elle déclarait `rowControls(payload)` dans le commit même où la
+  coquille partagée passait à `rowControls(runtime, summary, payload)` — les
+  deux moitiés d'un rebase — donc le décompte des familles tournait sur l'objet
+  des paramètres et chaque scan publiait une légende **vide**. Huit familles de
+  zonage peintes au sol, huit teintes, et rien nulle part pour les décoder. La
+  clé revient, et elle suit les puces : une pastille pour une forme que personne
+  ne voit est le même défaut qu'une clé pour un scan en sommeil.
+
 - **La seule panne que le lecteur pouvait réparer lui-même s'affichait deux
   secondes.** Quand une mise en ligne remplace le build sous un onglet resté
   ouvert, la première couche allumée demande un fichier que le serveur ne sert
