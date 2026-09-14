@@ -73,6 +73,16 @@ import { pickOverlayLabelId } from './overlayLabelPick.js';
 
 const STATIONS_URL = 'https://hubeau.eaufrance.fr/api/v2/hydrometrie/referentiel/stations';
 const OBSERVATIONS_URL = 'https://hubeau.eaufrance.fr/api/v2/hydrometrie/observations_tr';
+/**
+ * Elaborated observations — the same API, the VALIDATED half of it.
+ *
+ * `observations_tr` is raw and unqualified by construction. This endpoint
+ * publishes monthly and daily MEANS carrying `libelle_statut: "Donnée
+ * validée"`, `libelle_methode: "Expertisée"` and `libelle_qualification:
+ * "Bonne"` — the producer's own hydrologists have been over them. It is what
+ * makes a number on this map mean something: see `buildHubeauCard`.
+ */
+const OBS_ELAB_URL = 'https://hubeau.eaufrance.fr/api/v2/hydrometrie/obs_elab';
 
 /** Layer id — also the pick-registry key. */
 export const HUBEAU_LAYER_ID = 'hubeau-hydro';
@@ -106,6 +116,29 @@ export const HUBEAU_REQUEST_DEBOUNCE_MS = 500;
 const UPDATE_INTERVAL_MS = 180000;
 /** Observation lookback — see the window rationale in the module header. */
 export const HUBEAU_OBSERVATION_WINDOW_MS = 3600000;
+/**
+ * Second lookback, asked for ONLY when the first one comes back empty.
+ *
+ * THE NATIONAL BLACKOUT THIS FIXES. The hour above is the window that sees
+ * most of the network on an ordinary day, and it is measured. It is not a
+ * floor: the publication chain from the DREALs through PHyC to Hub'Eau runs
+ * late, and when it runs more than an hour late the request returns ZERO rows
+ * — for every station in France at once, not for a region. Measured
+ * 2026-09-14 07:31 UTC, two bboxes 600 km apart: the freshest observation in
+ * the Rhône valley was 72 minutes old and the freshest in Normandy 78, so a
+ * layer asking for the last 60 minutes drew nothing, anywhere, while every
+ * gauge in the country was working and Vigicrues kept painting its reaches.
+ * The visitor sees rivers with no stations on them and no reason given.
+ *
+ * Three hours because that is {@link HUBEAU_STALE_AFTER_MS} — the age past
+ * which this layer already agreed to draw a reading and mark it stale. The
+ * request and the freshness rule disagreed: the layer would happily show a
+ * two-hour-old reading it never asked for. They now agree.
+ *
+ * The retry is bounded to the case that needs it — zero observations, not few
+ * — so an ordinary poll still costs exactly one observation request.
+ */
+export const HUBEAU_FALLBACK_WINDOW_MS = 3 * 3600000;
 /**
  * Page sizes. The two endpoints do NOT share a cap: `observations_tr` accepts
  * 20,000 while `referentiel/stations` rejects anything over 10,000 with
@@ -377,26 +410,55 @@ export function hubeauFreshness(atMs, nowMs) {
 }
 
 /**
- * Format a discharge for display, at a precision that suits both a 0.4 m³/s
- * brook and a 2,400 m³/s Rhône. Negative discharges are real (tidal reaches).
+ * French decimal separator, the convention the rest of the panel already
+ * follows (`cadastreFeed.js`, `amenitiesFrance.js`, `comptagesRhythm.js`).
+ * @param {string} text
+ * @returns {string}
+ */
+const frDecimal = (text) => text.replace('.', ',');
+
+/**
+ * An elapsed duration, for the line that says how old the kept map is.
+ * Coarse on purpose: "il y a 4 h" is the fact, four hours and eleven minutes
+ * is a precision the reading itself does not have.
+ * @param {number} ms
+ * @returns {string}
+ */
+function formatAgo(ms) {
+  const minutes = Math.max(0, Math.round(ms / 60000));
+  if (minutes < 60) return `il y a ${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `il y a ${hours} h`;
+  return `il y a ${Math.round(hours / 24)} j`;
+}
+
+/**
+ * Format a discharge for display, at a precision that suits both a 0,4 m³/s
+ * brook and a 2 400 m³/s Rhône. Negative discharges are real (tidal reaches).
  * @param {number} m3s
  * @returns {string}
  */
 export function formatHubeauDischarge(m3s) {
   const abs = Math.abs(m3s);
-  if (abs < 1) return `${m3s.toFixed(2)} m³/s`;
-  if (abs < 100) return `${m3s.toFixed(1)} m³/s`;
-  return `${Math.round(m3s)} m³/s`;
+  if (abs < 1) return `${frDecimal(m3s.toFixed(2))} m³/s`;
+  if (abs < 100) return `${frDecimal(m3s.toFixed(1))} m³/s`;
+  // Grouped above a thousand: the Rhône in flood reads 11 000 m³/s, and
+  // `11000` is a number a reader has to count the digits of.
+  return `${Math.round(m3s).toLocaleString('fr-FR')} m³/s`;
 }
 
 /**
- * Format a stage for display. Named "gauge" rather than a bare metre value
- * because it is a staff-gauge reading against a local zero, not a depth.
+ * Format a stage for display. Prefixed "échelle" rather than left as a bare
+ * metre value because it is a staff-gauge reading against that station's own
+ * local zero, not a depth and not an altitude — see the unit traps in the
+ * module header. The word was `gauge` until 2026-09-14: the one English term
+ * left in a French panel, and the one most likely to be read as "jauge" in the
+ * dashboard sense rather than as the graduated staff it names.
  * @param {number} metres
  * @returns {string}
  */
 export function formatHubeauStage(metres) {
-  return `gauge ${metres.toFixed(2)} m`;
+  return `échelle ${frDecimal(metres.toFixed(2))} m`;
 }
 
 /**
@@ -738,6 +800,178 @@ export function parseHubeauHistory(payload, kind) {
   return { values, min, max, count };
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * SEASONAL CONTEXT — the reason a number on this map is worth reading
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * "717 m³/s" is not information. It is a quantity with nothing to compare it
+ * to, and a visitor cannot tell a drought from a flood from a perfectly
+ * ordinary Tuesday. The card has carried that gap since it was written, and
+ * the comment below in `buildHubeauCard` argued its way out of closing it:
+ * a historical percentile "would compare an INSTANTANEOUS reading against a
+ * distribution of DAILY MEANS across all seasons, so a September low would
+ * read as an extreme partly because September is always low."
+ *
+ * That objection is right about the WRONG comparison. The fix is not to drop
+ * the context, it is to make the comparison SEASONAL: this September against
+ * the other Septembers, never against the year.
+ *
+ * MEASURED on 2026-09-14 against `obs_elab`:
+ *   - `grandeur_hydro_elab=QmM` — monthly mean discharge, validated and
+ *     expertised, in litres per second like everything else here
+ *   - 39 of 39 sampled reporting stations have a monthly series. The "half the
+ *     network has no recent daily series" objection is TRUE and applies to
+ *     `QmnJ`, the daily grandeur — it does not apply to the monthly one
+ *   - series depth ranges from 6 months to 895 (1944 → 2026)
+ *   - 51.6 KB in 0.43 s with a `fields` list, against 339 KB without
+ *   - Adding `date_debut_obs_elab` to trim the series server-side made it
+ *     SLOWER, not faster: 22 KB in 2.54 s. The window is applied here instead.
+ *
+ * What it produced for Le Rhône à Tarascon that morning, at 340 m³/s: the mean
+ * of its last 26 Septembers is 933 m³/s and the lowest September on record is
+ * 538. The raw number said nothing. The comparison says the lower Rhône is at
+ * a third of its normal September flow, below anything measured in 26 years.
+ *
+ * TWO HONESTIES THIS KEEPS. The reading is instantaneous and the reference is
+ * a set of monthly means, so the card says "moyenne" and never "percentile" —
+ * a ratio against a mean is exactly what it claims to be. And stage is NEVER
+ * given this treatment: a QmM series is a discharge, and a staff reading
+ * against a local zero has no business being compared to it.
+ */
+
+/** Reference window. 30 years is the climatological convention. */
+export const HUBEAU_NORMAL_MAX_YEARS = 30;
+/** Below this many years in the month, a mean is an anecdote. */
+export const HUBEAU_NORMAL_MIN_YEARS = 5;
+/** Page cap for a monthly series — 500 months is 41 years. */
+const NORMAL_PAGE_SIZE = 500;
+/** The reference must never hold the card hostage — same rule as the history. */
+const NORMAL_TIMEOUT_MS = 12_000;
+
+const MONTH_NAMES = Object.freeze([
+  'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+  'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
+]);
+
+/**
+ * Build the monthly-mean request for one station.
+ *
+ * `fields` pays here and does not on the hot path — measured 51.6 KB against
+ * 339 KB for the same 895 months, at the same 0.43 s. No date bound, for the
+ * measured reason in the section header: bounding it server-side cost 2.1 s.
+ * @param {string} code Station code.
+ * @param {string} [baseUrl]
+ * @returns {string}
+ */
+export function hubeauMonthlyNormalRequestUrl(code, baseUrl = OBS_ELAB_URL) {
+  const params = new URLSearchParams({
+    code_entite: String(code),
+    grandeur_hydro_elab: 'QmM',
+    size: String(NORMAL_PAGE_SIZE),
+    sort: 'asc',
+    fields: 'date_obs_elab,resultat_obs_elab',
+  });
+  return `${baseUrl}?${params}`;
+}
+
+/**
+ * Reduce a monthly series to ONE month's reference.
+ *
+ * Only the rows for `month` survive, and only the most recent
+ * {@link HUBEAU_NORMAL_MAX_YEARS} of those — a 74-year series would otherwise
+ * average a river across a period during which its catchment was dammed,
+ * drained and built on.
+ *
+ * `years` counts the values that ARE there and `firstYear`/`lastYear` bound the
+ * period they came from; the two differ whenever the series has a hole, which
+ * hydrometric series do. The card states the PERIOD rather than the count —
+ * see `hubeauSeasonalLines`.
+ *
+ * @param {object|null|undefined} payload `obs_elab` body.
+ * @param {number} month 1-12.
+ * @param {number} [maxYears]
+ * @returns {{month:number, mean:number, min:number, max:number, years:number,
+ *   firstYear:number, lastYear:number}|null}
+ */
+export function parseHubeauMonthlyNormal(payload, month, maxYears = HUBEAU_NORMAL_MAX_YEARS) {
+  const rows = Array.isArray(payload?.data) ? payload.data : [];
+  const target = Number(month);
+  if (!Number.isInteger(target) || target < 1 || target > 12) return null;
+  const byYear = new Map();
+  for (const row of rows) {
+    const date = String(row?.date_obs_elab ?? '');
+    // `YYYY-MM-DD`; the month is what selects the row, so a malformed date
+    // must not fall through as month 0 and be counted against January.
+    if (!/^\d{4}-\d{2}/.test(date)) continue;
+    if (Number(date.slice(5, 7)) !== target) continue;
+    const published = row?.resultat_obs_elab;
+    if (published === null || published === undefined || published === '') continue;
+    const value = hubeauDischargeM3s(Number(published));
+    if (!Number.isFinite(value) || value < 0) continue;
+    byYear.set(Number(date.slice(0, 4)), value);
+  }
+  if (byYear.size === 0) return null;
+  const years = [...byYear.keys()].sort((a, b) => a - b).slice(-Math.max(1, maxYears));
+  const values = years.map((year) => byYear.get(year));
+  const sum = values.reduce((total, value) => total + value, 0);
+  return {
+    month: target,
+    mean: sum / values.length,
+    min: Math.min(...values),
+    max: Math.max(...values),
+    years: values.length,
+    firstYear: years[0],
+    lastYear: years[years.length - 1],
+  };
+}
+
+/**
+ * The one or two card lines that turn a discharge into a reading.
+ *
+ * ── The period names a SPAN, not a count ────────────────────────────────────
+ *
+ * "en moyenne sur les 29 dernières années" is what the line says, where 29 is
+ * the period the values were drawn from — not how many of them there are. An
+ * earlier draft wrote "sur 26 des 29 dernières années" to expose the holes a
+ * hydrometric series always has; it is accurate and it is one number too many
+ * for a card someone reads in two seconds. The mean is over whatever the last
+ * 29 years published, which is exactly what the sentence claims.
+ *
+ * A station whose series stopped years ago gets the period named instead:
+ * nothing about 1997-2015 is "dernières".
+ *
+ * NO VERDICT. A draft also appended "sous le plus bas septembre mesuré" when
+ * the reading fell under the record low. The range is printed right above it,
+ * so the reader who wants that conclusion already has both numbers, and a card
+ * that draws the conclusion for them is one step from sounding like an alert —
+ * which this layer is not (Vigicrues is).
+ *
+ * @param {number} m3s The reading, already in m³/s.
+ * @param {object|null} normal From {@link parseHubeauMonthlyNormal}.
+ * @param {number} [nowYear] Current year; decides whether the series is current.
+ * @returns {string[]} Zero or three lines.
+ */
+export function hubeauSeasonalLines(m3s, normal, nowYear = new Date().getFullYear()) {
+  if (!normal || !Number.isFinite(m3s)) return [];
+  if (normal.years < HUBEAU_NORMAL_MIN_YEARS) return [];
+  if (!(normal.mean > 0)) return [];
+  const month = MONTH_NAMES[normal.month - 1];
+  const span = normal.lastYear - normal.firstYear + 1;
+  // A month that has not come round yet this year leaves the latest value in
+  // LAST year — current, not lapsed. Two years is the slack that allows for it
+  // plus one missed campaign.
+  const current = normal.lastYear >= nowYear - 2;
+  const period = current
+    ? `sur les ${span} dernières années`
+    : `entre ${normal.firstYear} et ${normal.lastYear}`;
+  const lines = [
+    `◑ ${month} : ${formatHubeauDischarge(normal.mean)} en moyenne ${period}`,
+    `   entre ${formatHubeauDischarge(normal.min)} et ${formatHubeauDischarge(normal.max)}`,
+  ];
+  lines.push(`   aujourd'hui ${Math.round((m3s / normal.mean) * 100)} % de cette moyenne`);
+  return lines;
+}
+
 /**
  * The card for one station.
  *
@@ -755,12 +989,17 @@ export function parseHubeauHistory(payload, kind) {
  *   what it is — the datum the stage is counted from — and the addition is
  *   left to a reader who knows which system their station uses.
  *
- * • **A historical percentile.** It is reachable in two 526-byte requests and
- *   it would compare an INSTANTANEOUS reading against a distribution of DAILY
- *   MEANS across all seasons, so a September low would read as an extreme
- *   partly because September is always low. Half the active network has no
- *   recent daily series either, so the line would appear for some stations and
- *   not others and read as a bug.
+ * • **A historical percentile.** Still refused, and for the reason it always
+ *   was: it would rank an INSTANTANEOUS reading inside a distribution of DAILY
+ *   MEANS taken across all seasons, so a September low would read as an
+ *   extreme partly because September is always low — and half the network has
+ *   no recent daily series, so the line would appear for some stations and not
+ *   others and read as a bug.
+ *
+ *   What replaced it is NOT that comparison. The seasonal lines above compare
+ *   this month against the same month in other years, from the validated
+ *   monthly series 39 of 39 sampled stations publish, and they say "moyenne"
+ *   rather than claiming a rank. See the SEASONAL CONTEXT section.
  *
  * • **Anything resembling a flood warning.** These values are raw and
  *   unqualified, 23 % of live discharge readings carry the producer's own
@@ -769,9 +1008,11 @@ export function parseHubeauHistory(payload, kind) {
  *
  * @param {object} record
  * @param {{values?:Array, min?:number|null, max?:number|null, count?:number}|null} [history]
+ * @param {object|null} [normal] From `parseHubeauMonthlyNormal`, or a
+ *   `{pending:true}` / `{failed:true}` marker — the card is complete without it.
  * @returns {string} Newline-separated; the first line is the title.
  */
-export function buildHubeauCard(record, history = null) {
+export function buildHubeauCard(record, history = null, normal = null) {
   const lines = [String(record?.name ?? '').trim() || String(record?.code ?? 'Station')];
   const reading = record?.reading || {};
   const unit = reading.kind === 'H' ? 'm' : 'm³/s';
@@ -807,6 +1048,14 @@ export function buildHubeauCard(record, history = null) {
     lines.push('↻ historique 24 h indisponible');
   }
 
+  // Only a discharge earns this. A stage is counted from a local zero and a
+  // QmM series is a discharge: the two have no common scale, and dividing one
+  // by the other would produce a confident percentage of nothing.
+  if (reading.kind === 'Q' && Number.isFinite(reading.value)) {
+    if (normal?.pending) lines.push('◑ moyenne du mois …');
+    else lines.push(...hubeauSeasonalLines(reading.value, normal));
+  }
+
   if (Number.isFinite(record?.openedYear)) {
     lines.push(`🕐 station ouverte en ${record.openedYear}`);
   }
@@ -819,12 +1068,12 @@ export function buildHubeauCard(record, history = null) {
   // the producer chose to publish about their own measurement.
   if (influence && !/^nulle$/i.test(influence)) lines.push(`⚠ influence locale : ${influence}`);
 
-  const unqualified = /non\s*qualifi/i.test(String(record?.qualification ?? ''));
-  if (reading.doubtful) {
-    lines.push('⚠ relevé signalé douteux par le producteur');
-  } else if (unqualified) {
-    lines.push('⚠ données non qualifiées — Vigicrues reste le canal officiel');
-  }
+  // The blanket "données non qualifiées — Vigicrues reste le canal officiel"
+  // used to sit here, on almost every card in the layer, which is what made it
+  // furniture: a caveat every station carries tells a reader nothing about the
+  // station they clicked. The module header still states it, and the flag that
+  // IS per-station — the producer's own `Douteuse` on this reading — is kept.
+  if (reading.doubtful) lines.push('⚠ relevé signalé douteux par le producteur');
 
   return lines.join('\n');
 }
@@ -836,9 +1085,9 @@ export function buildHubeauCard(record, history = null) {
  * @param {object|null} [history]
  * @returns {object|null}
  */
-export function createHubeauSelectedOverlayEntry(record, position, history = null) {
+export function createHubeauSelectedOverlayEntry(record, position, history = null, normal = null) {
   if (!record || !position) return null;
-  const [title, ...details] = buildHubeauCard(record, history).split('\n');
+  const [title, ...details] = buildHubeauCard(record, history, normal).split('\n');
   return {
     id: `hubeau:${record.code}`,
     position,
@@ -905,7 +1154,25 @@ export function createHubeauHydrometryLayer({
   overlayHost = DEFAULT_OVERLAY_HOST,
   stationsUrl = STATIONS_URL,
   observationsUrl = OBSERVATIONS_URL,
+  obsElabUrl = OBS_ELAB_URL,
   now = () => Date.now(),
+  /**
+   * The per-click fetch seam — AND, until 2026-09-14, a variable that did not
+   * exist.
+   *
+   * `loadHistory()` has always opened with `typeof fetchImpl !== 'function'`
+   * and returned. `typeof` on an undeclared binding is the one reference that
+   * does NOT throw: it quietly answers `'undefined'`, so the guard was true
+   * every time, the request was never made, and the 24-hour hydrograph the
+   * card is built around never loaded once in a browser. The tests missed it
+   * because they exercise `parseHubeauHistory` and `buildHubeauCard` directly
+   * and never made the layer click through to the network — `a click fetches
+   * the hydrograph and the monthly reference` now does.
+   *
+   * Wrapped rather than passed as `fetch` so a harness that swaps
+   * `globalThis.fetch` after this factory runs is still the one that answers.
+   */
+  fetchImpl = (...args) => fetch(...args),
   // Cesium registers DOM listeners in the ScreenSpaceEventHandler constructor,
   // and this layer's lifecycle is exercised headless. The factory is the seam
   // that keeps the click ORDER — dot, then name, then empty space — under test
@@ -929,6 +1196,15 @@ export function createHubeauHydrometryLayer({
   let _lastUpdate = null;
   let _lastError = null;
   let _status = 'idle';
+  /**
+   * True when what is on screen is the LAST GOOD CENSUS rather than a fresh
+   * one. See `retainRendered()`: this layer never blanks itself.
+   */
+  let _stale = false;
+  /** Age anchor for the panel: the newest reading currently DRAWN. */
+  let _newestReadingMs = null;
+  /** Lookback the last answered request used — the hour, or the fallback. */
+  let _windowMs = HUBEAU_OBSERVATION_WINDOW_MS;
   let _enabled = false;
   let _loading = false;
   let _abort = null;
@@ -946,10 +1222,65 @@ export function createHubeauHydrometryLayer({
   let _historyAbort = null;
   /** Guards a landing history against a selection the visitor has since changed. */
   let _historyGeneration = 0;
+  /** This month's reference for the selected station: {pending}|{failed}|normal. */
+  let _normal = null;
+  let _normalAbort = null;
+  let _normalGeneration = 0;
+  /**
+   * Monthly references already answered, by station code.
+   *
+   * A monthly mean does not move within a session — the series is republished
+   * about once a month — so clicking back to a station must not pay for it
+   * twice. Bounded by how many stations one visitor clicks, which is small;
+   * cleared with the layer.
+   */
+  const _normalCache = new Map();
 
   function setStatus(status, error = null) {
     _status = status;
     _lastError = error;
+  }
+
+  /**
+   * The sentence the panel prints when this layer is ON and drawing nothing.
+   *
+   * IT PRINTED NOTHING AT ALL until now, and that is the whole bug. `manager.js`
+   * treats `zoom-in` and `empty` as GUIDANCE — the chip stays green, and the
+   * line underneath is read from `loadingLabel`, falling back to `error`. This
+   * layer set neither: `setStatus('zoom-in', null)`, `setStatus('empty', null)`.
+   * So a visitor at a continental camera, or here on a morning when the
+   * publication chain is late, saw a green ON row, the Vigicrues reaches still
+   * painted, and not one station — with no way to tell a silent network from a
+   * broken layer.
+   *
+   * Returns null while loading, so the manager's own "chargement…" wins: a
+   * prompt to act is wrong while the answer is still on the wire.
+   * @returns {string|null}
+   */
+  function guidanceLabel() {
+    if (_loading) return null;
+    if (_status === 'zoom-in') {
+      return _records.length > 0
+        ? `vue trop large pour mesurer — ${_summary.total.toLocaleString('fr-FR')} stations conservées`
+        : `rapproche la vue sous ${HUBEAU_MAX_VIEWPORT_DEGREES}° pour charger les stations`;
+    }
+    if (_status === 'empty') {
+      const hours = Math.round(_windowMs / 3600000);
+      if (_records.length > 0) {
+        const kept = _summary.total.toLocaleString('fr-FR');
+        // No station AT ALL in the box is a different fact from a box full of
+        // silent ones, and the kept dots are somewhere else entirely.
+        if (_activeInView === 0) return `aucune station dans cette vue — ${kept} stations conservées`;
+        const age = Number.isFinite(_newestReadingMs)
+          ? ` (dernier relevé ${formatAgo(now() - _newestReadingMs)})`
+          : '';
+        return `aucun nouveau relevé depuis ${hours} h — ${kept} stations conservées${age}`;
+      }
+      return _activeInView > 0
+        ? `${_activeInView.toLocaleString('fr-FR')} stations ici, aucun relevé publié depuis ${hours} h`
+        : `aucune station dans cette vue`;
+    }
+    return null;
   }
 
   function viewportBox() {
@@ -969,7 +1300,7 @@ export function createHubeauHydrometryLayer({
   function publishSelected() {
     const drawn = _selectedId ? _drawn.get(_selectedId) : null;
     if (!drawn) return;
-    const entry = createHubeauSelectedOverlayEntry(drawn.record, drawn.position, _history);
+    const entry = createHubeauSelectedOverlayEntry(drawn.record, drawn.position, _history, _normal);
     if (!entry) return;
     overlayHost.setEntries(
       HUBEAU_SELECTED_OVERLAY_SOURCE_ID,
@@ -1037,6 +1368,70 @@ export function createHubeauHydrometryLayer({
     }
   }
 
+  /**
+   * Fetch the selected station's reference for the month it is currently in.
+   *
+   * Deliberately a SECOND request rather than a field on the first: it answers
+   * a different question on a different endpoint, it is cacheable for the whole
+   * session while the hydrograph is not, and a card that already carries the
+   * reading must not wait on it. Same failure contract as the history — every
+   * path lands on a marker, none throws, and `buildHubeauCard` renders without
+   * either of them.
+   *
+   * Stage stations are skipped before the request is made, not after: see the
+   * card for why a QmM series cannot reference a staff reading.
+   * @param {object} record
+   */
+  async function loadNormal(record) {
+    const reading = record?.reading;
+    if (reading?.kind !== 'Q' || !Number.isFinite(reading.value) || typeof fetchImpl !== 'function') {
+      _normal = null;
+      return;
+    }
+    const month = new Date(now()).getMonth() + 1;
+    const cacheKey = `${record.code}:${month}`;
+    if (_normalCache.has(cacheKey)) {
+      _normal = _normalCache.get(cacheKey);
+      publishSelected();
+      return;
+    }
+    _normalAbort?.abort();
+    const abort = new AbortController();
+    _normalAbort = abort;
+    const generation = ++_normalGeneration;
+    const owns = () => generation === _normalGeneration && !abort.signal.aborted;
+    _normal = { pending: true };
+    const timer = setTimeout(() => abort.abort(), NORMAL_TIMEOUT_MS);
+    try {
+      const response = await fetchImpl(
+        hubeauMonthlyNormalRequestUrl(record.code, obsElabUrl),
+        { signal: abort.signal },
+      );
+      if (!owns()) return;
+      if (!response.ok && response.status !== 206) {
+        _normal = { failed: true };
+        publishSelected();
+        return;
+      }
+      const body = await response.json();
+      if (!owns()) return;
+      const parsed = parseHubeauMonthlyNormal(body, month);
+      _normal = parsed || { failed: true };
+      // Only a real answer is cached. A timeout on a service with no
+      // availability guarantee must not deny this station its context for the
+      // rest of the session.
+      if (parsed) _normalCache.set(cacheKey, parsed);
+      publishSelected();
+    } catch {
+      if (!owns()) return;
+      _normal = { failed: true };
+      publishSelected();
+    } finally {
+      clearTimeout(timer);
+      if (_normalAbort === abort) _normalAbort = null;
+    }
+  }
+
   function clearSelection() {
     const drawn = _selectedId ? _drawn.get(_selectedId) : null;
     if (drawn?.point) {
@@ -1048,6 +1443,10 @@ export function createHubeauHydrometryLayer({
     _historyAbort?.abort();
     _historyAbort = null;
     _historyGeneration += 1;
+    _normal = null;
+    _normalAbort?.abort();
+    _normalAbort = null;
+    _normalGeneration += 1;
     overlayHost.clearSource(HUBEAU_SELECTED_OVERLAY_SOURCE_ID);
   }
 
@@ -1065,6 +1464,7 @@ export function createHubeauHydrometryLayer({
     // that has no availability guarantee.
     publishSelected();
     void loadHistory(drawn.record);
+    void loadNormal(drawn.record);
   }
 
   function onKeyDown(event) {
@@ -1169,6 +1569,40 @@ export function createHubeauHydrometryLayer({
     _summary = summarizeHubeauRecords([]);
     _activeInView = 0;
     _truncated = false;
+    _newestReadingMs = null;
+  }
+
+  /**
+   * KEEP WHAT WE HAVE. The layer used to blank itself three ways — a camera
+   * past the zoom gate, a census that came back empty, and (through the empty
+   * census) a publication chain running late. All three produced the same
+   * screen: rivers painted by Vigicrues, not one gauge on them, and nothing
+   * said. The last measurement does not stop being true because the next
+   * request failed to arrive.
+   *
+   * So nothing is ever discarded for lack of a replacement. What changes is
+   * the CLAIM: freshness is recomputed against the clock, so a retained dot
+   * greys out on its own as it ages past {@link HUBEAU_STALE_AFTER_MS}, and
+   * the row reports `stale` — which `manager.js` already renders as a STALE
+   * chip over a kept map ("layers keep their rendered records through the
+   * guidance state, so a genuinely stale cache still reads STALE").
+   *
+   * Returns false when there was never anything to keep, so the caller can
+   * fall back to its empty-state guidance.
+   * @param {number} nowMs
+   * @returns {boolean}
+   */
+  function retainRendered(nowMs) {
+    if (_records.length === 0) return false;
+    for (const record of _records) {
+      const reading = record?.reading;
+      if (!reading || !Number.isFinite(reading.atMs)) continue;
+      reading.freshness = hubeauFreshness(reading.atMs, nowMs);
+    }
+    _summary = summarizeHubeauRecords(_records);
+    _stale = true;
+    repaint();
+    return true;
   }
 
   async function load() {
@@ -1178,9 +1612,13 @@ export function createHubeauHydrometryLayer({
       _abort?.abort();
       _abort = null;
       _loading = false;
-      clearRendered();
-      overlayHost.clearSource(HUBEAU_OVERLAY_SOURCE_ID);
       setStatus('zoom-in', null);
+      // A camera too wide to MEASURE is not a reason to forget what was
+      // measured. The dots stay where they were read, greying as they age.
+      if (!retainRendered(now())) {
+        clearRendered();
+        overlayHost.clearSource(HUBEAU_OVERLAY_SOURCE_ID);
+      }
       return false;
     }
 
@@ -1209,12 +1647,17 @@ export function createHubeauHydrometryLayer({
       // Hub'Eau answers a capped page with 206 Partial Content, which is a
       // SUCCESS here — the layer asks for a bounded page on purpose.
       const ok = (response) => response.ok || response.status === 206;
+      // Both upstream faults keep the map: see `retainRendered()`. A 429 from
+      // Hub'Eau during a burst of camera motion is the common one, and it used
+      // to leave the reaches painted with every gauge gone.
       if (stationsResponse && !ok(stationsResponse)) {
         setStatus('unavailable', `Hub'Eau stations HTTP ${stationsResponse.status}`);
+        retainRendered(nowMs);
         return false;
       }
       if (!ok(observationsResponse)) {
         setStatus('unavailable', `Hub'Eau observations HTTP ${observationsResponse.status}`);
+        retainRendered(nowMs);
         return false;
       }
 
@@ -1229,16 +1672,64 @@ export function createHubeauHydrometryLayer({
         _stationCache = stations;
         _stationCacheKey = boxKey;
       }
-      const observations = parseHubeauObservations(observationsBody);
-      _records = buildHubeauRecords(observations, stations, nowMs);
-      _summary = summarizeHubeauRecords(_records);
+      let observations = parseHubeauObservations(observationsBody);
+      let truncatedBody = observationsBody;
+      // NOTHING AT ALL is the symptom of a late publication chain, not of an
+      // empty map — see HUBEAU_FALLBACK_WINDOW_MS. Reach back once, and only
+      // from zero: "few" is a real answer about a quiet region, "none" over a
+      // bbox that holds gauges is almost always the chain running late.
+      if (observations.size === 0) {
+        const fallbackResponse = await fetch(
+          hubeauObservationsRequestUrl(box, nowMs - HUBEAU_FALLBACK_WINDOW_MS, observationsUrl),
+          { signal: abort.signal },
+        );
+        if (!owns()) return false;
+        if (ok(fallbackResponse)) {
+          const fallbackBody = await fallbackResponse.json();
+          if (!owns()) return false;
+          observations = parseHubeauObservations(fallbackBody);
+          truncatedBody = fallbackBody;
+          _windowMs = HUBEAU_FALLBACK_WINDOW_MS;
+        }
+      } else {
+        _windowMs = HUBEAU_OBSERVATION_WINDOW_MS;
+      }
       _activeInView = stations.size;
+      const next = buildHubeauRecords(observations, stations, nowMs);
+      if (next.length === 0) {
+        // Three hours of silence over a bbox that holds gauges. Keep the last
+        // census rather than blanking the map — `retainRendered()` says why —
+        // and leave `_lastUpdate` where it was, so the panel ages the DATA and
+        // not the request that failed to replace it.
+        setStatus('empty', null);
+        if (retainRendered(nowMs)) {
+          console.log(
+            `[Data:Hubeau] no reading in ${Math.round(_windowMs / 3600000)} h — `
+            + `keeping ${_summary.total} stations from the last census`,
+          );
+          return true;
+        }
+        _records = next;
+        _summary = summarizeHubeauRecords(_records);
+        _truncated = Boolean(truncatedBody?.next);
+        repaint();
+        return true;
+      }
+      _records = next;
+      _summary = summarizeHubeauRecords(_records);
+      _newestReadingMs = _records.reduce(
+        (newest, record) => (Number.isFinite(record?.reading?.atMs) && record.reading.atMs > newest
+          ? record.reading.atMs
+          : newest),
+        0,
+      ) || null;
       // The page cap is a real ceiling during a flood, when more stations
       // report and report more often — exactly when the map matters. Say so
       // rather than presenting a truncated page as the whole network.
-      _truncated = Boolean(observationsBody?.next);
+      _truncated = Boolean(truncatedBody?.next);
       _lastUpdate = nowMs;
-      setStatus(_records.length ? 'nominal' : 'empty', null);
+      _stale = false;
+      setStatus('nominal', null);
       repaint();
       console.log(
         `[Data:Hubeau] ${_summary.total} reporting stations of ${_activeInView} active in view`,
@@ -1248,6 +1739,9 @@ export function createHubeauHydrometryLayer({
       if (abort.signal.aborted) return false;
       console.warn('[Data:Hubeau] Fetch error:', error);
       setStatus('unavailable', "Hub'Eau network error");
+      // A dead request does not unmake a good census — the dots stay, the row
+      // carries the fault, and the panel ages the data it is still showing.
+      retainRendered(now());
       return false;
     } finally {
       if (generation === _generation) {
@@ -1287,6 +1781,9 @@ export function createHubeauHydrometryLayer({
       _enabled = false;
       _selectedId = null;
       _history = null;
+      _normal = null;
+      _normalCache.clear();
+      _stale = false;
       setStatus('idle', null);
       overlayHost.setVisible(HUBEAU_OVERLAY_SOURCE_ID, false);
       overlayHost.setVisible(HUBEAU_SELECTED_OVERLAY_SOURCE_ID, false);
@@ -1378,7 +1875,9 @@ export function createHubeauHydrometryLayer({
       clearRendered();
       _stationCache = new Map();
       _stationCacheKey = null;
+      _normalCache.clear();
       _lastUpdate = null;
+      _stale = false;
       setStatus('idle', null);
     },
 
@@ -1406,6 +1905,17 @@ export function createHubeauHydrometryLayer({
         error: _lastError,
         loading: _loading,
         status: _status,
+        // Read by `manager.js` for the guidance line under the row — see
+        // `guidanceLabel()` for why this layer had none.
+        loadingLabel: guidanceLabel(),
+        // Which lookback answered. `3` means the publication chain was more
+        // than an hour behind and the layer reached back for it.
+        windowHours: Math.round(_windowMs / 3600000),
+        // `manager.js` turns this into the STALE chip over a map it KEEPS.
+        stale: _stale,
+        // The newest reading actually on screen, which is what "il y a 2 h"
+        // should count from — not the request that tried to replace it.
+        newestReadingAt: _newestReadingMs,
         // Reported so "how much of the network is this" is answerable:
         // roughly 40% of nominally-active stations are silent at any moment.
         activeStationsInView: _activeInView,

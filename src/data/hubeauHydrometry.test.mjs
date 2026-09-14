@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as Cesium from 'cesium';
 import {
+  HUBEAU_FALLBACK_WINDOW_MS,
   HUBEAU_HISTORY_WINDOW_MS,
   HUBEAU_JOIN_MAX_M,
   HUBEAU_LAYER_ID,
@@ -29,6 +30,7 @@ import {
   hubeauDischargeM3s,
   hubeauFreshness,
   hubeauHistoryRequestUrl,
+  hubeauMonthlyNormalRequestUrl,
   hubeauObservationsRequestUrl,
   hubeauPixelSize,
   hubeauReading,
@@ -37,7 +39,9 @@ import {
   hubeauViewportBox,
   mapAnalystRecord,
   nearestHubeauGauge,
+  hubeauSeasonalLines,
   parseHubeauHistory,
+  parseHubeauMonthlyNormal,
   parseHubeauObservations,
   parseHubeauStations,
   selectHubeauOverlayCohort,
@@ -86,13 +90,17 @@ test('Q is litres per second and H is millimetres — both divided by 1000', () 
 });
 
 test('display formatting keeps precision sensible across four orders of magnitude', () => {
-  assert.equal(formatHubeauDischarge(0.42), '0.42 m³/s');
-  assert.equal(formatHubeauDischarge(72.2), '72.2 m³/s');
+  // Decimal COMMA — the panel is French, and `cadastreFeed.js` and
+  // `amenitiesFrance.js` already write numbers this way.
+  assert.equal(formatHubeauDischarge(0.42), '0,42 m³/s');
+  assert.equal(formatHubeauDischarge(72.2), '72,2 m³/s');
   assert.equal(formatHubeauDischarge(717), '717 m³/s');
-  assert.equal(formatHubeauDischarge(-3.5), '-3.5 m³/s');
-  // Named "gauge" because it is a staff reading against a local zero.
-  assert.equal(formatHubeauStage(0.978), 'gauge 0.98 m');
-  assert.equal(formatHubeauStage(-17.18), 'gauge -17.18 m');
+  assert.match(formatHubeauDischarge(11000), /^11[\s\u202f\u00a0]000 m³\/s$/);
+  assert.equal(formatHubeauDischarge(-3.5), '-3,5 m³/s');
+  // Prefixed "échelle" because it is a staff reading against a local zero,
+  // and because `gauge` was the last English word in a French panel.
+  assert.equal(formatHubeauStage(0.978), 'échelle 0,98 m');
+  assert.equal(formatHubeauStage(-17.18), 'échelle -17,18 m');
 });
 
 // ── Request building ────────────────────────────────────────────────────────
@@ -185,7 +193,7 @@ test('discharge wins over stage — it is the only reading comparable between st
     H: { value: 978, atMs: CAPTURE_MS, doubtful: false },
   }, CAPTURE_MS);
   assert.equal(reading.kind, 'Q');
-  assert.equal(reading.text, '42.6 m³/s');
+  assert.equal(reading.text, '42,6 m³/s');
 });
 
 test('a doubtful reading is shown but marked, never silently laundered', () => {
@@ -193,7 +201,7 @@ test('a doubtful reading is shown but marked, never silently laundered', () => {
     Q: { value: 5090, atMs: CAPTURE_MS, doubtful: true },
   }, CAPTURE_MS);
   assert.equal(reading.doubtful, true);
-  assert.equal(reading.text, '5.1 m³/s ?');
+  assert.equal(reading.text, '5,1 m³/s ?');
 });
 
 test('an expired reading yields no reading at all', () => {
@@ -271,7 +279,7 @@ test('overlay entry ranks big rivers above doubtful and stage-only stations', ()
     position,
   );
   const gauge = createHubeauOverlayEntry(
-    { code: 'B', name: 'Un ru', reading: { kind: 'H', value: 0.3, doubtful: false, freshness: 'live', text: 'gauge 0.30 m' } },
+    { code: 'B', name: 'Un ru', reading: { kind: 'H', value: 0.3, doubtful: false, freshness: 'live', text: 'échelle 0,30 m' } },
     position,
   );
   assert.equal(big.title, 'Le Rhône · 717 m³/s');
@@ -335,6 +343,9 @@ test('analyst records report SI values under names that say what they are', () =
 // ── Lifecycle ───────────────────────────────────────────────────────────────
 
 function createHarness({ rectangle, responses } = {}) {
+  // Mutable so a test can widen the camera between two updates — the retention
+  // tests need the SAME layer to cross the zoom gate.
+  let viewRectangle = rectangle;
   const primitives = [];
   const hostCalls = [];
   const fetchUrls = [];
@@ -383,8 +394,8 @@ function createHarness({ rectangle, responses } = {}) {
       },
     },
     camera: {
-      computeViewRectangle: () => (rectangle === null ? null : Cesium.Rectangle.fromDegrees(
-        rectangle.west, rectangle.south, rectangle.east, rectangle.north,
+      computeViewRectangle: () => (viewRectangle === null ? null : Cesium.Rectangle.fromDegrees(
+        viewRectangle.west, viewRectangle.south, viewRectangle.east, viewRectangle.north,
       )),
       moveEnd: {
         addEventListener(listener) {
@@ -398,7 +409,13 @@ function createHarness({ rectangle, responses } = {}) {
   globalThis.fetch = async (url) => {
     const text = String(url);
     fetchUrls.push(text);
-    const payload = text.includes('referentiel') ? responses.stations : responses.observations;
+    // `observations` may be a function of the URL: the window-fallback test
+    // has to answer the hour and the three-hour reach differently.
+    const payload = text.includes('referentiel')
+      ? responses.stations
+      : (typeof responses.observations === 'function'
+        ? responses.observations(text)
+        : responses.observations);
     if (typeof payload?.status === 'number') return { ok: false, status: payload.status };
     return { ok: true, status: 206, json: async () => payload };
   };
@@ -419,6 +436,8 @@ function createHarness({ rectangle, responses } = {}) {
     placeLabel(x, y, entryId) { labelPlane.set(`${x},${y}`, entryId); },
     /** What `scene.drillPick()` answers for the next click. */
     setDrillPick(fn) { drillPicked = fn; },
+    /** Move the camera between updates. */
+    setRectangle(next) { viewRectangle = next; },
     click(x, y) { clickListener?.({ position: { x, y } }); },
     /** The card currently published on the selected source, or null. */
     selectionCard() {
@@ -501,6 +520,103 @@ test('the observation window asked for is exactly the documented hour', async ()
     assert.equal(Date.parse(since), CAPTURE_MS - HUBEAU_OBSERVATION_WINDOW_MS);
   } finally {
     h.restore();
+  }
+});
+
+test('an hour that answers nothing is asked again over three — the national blackout', async () => {
+  // Measured 2026-09-14 07:31 UTC: the freshest observation in France was 72
+  // minutes old, so the hour returned zero rows for every bbox in the country
+  // at once and the layer drew no station anywhere.
+  const windows = [];
+  const h = createHarness({
+    rectangle: IDF,
+    responses: {
+      stations: STATIONS_GEOJSON,
+      observations: (url) => {
+        const since = Date.parse(new URL(url).searchParams.get('date_debut_obs'));
+        windows.push(CAPTURE_MS - since);
+        return since === CAPTURE_MS - HUBEAU_OBSERVATION_WINDOW_MS
+          ? { count: 0, data: [] }
+          : OBSERVATIONS;
+      },
+    },
+  });
+  try {
+    h.layer.init(h.viewer);
+    h.layer.enable(h.viewer);
+    assert.equal(await h.layer.update(h.viewer), true);
+    // `enable()` fires its own load, which this harness's fetch stub answers
+    // too — the pair that matters is the one the awaited update made.
+    assert.deepEqual(
+      windows.slice(-2),
+      [HUBEAU_OBSERVATION_WINDOW_MS, HUBEAU_FALLBACK_WINDOW_MS],
+    );
+    const stats = h.layer.getStats();
+    assert.equal(stats.count, 3, 'the reach answers, and the stations are drawn');
+    assert.equal(stats.status, 'nominal');
+    assert.equal(stats.windowHours, 3, 'the row can say which window answered');
+  } finally {
+    h.restore();
+  }
+});
+
+test('an hour that answers is never asked twice', async () => {
+  const h = createHarness({
+    rectangle: IDF,
+    responses: { stations: STATIONS_GEOJSON, observations: OBSERVATIONS },
+  });
+  try {
+    h.layer.init(h.viewer);
+    h.layer.enable(h.viewer);
+    await h.layer.update(h.viewer);
+    const reaches = h.fetchUrls
+      .filter((url) => url.includes('observations_tr'))
+      .map((url) => CAPTURE_MS - Date.parse(new URL(url).searchParams.get('date_debut_obs')));
+    assert.ok(reaches.length > 0);
+    assert.ok(
+      reaches.every((window) => window === HUBEAU_OBSERVATION_WINDOW_MS),
+      'no poll that got an answer reaches further back',
+    );
+    assert.equal(h.layer.getStats().windowHours, 1);
+  } finally {
+    h.restore();
+  }
+});
+
+test('a layer drawing nothing says why — the guidance line it never had', async () => {
+  // `manager.js` keeps a green ON chip for `zoom-in` and `empty` and reads the
+  // sentence from `loadingLabel`. This layer published neither, so the row was
+  // a green chip over silence and a visitor could not tell a quiet network
+  // from a broken layer.
+  const wide = createHarness({
+    rectangle: { south: -80, west: -170, north: 80, east: 170 },
+    responses: { stations: STATIONS_GEOJSON, observations: OBSERVATIONS },
+  });
+  try {
+    wide.layer.init(wide.viewer);
+    wide.layer.enable(wide.viewer);
+    await wide.layer.update(wide.viewer);
+    const stats = wide.layer.getStats();
+    assert.equal(stats.status, 'zoom-in');
+    assert.match(stats.loadingLabel, new RegExp(`${HUBEAU_MAX_VIEWPORT_DEGREES}°`));
+  } finally {
+    wide.restore();
+  }
+
+  const silent = createHarness({
+    rectangle: IDF,
+    responses: { stations: STATIONS_GEOJSON, observations: { count: 0, data: [] } },
+  });
+  try {
+    silent.layer.init(silent.viewer);
+    silent.layer.enable(silent.viewer);
+    await silent.layer.update(silent.viewer);
+    const stats = silent.layer.getStats();
+    assert.equal(stats.status, 'empty');
+    assert.equal(stats.windowHours, 3, 'the reach was tried before giving up');
+    assert.match(stats.loadingLabel, /2 stations ici, aucun relevé publié depuis 3 h/);
+  } finally {
+    silent.restore();
   }
 });
 
@@ -712,9 +828,10 @@ test('the card answers more than the one number it used to', () => {
   assert.match(body, /Le Rhône/);
   assert.match(body, /TARASCON · BOUCHES-DU-RHONE/);
   assert.match(body, /station ouverte en 1994/);
-  // Raw and unqualified, and Vigicrues is the official channel — the module
-  // header has always said so, and now the card says it where it matters.
-  assert.match(body, /Vigicrues reste le canal officiel/);
+  // The blanket "non qualifiées — Vigicrues reste le canal officiel" is GONE:
+  // it appeared on almost every card, which is what made it furniture rather
+  // than information. The per-station `Douteuse` flag below is what stayed.
+  assert.doesNotMatch(body, /Vigicrues reste le canal officiel/);
 });
 
 test('the hydrograph arrives into a card that was already complete without it', () => {
@@ -902,4 +1019,239 @@ test('nearestHubeauGauge refuses past its ceiling and on a mangled call', () => 
   assert.equal(nearestHubeauGauge(null, 48, 2), null);
   assert.equal(nearestHubeauGauge(records, NaN, 2), null);
   assert.equal(HUBEAU_JOIN_MAX_M, 25_000);
+});
+
+// ── Seasonal context ────────────────────────────────────────────────────────
+
+/** One monthly-mean page, in the API's own litres per second. */
+function monthlySeries(entries) {
+  return { data: entries.map(([date, m3s]) => ({
+    date_obs_elab: date,
+    resultat_obs_elab: m3s === null ? null : m3s * 1000,
+  })) };
+}
+
+test('the monthly reference keeps one month, the recent years, and says so', () => {
+  // 26 unbroken Septembers, plus a January that must not be averaged into them
+  // and a year older than the window.
+  const rows = [['1970-09-01', 5000]];
+  for (let year = 2000; year <= 2025; year += 1) rows.push([`${year}-09-01`, 900 + (year - 2000)]);
+  rows.push(['2025-01-01', 4000]);
+  const normal = parseHubeauMonthlyNormal(monthlySeries(rows), 9, 26);
+
+  assert.equal(normal.years, 26, 'the window trims the 1970 outlier');
+  assert.equal(normal.firstYear, 2000);
+  assert.equal(normal.lastYear, 2025);
+  assert.equal(normal.min, 900);
+  assert.equal(normal.max, 925);
+  assert.equal(Math.round(normal.mean), 913, 'January is not in the September mean');
+});
+
+test('a month the station never measured yields no reference at all', () => {
+  const rows = [['2024-09-01', 900], ['2025-09-01', 910]];
+  assert.equal(parseHubeauMonthlyNormal(monthlySeries(rows), 3), null);
+  assert.equal(parseHubeauMonthlyNormal(monthlySeries([]), 9), null);
+  assert.equal(parseHubeauMonthlyNormal(null, 9), null);
+  // A published gap is a gap, never a river that stopped: `Number(null)` is 0
+  // and 0 is finite, which is how a null becomes a fake drought.
+  const withGap = parseHubeauMonthlyNormal(
+    monthlySeries([['2024-09-01', 900], ['2025-09-01', null]]), 9,
+  );
+  assert.equal(withGap.years, 1);
+  assert.equal(withGap.mean, 900);
+});
+
+test('the period names the span the values came from, in one number', () => {
+  const unbroken = [];
+  for (let year = 2000; year <= 2025; year += 1) unbroken.push([`${year}-09-01`, 900]);
+  const solid = parseHubeauMonthlyNormal(monthlySeries(unbroken), 9);
+  assert.match(
+    hubeauSeasonalLines(340, solid, 2026).join('\n'),
+    /septembre : 900 m³\/s en moyenne sur les 26 dernières années/,
+  );
+
+  // A hole in the middle does NOT become a second number on the card. The span
+  // is still 26 years and the mean is still over what those 26 years published.
+  const holed = parseHubeauMonthlyNormal(
+    monthlySeries(unbroken.filter(([date]) => !date.startsWith('2010'))), 9,
+  );
+  assert.equal(holed.years, 25);
+  assert.match(
+    hubeauSeasonalLines(340, holed, 2026).join('\n'),
+    /en moyenne sur les 26 dernières années$/m,
+  );
+
+  // A station whose series stops in 2015 has no "dernières années" to speak of.
+  const lapsed = parseHubeauMonthlyNormal(
+    monthlySeries(unbroken.filter(([date]) => Number(date.slice(0, 4)) <= 2015)), 9,
+  );
+  assert.match(
+    hubeauSeasonalLines(340, lapsed, 2026).join('\n'),
+    /en moyenne entre 2000 et 2015$/m,
+  );
+});
+
+test('the seasonal lines give the range and the ratio, and draw no conclusion', () => {
+  // Le Rhône à Tarascon, 2026-09-14: 340 m³/s against a 26-September mean of
+  // 933 and a record low of 538. The raw number said nothing.
+  const rows = [];
+  for (let year = 2000; year <= 2025; year += 1) {
+    rows.push([`${year}-09-01`, year === 2003 ? 538 : (year === 2012 ? 1888 : 933)]);
+  }
+  const normal = parseHubeauMonthlyNormal(monthlySeries(rows), 9);
+  const low = hubeauSeasonalLines(340, normal, 2026).join('\n');
+  // Grouped above a thousand, with the narrow no-break space fr-FR uses.
+  assert.match(low, /entre 538 m³\/s et 1[\s\u202f\u00a0]888 m³\/s/);
+  assert.match(low, /aujourd'hui 3[0-9] % de cette moyenne$/m);
+
+  // Under the record low and over the record high read exactly the same way:
+  // the range is printed above, and the card never announces a verdict.
+  for (const value of [340, 2500, 900]) {
+    assert.doesNotMatch(hubeauSeasonalLines(value, normal, 2026).join('\n'), /mesuré/);
+  }
+  assert.match(hubeauSeasonalLines(900, normal, 2026).join('\n'), /aujourd'hui 9[0-9] % de cette moyenne$/m);
+
+  // Four years is an anecdote, not a normal.
+  const thin = parseHubeauMonthlyNormal(
+    monthlySeries([['2022-09-01', 900], ['2023-09-01', 900], ['2024-09-01', 900], ['2025-09-01', 900]]), 9,
+  );
+  assert.deepEqual(hubeauSeasonalLines(340, thin), []);
+});
+
+test('a stage never gets a discharge reference, and the card survives without one', () => {
+  const stage = buildHubeauCard({
+    ...TARASCON,
+    reading: { kind: 'H', value: 2.4, text: 'échelle 2,40 m', freshness: 'live', doubtful: false },
+  }, null, { month: 9, mean: 933, min: 538, max: 1888, years: 26, firstYear: 2000, lastYear: 2025 });
+  assert.doesNotMatch(stage, /moyenne/, 'a staff reading has no common scale with a QmM series');
+
+  // Every marker state leaves the card above it complete.
+  for (const normal of [null, { pending: true }, { failed: true }]) {
+    assert.match(buildHubeauCard(TARASCON, null, normal), /station ouverte en 1994/);
+  }
+  assert.match(buildHubeauCard(TARASCON, null, { pending: true }), /◑ moyenne du mois …/);
+});
+
+test('the monthly request asks for one grandeur, one station, and a field list', () => {
+  const url = new URL(hubeauMonthlyNormalRequestUrl('V720001002'));
+  assert.match(url.pathname, /obs_elab$/);
+  assert.equal(url.searchParams.get('grandeur_hydro_elab'), 'QmM');
+  assert.equal(url.searchParams.get('code_entite'), 'V720001002');
+  // Measured: 51.6 KB with the field list against 339 KB without, same 0.43 s.
+  assert.equal(url.searchParams.get('fields'), 'date_obs_elab,resultat_obs_elab');
+  // No date bound on purpose — trimming server-side measured 2.54 s.
+  assert.equal(url.searchParams.get('date_debut_obs_elab'), null);
+});
+
+test('a click fetches the hydrograph AND the monthly reference', async () => {
+  // The regression this pins: `fetchImpl` was never declared, so
+  // `typeof fetchImpl !== 'function'` was true on every click and the 24 h
+  // request was never made in a browser — silently, because `typeof` on an
+  // undeclared binding does not throw.
+  const h = createHarness({
+    rectangle: IDF,
+    responses: { stations: STATIONS_GEOJSON, observations: OBSERVATIONS },
+  });
+  try {
+    h.layer.init(h.viewer);
+    h.layer.enable(h.viewer);
+    await h.layer.update(h.viewer);
+    const before = h.fetchUrls.length;
+    h.placeLabel(640, 320, 'hubeau:F447000302');
+    h.click(640, 320);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const asked = h.fetchUrls.slice(before);
+    assert.ok(
+      asked.some((url) => url.includes('observations_tr') && url.includes('code_entite')),
+      'the 24 h hydrograph is requested',
+    );
+    assert.ok(
+      asked.some((url) => url.includes('obs_elab') && url.includes('QmM')),
+      'the monthly reference is requested',
+    );
+  } finally {
+    h.restore();
+  }
+});
+
+// ── Retention ───────────────────────────────────────────────────────────────
+
+test('a camera past the gate keeps the dots it already measured', async () => {
+  const h = createHarness({
+    rectangle: IDF,
+    responses: { stations: STATIONS_GEOJSON, observations: OBSERVATIONS },
+  });
+  try {
+    h.layer.init(h.viewer);
+    h.layer.enable(h.viewer);
+    await h.layer.update(h.viewer);
+    assert.equal(h.primitives[0].length, 3);
+
+    h.setRectangle({ south: -80, west: -170, north: 80, east: 170 });
+    await h.layer.update(h.viewer);
+    const stats = h.layer.getStats();
+    assert.equal(stats.status, 'zoom-in');
+    assert.equal(stats.count, 3, 'the census is kept, not blanked');
+    assert.equal(h.primitives[0].length, 3, 'and it is still drawn');
+    assert.equal(stats.stale, true);
+    assert.match(stats.loadingLabel, /vue trop large pour mesurer — 3 stations conservées/);
+  } finally {
+    h.restore();
+  }
+});
+
+test('three hours of silence keeps the last census rather than blanking the map', async () => {
+  let observations = OBSERVATIONS;
+  const h = createHarness({
+    rectangle: IDF,
+    responses: { stations: STATIONS_GEOJSON, observations: () => observations },
+  });
+  try {
+    h.layer.init(h.viewer);
+    h.layer.enable(h.viewer);
+    await h.layer.update(h.viewer);
+    const firstUpdate = h.layer.getStats().lastUpdate;
+    assert.equal(h.layer.getStats().count, 3);
+
+    observations = { count: 0, data: [] };
+    assert.equal(await h.layer.update(h.viewer), true);
+    const stats = h.layer.getStats();
+    assert.equal(stats.count, 3, 'the dots stay');
+    assert.equal(stats.stale, true);
+    assert.equal(
+      stats.lastUpdate, firstUpdate,
+      'the age counts from the DATA, not from the request that failed to replace it',
+    );
+    assert.match(
+      stats.loadingLabel,
+      /aucun nouveau relevé depuis 3 h — 3 stations conservées \(dernier relevé il y a \d+ (min|h|j)\)/,
+    );
+  } finally {
+    h.restore();
+  }
+});
+
+test('an upstream fault keeps the map and still carries the fault', async () => {
+  let observations = OBSERVATIONS;
+  const h = createHarness({
+    rectangle: IDF,
+    responses: { stations: STATIONS_GEOJSON, observations: () => observations },
+  });
+  try {
+    h.layer.init(h.viewer);
+    h.layer.enable(h.viewer);
+    await h.layer.update(h.viewer);
+    assert.equal(h.layer.getStats().count, 3);
+
+    // The 429 a burst of camera motion earns from Hub'Eau.
+    observations = { status: 429 };
+    await h.layer.update(h.viewer);
+    const stats = h.layer.getStats();
+    assert.equal(stats.count, 3, 'a dead request does not unmake a good census');
+    assert.equal(h.primitives[0].length, 3);
+    assert.match(stats.error, /HTTP 429/);
+    assert.equal(stats.stale, true);
+  } finally {
+    h.restore();
+  }
 });
