@@ -7,7 +7,9 @@
 // been told two different things by the same console.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bucketSeries, textSparkline } from './sparkline.js';
+import {
+  bucketSeries, hasTextGauge, textGauge, textSparkline,
+} from './sparkline.js';
 import { generationSparkline } from './rteGenerationFeed.js';
 
 test('an unmeasured sample is a dot, never the lowest bar', () => {
@@ -96,4 +98,49 @@ test('the generation wrapper still draws what it always drew', () => {
   assert.equal(generationSparkline([450, 900], 900), textSparkline([450, 900], 900));
   assert.equal(generationSparkline([10, null], null), '█·');
   assert.equal(generationSparkline([], 900), '');
+});
+
+
+// ── The gauge: one value against one reference ──────────────────────────────
+
+test('the gauge inks the share that is there and hatches the share that is not', () => {
+  assert.equal(textGauge(48, 100, 10), '█████░░░░░');
+  assert.equal(textGauge(0, 100, 10), '░░░░░░░░░░');
+  // `·` already means "nobody measured this" on every sparkline in the console.
+  // The empty half of a gauge is measured, and it is the part missing today.
+  assert.ok(!textGauge(48, 100, 10).includes('·'));
+});
+
+test('a gauge never rounds an under to a full bar, nor a trace to an empty one', () => {
+  // 99 % drawn as a full bar is a lie a reader cannot see; 1 % drawn as an
+  // empty one is a river that appears to have stopped.
+  assert.equal(textGauge(99, 100, 10), '█████████░');
+  assert.equal(textGauge(0.4, 100, 10), '█░░░░░░░░░');
+});
+
+test('past the reference the bar fills and marks the overflow, keeping the scale', () => {
+  // Stretching the scale to the value would move 100 % off the right edge, and
+  // the edge is what lets two stations be compared by eye.
+  assert.equal(textGauge(100, 100, 10), '██████████');
+  assert.equal(textGauge(250, 100, 10), '██████████▸');
+});
+
+test('a gauge with nothing to divide by draws nothing', () => {
+  for (const [value, reference] of [[1, 0], [1, -5], [1, null], [NaN, 100], [null, 100]]) {
+    assert.equal(textGauge(value, reference, 10), '', `${value} / ${reference}`);
+  }
+  // A negative discharge — a tidal reach, a gauge running backwards — has no
+  // share of the reference to fill. The caller's percentage says so in words.
+  assert.equal(textGauge(-5, 100, 10), '░░░░░░░░░░');
+  // A nonsense width still yields something drawable rather than throwing.
+  assert.equal(textGauge(50, 100, 0).length, 1);
+});
+
+test('hasTextGauge tells a gauge line from a sparkline one', () => {
+  assert.ok(hasTextGauge(textGauge(48, 100, 10)));
+  assert.ok(hasTextGauge(textGauge(250, 100, 10)));
+  assert.ok(hasTextGauge(textGauge(0, 100, 10)));
+  assert.ok(!hasTextGauge('◑ septembre : 933 m³/s en moyenne'));
+  assert.ok(!hasTextGauge(''));
+  assert.ok(!hasTextGauge(null));
 });

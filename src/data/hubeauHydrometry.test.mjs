@@ -743,6 +743,11 @@ test('the reference request asks for the fields a card needs, and none it must n
   // hardware description, however much they look like one.
   assert.ok(!fields.includes('type_station'));
   assert.ok(!fields.includes('descriptif_station'));
+  // `influence_locale_station` is the producer's note on what perturbs their
+  // own rating curve — a weir, a lock, a tide. It read on the card as a warning
+  // glyph and a word with no referent, so it left the card and, nothing else
+  // consuming it, the request too.
+  assert.ok(!fields.includes('influence_locale_station'));
 });
 
 test('the station parser carries the new reference fields, and tolerates their absence', () => {
@@ -757,7 +762,6 @@ test('the station parser carries the new reference fields, and tolerates their a
           libelle_commune: 'TARASCON',
           libelle_departement: 'BOUCHES-DU-RHONE',
           date_ouverture_station: '1994-03-01T00:00:00Z',
-          influence_locale_station: 'Nulle',
           altitude_ref_alti_station: 6.5,
         },
       },
@@ -852,6 +856,68 @@ test('the hydrograph arrives into a card that was already complete without it', 
   }
 });
 
+// ── One bar per card ────────────────────────────────────────────────────────
+
+const SEPTEMBER = {
+  month: 9, mean: 933, min: 538, max: 1888, years: 26, firstYear: 2000, lastYear: 2025,
+};
+const FLAT_DAY = { values: Array.from({ length: 144 }, () => 617), min: 610, max: 620, count: 144 };
+
+test('the seasonal ratio is drawn, filled up to today and hatched past it', () => {
+  const lines = hubeauSeasonalLines(448, SEPTEMBER, 2026);
+  const bar = lines.at(-1);
+  assert.match(bar, /aujourd'hui 48 %/);
+  const cells = bar.replace(/^[^█░]*/u, '');
+  assert.equal(cells.length, 40);
+  // 48 % of the cells inked, the rest left as the share that is NOT there.
+  assert.equal([...cells].filter((cell) => cell === '█').length, 19);
+  assert.equal([...cells].filter((cell) => cell === '░').length, 21);
+  // The gap glyph of the sparklines means "nobody measured this" everywhere
+  // else in the console; the empty half of a gauge is measured, and absent.
+  assert.ok(!cells.includes('·'));
+});
+
+test('over the mean the gauge fills and says so, rather than rescaling', () => {
+  // Rescaling to the value would move 100 % off the right edge, and the edge is
+  // the only reason two stations can be compared by eye.
+  const flood = hubeauSeasonalLines(1866, SEPTEMBER, 2026).at(-1);
+  assert.match(flood, /aujourd'hui 200 % █+▸$/u);
+  assert.ok(!flood.includes('░'));
+  // Exactly at the mean: full, and no overflow mark.
+  assert.match(hubeauSeasonalLines(933, SEPTEMBER, 2026).at(-1), /aujourd'hui 100 % █{40}$/u);
+});
+
+test('a card draws the gauge OR the hydrograph, never both', () => {
+  // The sparkline is zero-based, so an ordinary river renders as 48 full bars —
+  // a progress bar at 100 %, one line above "36 % of the monthly mean".
+  const withBoth = buildHubeauCard(TARASCON, FLAT_DAY, SEPTEMBER);
+  assert.doesNotMatch(withBoth, /↻ 24 h [▁-█]/u);
+  assert.match(withBoth, /aujourd'hui \d+ % [█░]+/u);
+  // The 24 h amplitude is where the day's information actually was, so it stays
+  // — and takes over the `↻`, no glyph line preceding it any more.
+  assert.match(withBoth, /^↻ de 610 m³\/s à 620 m³\/s sur 24 h$/mu);
+
+  // No usable monthly series: the sparkline is the only bar available, and it
+  // keeps its own header and its indented amplitude line.
+  const noNormal = buildHubeauCard(TARASCON, FLAT_DAY, null);
+  assert.match(noNormal, /↻ 24 h [▁-█·▽]+/u);
+  assert.match(noNormal, /^ {3}de 610 m³\/s à 620 m³\/s sur 24 h$/mu);
+
+  // A stage station can never build a gauge — a local zero and a QmM series
+  // have no common scale — so it keeps the hydrograph even with a normal in
+  // hand.
+  const stage = buildHubeauCard(
+    { ...TARASCON, reading: { kind: 'H', value: 2.4, text: '2,40 m', freshness: 'live' } },
+    FLAT_DAY,
+    SEPTEMBER,
+  );
+  assert.match(stage, /↻ 24 h [▁-█·▽]+/u);
+  assert.doesNotMatch(stage, /[█░]{10}.*%/u);
+
+  // While the mean is still in flight there is no gauge to prefer yet.
+  assert.match(buildHubeauCard(TARASCON, FLAT_DAY, { pending: true }), /↻ 24 h [▁-█·▽]+/u);
+});
+
 test('the card refuses an absolute altitude and a historical percentile', () => {
   const stage = buildHubeauCard({
     ...TARASCON,
@@ -871,16 +937,17 @@ test('the card refuses an absolute altitude and a historical percentile', () => 
   assert.doesNotMatch(buildHubeauCard({ ...TARASCON, gaugeZeroM: 6.5 }), /zéro de l'échelle/);
 });
 
-test('the producer own doubt and its own caveats reach the card', () => {
+test('the producer own doubt reaches the card, and its rating-curve note does not', () => {
   const doubtful = buildHubeauCard({
     ...TARASCON,
     reading: { ...TARASCON.reading, doubtful: true },
   });
   assert.match(doubtful, /signalé douteux par le producteur/);
-  const influenced = buildHubeauCard({ ...TARASCON, influence: 'Forte' });
-  assert.match(influenced, /influence locale : Forte/);
-  // 'Nulle' is the majority value and says nothing.
-  assert.doesNotMatch(buildHubeauCard(TARASCON), /influence locale/);
+  // `influence_locale_station` is the producer's hydrological note on what
+  // perturbs their own rating curve — a weir, a lock, a tide. On the card it
+  // rendered as a warning glyph and a word with no referent, on a station
+  // measuring normally, so it is gone from the card AND from the request.
+  assert.doesNotMatch(buildHubeauCard({ ...TARASCON, influence: 'Forte' }), /influence/i);
 });
 
 test('a station with nothing but a code still yields a card', () => {
@@ -1102,14 +1169,14 @@ test('the seasonal lines give the range and the ratio, and draw no conclusion', 
   const low = hubeauSeasonalLines(340, normal, 2026).join('\n');
   // Grouped above a thousand, with the narrow no-break space fr-FR uses.
   assert.match(low, /entre 538 m³\/s et 1[\s\u202f\u00a0]888 m³\/s/);
-  assert.match(low, /aujourd'hui 3[0-9] % de cette moyenne$/m);
+  assert.match(low, /aujourd'hui 3[0-9] % [█░]+$/mu);
 
   // Under the record low and over the record high read exactly the same way:
   // the range is printed above, and the card never announces a verdict.
   for (const value of [340, 2500, 900]) {
     assert.doesNotMatch(hubeauSeasonalLines(value, normal, 2026).join('\n'), /mesuré/);
   }
-  assert.match(hubeauSeasonalLines(900, normal, 2026).join('\n'), /aujourd'hui 9[0-9] % de cette moyenne$/m);
+  assert.match(hubeauSeasonalLines(900, normal, 2026).join('\n'), /aujourd'hui 9[0-9] % [█░]+$/mu);
 
   // Four years is an anecdote, not a normal.
   const thin = parseHubeauMonthlyNormal(

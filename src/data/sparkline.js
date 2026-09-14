@@ -93,3 +93,68 @@ export function bucketSeries(history, width) {
   }
   return out;
 }
+
+/** The two gauge glyphs, and the mark for a value that runs past the scale. */
+export const GAUGE_FILLED = '█';
+export const GAUGE_EMPTY = '░';
+const GAUGE_OVERFLOW = '▸';
+
+/** Default gauge width, in cells. */
+export const TEXT_GAUGE_WIDTH = 40;
+
+/**
+ * Draw ONE value against ONE reference, as a filled bar and its remainder.
+ *
+ * A different picture from {@link textSparkline} and a different question: the
+ * sparkline draws a series against time, this draws a single reading against
+ * something it is worth comparing to — this month's discharge against this
+ * month's multi-year mean, on the Hub'Eau card that motivated it.
+ *
+ * THE ONE DECISION IN HERE: the remainder is `░`, never `·`.
+ *
+ * `·` already means "nobody measured this" across every sparkline in the
+ * console, and the empty half of a gauge is the opposite — it is measured, and
+ * it is the part that is NOT there today. Reusing the gap glyph would tell a
+ * reader who learned it on the hydrograph that half the reference is missing
+ * data. `░` is the same cell, half-inked, which is what it depicts.
+ *
+ * OVER the reference the bar fills completely and carries `▸`. The alternative
+ * — stretching the scale to the value — moves the reference off the right edge
+ * and destroys the one thing the bar is for: 100 % is always the far edge, so
+ * two stations can be compared by eye. The caller prints the real percentage
+ * beside the glyphs, so nothing is lost by clamping the drawing.
+ *
+ * Under the reference the bar never fills its last cell, and a value above
+ * zero always lights its first: "99 %" must not render as a full bar and "1 %"
+ * must not render as an empty one.
+ *
+ * @param {number} value
+ * @param {number} reference Top of the scale; must be > 0.
+ * @param {number} [width] Cell count.
+ * @returns {string} '' when the comparison cannot be drawn.
+ */
+export function textGauge(value, reference, width = TEXT_GAUGE_WIDTH) {
+  if (!Number.isFinite(value) || !Number.isFinite(reference) || !(reference > 0)) return '';
+  const cells = Math.max(1, Math.floor(Number(width) || 0));
+  const ratio = value / reference;
+  if (ratio >= 1) return GAUGE_FILLED.repeat(cells) + (ratio > 1 ? GAUGE_OVERFLOW : '');
+  // A negative discharge — a tidal reach, a gauge running backwards — has no
+  // share of the mean to fill. The percentage on the line says so in words.
+  if (!(ratio > 0)) return GAUGE_EMPTY.repeat(cells);
+  const filled = Math.min(cells - 1, Math.max(1, Math.round(ratio * cells)));
+  return GAUGE_FILLED.repeat(filled) + GAUGE_EMPTY.repeat(cells - filled);
+}
+
+/**
+ * Does this line carry a gauge?
+ *
+ * The card uses it to decide which ONE bar it draws — see `buildHubeauCard`.
+ * NOT a universal detector: a sparkline pinned at its top is a run of `█` too,
+ * so this is asked only of lines a gauge could have produced.
+ * @param {string} line
+ * @returns {boolean}
+ */
+export function hasTextGauge(line) {
+  const text = String(line ?? '');
+  return text.includes(GAUGE_FILLED) || text.includes(GAUGE_EMPTY);
+}

@@ -2,7 +2,9 @@ import * as Cesium from 'cesium';
 import { governorRequestRender } from '../renderGovernor.js';
 import { publishJoin } from './layerJoins.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
-import { bucketSeries, textSparkline } from './sparkline.js';
+import {
+  bucketSeries, hasTextGauge, textGauge, textSparkline,
+} from './sparkline.js';
 import {
   clearOverlaySource,
   hitTestWorldOverlay,
@@ -229,10 +231,15 @@ export function hubeauStationsRequestUrl(box, baseUrl = STATIONS_URL) {
     // `referentiel/sites`, which is where catchment area actually lives.
     //
     // Deliberately ABSENT: `type_station` (91.7 % of active stations are the
-    // single value STD, and the documented enum does not match the data) and
+    // single value STD, and the documented enum does not match the data),
     // `descriptif_station` (33.9 %-filled free text whose commonest values are
     // 'Aval', 'Pont', '2' and 'Historique' — not an operator, whatever it looks
-    // like).
+    // like), and `influence_locale_station`, which used to put "influence
+    // locale : Forte" on the card. It is the producer's hydrological note about
+    // what perturbs their own rating curve — a weir, a lock, a tide — and it
+    // reads to anyone else as an unexplained warning on a station that is
+    // working exactly as intended. Dropped from the request, not just from the
+    // card: nothing else consumed it.
     fields: [
       'code_station',
       'libelle_station',
@@ -243,7 +250,6 @@ export function hubeauStationsRequestUrl(box, baseUrl = STATIONS_URL) {
       'libelle_commune',
       'libelle_departement',
       'date_ouverture_station',
-      'influence_locale_station',
       'qualification_donnees_station',
       'altitude_ref_alti_station',
     ].join(','),
@@ -282,9 +288,9 @@ export function hubeauObservationsRequestUrl(box, sinceMs, baseUrl = OBSERVATION
  *
  * Everything here is optional except the name. Measured fill rates over the
  * 4 151 active stations: commune and département 99.1 %, opening date 99.9 %,
- * river 93.3 %, local influence 79.3 %, gauge-zero altitude 65.3 %. A field
- * that is absent stays `null` and simply produces no card line — the sparse-
- * network rule the rest of this module already follows for readings.
+ * river 93.3 %, gauge-zero altitude 65.3 %. A field that is absent stays `null`
+ * and simply produces no card line — the sparse-network rule the rest of this
+ * module already follows for readings.
  *
  * `openedYear` is reduced to a YEAR on the way in. The API publishes a full
  * timestamp, and "gauging since 1994" is the claim the field supports; a day
@@ -313,7 +319,6 @@ export function parseHubeauStations(geojson) {
       commune: text(properties.libelle_commune),
       departement: text(properties.libelle_departement),
       openedYear: opened ? Number(opened[1]) : null,
-      influence: text(properties.influence_locale_station),
       qualification: text(properties.qualification_donnees_station),
       // Gauge zero, metres. Carried for the CARD, never used to convert a stage
       // to an absolute altitude: cross-checked against the site altitude over
@@ -557,7 +562,6 @@ export function buildHubeauRecords(observations, stations, nowMs) {
       commune: meta?.commune || null,
       departement: meta?.departement || null,
       openedYear: Number.isFinite(meta?.openedYear) ? meta.openedYear : null,
-      influence: meta?.influence || null,
       qualification: meta?.qualification || null,
       gaugeZeroM: Number.isFinite(meta?.gaugeZeroM) ? meta.gaugeZeroM : null,
       lon: entry.lon,
@@ -726,6 +730,13 @@ const SELECTED_POINT_BONUS_PX = 5;
 export const HUBEAU_HISTORY_WINDOW_MS = 24 * 60 * 60_000;
 /** Glyphs in the drawn hydrograph. 48 is a bar every half hour over 24 h. */
 export const HUBEAU_SPARK_WIDTH = 48;
+/**
+ * Cells in the seasonal gauge — the bar that replaced the hydrograph on any
+ * card that can draw one. 40 keeps the whole line inside the width the longest
+ * text line already sets ("septembre : … sur les 27 dernières années"), so the
+ * card does not widen to hold a picture.
+ */
+export const HUBEAU_GAUGE_WIDTH = 40;
 /** Page cap for one station's 24 h series — 288 rows at the 5-minute cadence. */
 const HISTORY_PAGE_SIZE = 500;
 /** One station's history must never hold the card hostage. */
@@ -946,6 +957,27 @@ export function parseHubeauMonthlyNormal(payload, month, maxYears = HUBEAU_NORMA
  * that draws the conclusion for them is one step from sounding like an alert —
  * which this layer is not (Vigicrues is).
  *
+ * ── The ratio is DRAWN, and that is the card's only bar ──────────────────────
+ *
+ * "48 % de cette moyenne" now carries a gauge: 48 % of the cells inked, the
+ * other 52 % left as `░`. It is the one comparison on this card with a
+ * reference worth drawing against — the river's own September, over a quarter
+ * century — and the picture answers "how far off normal" before the number is
+ * read.
+ *
+ * It also costs nothing: the mean is already fetched, and the glyphs are
+ * assembled from two characters.
+ *
+ * What it REPLACED, on every card that can draw it, is the 24 h hydrograph.
+ * That sparkline is zero-based, so an ordinary river — five days out of six,
+ * for most of the network — renders as 48 full bars, which is a picture of a
+ * progress bar at 100 %, sitting one line above "48 % of the monthly mean".
+ * Two bars saying opposite things is worse than one bar saying something. The
+ * hydrograph's amplitude line ("de 5,1 à 5,5 m³/s sur 24 h") survives, because
+ * that is where the 24 h information actually was; a stage station, or a
+ * discharge with no usable monthly series, still gets the sparkline, because
+ * there it is the only bar available. See `buildHubeauCard`.
+ *
  * @param {number} m3s The reading, already in m³/s.
  * @param {object|null} normal From {@link parseHubeauMonthlyNormal}.
  * @param {number} [nowYear] Current year; decides whether the series is current.
@@ -968,16 +1000,29 @@ export function hubeauSeasonalLines(m3s, normal, nowYear = new Date().getFullYea
     `◑ ${month} : ${formatHubeauDischarge(normal.mean)} en moyenne ${period}`,
     `   entre ${formatHubeauDischarge(normal.min)} et ${formatHubeauDischarge(normal.max)}`,
   ];
-  lines.push(`   aujourd'hui ${Math.round((m3s / normal.mean) * 100)} % de cette moyenne`);
+  // The guards above already established a positive mean and a finite reading,
+  // which is exactly what `textGauge` needs — it cannot come back empty here.
+  const gauge = textGauge(m3s, normal.mean, HUBEAU_GAUGE_WIDTH);
+  lines.push(`   aujourd'hui ${Math.round((m3s / normal.mean) * 100)} % ${gauge}`);
   return lines;
 }
 
 /**
  * The card for one station.
  *
- * Tiered on purpose. Everything above the hydrograph comes from data the layer
- * already had on the wire and is therefore always present; the hydrograph is
- * one extra request and the card renders completely without it.
+ * Tiered on purpose. Everything above the 24 h block comes from data the layer
+ * already had on the wire and is therefore always present; both the 24 h
+ * series and the monthly mean are one extra request each, and the card renders
+ * completely without either.
+ *
+ * ONE BAR PER CARD. Two are available — the seasonal gauge (today against this
+ * month's multi-year mean) and the 24 h hydrograph — and only one is drawn.
+ * The gauge wins wherever it can be built, because its scale means something:
+ * the sparkline is zero-based, so a river doing nothing renders as a solid
+ * block of full bars, and a solid block sitting above "48 %" reads as a
+ * progress bar contradicting the number under it. The 24 h amplitude line
+ * survives in both cases and takes over the `↻` when the sparkline stands
+ * down. See the header of `hubeauSeasonalLines`.
  *
  * WHAT THIS CARD DELIBERATELY DOES NOT SAY:
  *
@@ -1006,6 +1051,12 @@ export function hubeauSeasonalLines(m3s, normal, nowYear = new Date().getFullYea
  *   `Douteuse` flag, and Vigicrues is the official channel. The module header
  *   has always said so; the card now has room to repeat it where it matters.
  *
+ * • **The station's local influence.** `influence_locale_station` is the
+ *   producer's note on what perturbs their own rating curve — a weir, a lock,
+ *   a tidal reach. On the card it rendered as "⚠ influence locale : Forte",
+ *   a warning glyph and a word with no referent, on a station measuring
+ *   normally. It is gone from the request as well as the card.
+ *
  * @param {object} record
  * @param {{values?:Array, min?:number|null, max?:number|null, count?:number}|null} [history]
  * @param {object|null} [normal] From `parseHubeauMonthlyNormal`, or a
@@ -1015,7 +1066,6 @@ export function hubeauSeasonalLines(m3s, normal, nowYear = new Date().getFullYea
 export function buildHubeauCard(record, history = null, normal = null) {
   const lines = [String(record?.name ?? '').trim() || String(record?.code ?? 'Station')];
   const reading = record?.reading || {};
-  const unit = reading.kind === 'H' ? 'm' : 'm³/s';
 
   const measured = reading.kind === 'H' ? 'hauteur' : 'débit';
   lines.push(`◈ ${reading.text || '—'} · ${measured}${reading.freshness === 'stale' ? ' · relevé ancien' : ''}`);
@@ -1029,18 +1079,38 @@ export function buildHubeauCard(record, history = null, normal = null) {
     .join(' · ');
   if (where) lines.push(`📍 ${where}`);
 
+  // Only a discharge earns the seasonal block. A stage is counted from a local
+  // zero and a QmM series is a discharge: the two have no common scale, and
+  // dividing one by the other would produce a confident percentage of nothing.
+  //
+  // Computed BEFORE the hydrograph because it decides whether there is one:
+  // this card draws ONE bar, and the seasonal gauge outranks the sparkline
+  // wherever both could appear. See the header of `hubeauSeasonalLines`.
+  let seasonal = [];
+  if (reading.kind === 'Q' && Number.isFinite(reading.value)) {
+    seasonal = normal?.pending
+      ? ['◑ moyenne du mois …']
+      : hubeauSeasonalLines(reading.value, normal);
+  }
+  const drawsGauge = seasonal.some(hasTextGauge);
+
   if (history?.count) {
-    const spark = textSparkline(bucketSeries(history.values, HUBEAU_SPARK_WIDTH));
-    if (spark) lines.push(`↻ 24 h ${spark}`);
+    if (!drawsGauge) {
+      const spark = textSparkline(bucketSeries(history.values, HUBEAU_SPARK_WIDTH));
+      if (spark) lines.push(`↻ 24 h ${spark}`);
+    }
     if (Number.isFinite(history.min) && Number.isFinite(history.max)) {
       const fmt = (value) => (reading.kind === 'H'
         ? formatHubeauStage(value)
         : formatHubeauDischarge(value));
-      // The sparkline is drawn from ZERO, so a flat river reads flat — which is
-      // true, and hides the amplitude. This line is where the amplitude goes.
+      // The amplitude the sparkline hides — it is drawn from ZERO, so a flat
+      // river reads flat — and, on a card whose bar is now the seasonal gauge,
+      // the only thing left saying what the last 24 hours did. It carries the
+      // `↻` itself there, because no glyph line precedes it.
+      const mark = drawsGauge ? '↻ ' : '   ';
       lines.push(history.min === history.max
-        ? `   ${fmt(history.min)} sur 24 h`
-        : `   de ${fmt(history.min)} à ${fmt(history.max)} sur 24 h`);
+        ? `${mark}${fmt(history.min)} sur 24 h`
+        : `${mark}de ${fmt(history.min)} à ${fmt(history.max)} sur 24 h`);
     }
   } else if (history?.pending) {
     lines.push('↻ 24 h …');
@@ -1048,13 +1118,7 @@ export function buildHubeauCard(record, history = null, normal = null) {
     lines.push('↻ historique 24 h indisponible');
   }
 
-  // Only a discharge earns this. A stage is counted from a local zero and a
-  // QmM series is a discharge: the two have no common scale, and dividing one
-  // by the other would produce a confident percentage of nothing.
-  if (reading.kind === 'Q' && Number.isFinite(reading.value)) {
-    if (normal?.pending) lines.push('◑ moyenne du mois …');
-    else lines.push(...hubeauSeasonalLines(reading.value, normal));
-  }
+  lines.push(...seasonal);
 
   if (Number.isFinite(record?.openedYear)) {
     lines.push(`🕐 station ouverte en ${record.openedYear}`);
@@ -1063,11 +1127,6 @@ export function buildHubeauCard(record, history = null, normal = null) {
     // NOT added to the stage. See the header of this function.
     lines.push(`↧ zéro de l'échelle à ${record.gaugeZeroM} m`);
   }
-  const influence = String(record?.influence ?? '').trim();
-  // 'Nulle' is the majority value and says nothing; anything else is a caveat
-  // the producer chose to publish about their own measurement.
-  if (influence && !/^nulle$/i.test(influence)) lines.push(`⚠ influence locale : ${influence}`);
-
   // The blanket "données non qualifiées — Vigicrues reste le canal officiel"
   // used to sit here, on almost every card in the layer, which is what made it
   // furniture: a caveat every station carries tells a reader nothing about the
