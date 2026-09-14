@@ -72,8 +72,15 @@
     <span id="cctv-sync-progress">0/0</span>
   </div>
 
-  <!-- Toast notification -->
-  <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+  <!-- Toast notification. The action button is the exception that earns the
+       structure: a stale-build failure is the one toast whose instruction the
+       reader cannot carry out by reading it, so the cure ships inside the
+       notice instead of being described by it. Hidden for every other toast,
+       which stays a single line of text. -->
+  <div id="toast" role="status" aria-live="polite" aria-atomic="true">
+    <span id="toast-message"></span>
+    <button id="toast-action" type="button" hidden></button>
+  </div>
 
   <!-- Which switched-on layers are waiting for a closer camera. Thirteen layers
        refuse to draw above a ceiling of their own and every one says so in a

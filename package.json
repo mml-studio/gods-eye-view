@@ -56,6 +56,7 @@
     "qa:idfm-network": "node scripts/qa-idfm-network.mjs",
     "qa:camera-settle": "node scripts/qa-camera-settle.mjs",
     "qa:card-dismissal": "node scripts/qa-card-dismissal.mjs",
+    "qa:stale-build": "node scripts/qa-stale-build-recovery.mjs",
     "qa:dvf-row": "node scripts/qa-dvf-row.mjs",
     "qa:idfm-stops": "node scripts/qa-idfm-stops.mjs",
     "qa:road-status-fr": "node scripts/qa-road-status-fr.mjs",

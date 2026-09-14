@@ -2233,6 +2233,39 @@ body.ui-clean-view #scene-runtime.active {
   transform: translateX(-50%) translateY(0);
 }
 
+/* A toast carrying an action has to be reachable, so it takes pointer events
+   back — but only that one, so an ordinary toast never eats a globe click. */
+#toast.has-action {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  max-width: min(560px, calc(100vw - 32px));
+}
+
+#toast.has-action.visible {
+  pointer-events: auto;
+}
+
+#toast-action {
+  flex: 0 0 auto;
+  padding: 5px 12px;
+  background: rgba(0, 212, 255, 0.12);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+#toast-action:hover,
+#toast-action:focus-visible {
+  background: rgba(0, 212, 255, 0.28);
+}
+
 /* ── Aircraft Cockpit View ─────────────────── */
 #cockpit-entry {
   position: fixed;

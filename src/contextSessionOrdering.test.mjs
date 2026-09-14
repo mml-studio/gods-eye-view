@@ -124,9 +124,12 @@ test('context handler: either failed direct Context-shell start rolls the sessio
   );
   assert.match(failedBranch, /_runUserFacingContextAction/);
   assert.match(failedBranch, /const failureMessage =/);
+  // One announcement, after the rollback. `_announceLayerFailure` is the seam
+  // that decides whether that announcement also RELOADS (a chunk that never
+  // arrived) or only reports (a layer that ran and did not settle).
   assert.match(
     failedBranch,
-    /await this\._restoreContextSessionAfterLayerSettles\([\s\S]*?this\._showToast\(failureMessage\);\s*return true;/,
+    /await this\._restoreContextSessionAfterLayerSettles\([\s\S]*?this\._announceLayerFailure\(change, failureMessage\);\s*return true;/,
   );
   assert.match(failedBranch, /\},\s*failureMessage,\s*\)\);/);
   assert.match(failedBranch, /_trackContextLayerReaction\(/);

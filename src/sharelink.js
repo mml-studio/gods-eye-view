@@ -566,6 +566,26 @@ export class ShareLinkManager {
     this._debounceTimer = setTimeout(() => this._updateHash(), DEBOUNCE_MS);
   }
 
+  /**
+   * Write the live state to the address NOW, ahead of the debounce.
+   *
+   * The address is the only thing a reload can restore from, and it trails the
+   * screen by up to half a second. Anything that is about to reload the page
+   * on purpose (see `staleBuildRecovery.js`) has to close that gap first, or
+   * the visitor comes back to the state they had 500 ms ago.
+   *
+   * @returns {boolean} True when the address now matches the live state.
+   */
+  flushHash() {
+    if (this._destroyed || this._initialRestorePending) return false;
+    clearTimeout(this._debounceTimer);
+    this._debounceTimer = null;
+    const params = this._buildHashParams();
+    if (!params) return false;
+    history.replaceState(null, '', `#${params.toString()}`);
+    return true;
+  }
+
   _updateHash() {
     if (this._destroyed || this._initialRestorePending) return;
     const params = this._buildHashParams();
