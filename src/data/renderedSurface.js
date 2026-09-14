@@ -285,6 +285,24 @@ function seatMarks(marks, scene, accessors, options = {}) {
   }
   let budget = photoreal ? Math.max(0, sampleBudget) : Infinity;
   const now = Cesium.JulianDate.now();
+  /**
+   * Readings already taken in THIS pass, keyed by coordinate.
+   *
+   * Because coincident marks are the normal case, not the edge case. Measured
+   * on the DPE layer before it grouped: 200 badges over **14** coordinates, one
+   * of them carrying 42. Charging a probe per MARK spent the whole 24-probe
+   * budget on fourteen distinct questions asked fourteen different numbers of
+   * times, left dozens of marks on the fallback height six passes later, and
+   * the reader saw them slide across the city — 72.6 px across a 250 m pan.
+   *
+   * Keyed on the RADIAN coordinate to nine decimals — ~6 mm on the ground,
+   * below the precision any of these registers publishes and far below the
+   * grain of the surface being probed. Per pass
+   * rather than in a module-level store on purpose — this is a shortcut for
+   * work that is already being done now, not a cache with a lifetime, and the
+   * one-shot `_measured` latch is what decides whether a mark is asked again.
+   */
+  const takenHere = new Map();
   for (const mark of marks) {
     // Already standing on a reading of its own: nothing to buy and nothing to
     // move. The latch is one-shot because the probe is gated on `tilesLoaded`,
@@ -298,13 +316,22 @@ function seatMarks(marks, scene, accessors, options = {}) {
     const carto = cartographicOf(position);
     if (!carto) continue;
     const current = carto.height;
+    const key = `${carto.longitude.toFixed(9)},${carto.latitude.toFixed(9)}`;
     let ground = null;
-    if (armed && budget > 0) {
+    if (takenHere.has(key)) {
+      // A neighbour on this exact coordinate already paid for this answer. It
+      // is the same ground, so it is the same reading — including the latch: a
+      // mark seated on a measurement is seated on a measurement whoever bought
+      // it.
+      ground = takenHere.get(key);
+      if (ground !== null) _measured.add(mark);
+    } else if (armed && budget > 0) {
       ground = renderedSurfaceM(scene, carto.longitude, carto.latitude, { exclude });
       if (photoreal) {
         budget -= 1;
         result.sampled += 1;
       }
+      takenHere.set(key, ground);
       if (ground !== null) _measured.add(mark);
     }
     if (ground === null) {

@@ -166,6 +166,21 @@ test('every marker is asked about its own ground, not the first one`s', () => {
   assert.ok(Math.abs(heightOf(b) - 30) < 0.001);
 });
 
+test('marks on ONE coordinate cost ONE probe, not one each', () => {
+  const globe = fakeGlobe((carto) => Cesium.Math.toDegrees(carto.longitude) * 10);
+  // What the DPE layer used to hand this pass: forty-two marks on one address,
+  // spending forty-two of a twenty-four probe budget on one question. The
+  // per-coordinate memo in `renderedSurface.js` is what stopped it.
+  const stacked = [marker(2.0, 48.83), marker(2.0, 48.83), marker(2.0, 48.83)];
+  const elsewhere = marker(3.0, 48.83);
+  const result = seatEntitiesOnGround([...stacked, elsewhere], globe);
+  assert.equal(result.moved, 4, 'every mark still moves');
+  assert.equal(result.pending, 0);
+  assert.equal(globe.calls.n, 2, 'two distinct coordinates, two readings');
+  for (const mark of stacked) assert.ok(Math.abs(heightOf(mark) - 20) < 0.001);
+  assert.ok(Math.abs(heightOf(elsewhere) - 30) < 0.001);
+});
+
 test('renderedGroundM reports an absent reading as null, never as zero', () => {
   const lon = Cesium.Math.toRadians(ADDRESS.lon);
   const lat = Cesium.Math.toRadians(ADDRESS.lat);

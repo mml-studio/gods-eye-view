@@ -6,6 +6,68 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-14
 
 ### Changed
+- **Les étiquettes DPE glissaient quand on bougeait la carte, et on ne voyait
+  pas de quel bien elles parlaient.** Les deux venaient de la même cause, et ce
+  n'était pas l'ancrage au sol.
+
+  Un scan par défaut du 13e arrondissement sert **200 diagnostics portant 14
+  coordonnées** — 13 adresses, 5 identifiants de bâtiment. Une seule coordonnée
+  en portait **42**. Seule la vignette du dessus était visible et cliquable ;
+  les 41 autres étaient un coût de dessin et une **loterie** au moment d'ouvrir
+  la fiche, entre quarante-deux logements. Et le point dessiné était un
+  géocodage BAN : un point sur la rue, pas un immeuble.
+
+  C'est aussi ce qui faisait glisser les marques. L'assise sur le relief dessiné
+  dispose de 24 sondes par passe sur six passes : **200 marques n'y tiennent
+  pas**, des dizaines restaient à la hauteur de repli du centre de scan, et une
+  marque à la mauvaise altitude sous une caméra qui n'est pas à la verticale se
+  déplace à l'écran quand la caméra tourne. Mesuré dans l'application, 1400 ×
+  900, nadir à 420 m, avant puis après :
+
+  | | vignettes | erreur d'altitude | écart à l'écran | glissement sur un pan de 250 m |
+  |---|---|---|---|---|
+  | avant | 200 | 25,2 m | 25,5 px | **72,6 px** |
+  | après | 10 | 0,0 m | 0,0 px | **0,0 px** |
+
+  Les diagnostics sont désormais **regroupés par bâtiment** quand le registre en
+  nomme un (`id_rnb`), par adresse BAN sinon. Une adresse dont toutes les lignes
+  identifiées nomment le **même** bâtiment prête cet identifiant à celles qui
+  n'en portent aucun — 111 lignes sur 200 en portent un, 135 après report. Une
+  adresse qui en nomme **deux** n'en prête aucun : c'est le cas d'un bâtiment de
+  cour derrière un bâtiment de rue, et le trancher au hasard serait un tirage au
+  sort déguisé en enregistrement.
+
+  Chaque groupe dessine trois choses au lieu de quarante-deux vignettes :
+  **l'emprise du bâtiment**, lavée de sa propre lettre et cerclée — sur le fond
+  photoréaliste la teinte monte le long des façades, donc la réponse à « où est
+  le bien » est un immeuble entier allumé dans sa couleur, **sans avoir à
+  allumer Bâti 3D** ; **la parcelle cadastrale**, en trait tireté achromatique
+  et jamais en aplat (le canal de couleur appartient aux sept lettres, et un DPE
+  ne dit rien du terrain) ; et **une vignette**, posée à l'intérieur de son
+  propre contour.
+
+  Un clic n'importe où sur le bâtiment, sur son contour ou sur sa parcelle ouvre
+  **la même fiche** et relève la même vignette. Cette fiche répond pour
+  l'immeuble : `36 DPE, de B à G, majorité C · 1 passoire (F ou G) · 578 €/an
+  estimés (médiane du site) · emprise 800 m² au sol · parcelle 75113000CG0056 —
+  899 m² cadastrés · bâtiment nommé par le diagnostic (id RNB) · 59 m du centre
+  du scan`. La dernière ligne de provenance est **toujours** écrite, et elle
+  distingue quatre situations : le registre nomme le bâtiment, le RNB l'a
+  retrouvé **sous** le point BAN, le RNB a donné le **plus proche** (avec sa
+  distance, annoncée comme une déduction), ou aucun bâtiment n'a pu être placé.
+  La ligne de la couche compte ce qui est entouré : `10 adresses · 10 avec
+  emprise bâtie`.
+
+  Les emprises viennent du **RNB** et les parcelles d'**Api Carto**, résolues par
+  le proxy `/api/dpe` et partagées avec le cache que la couche Cadastre
+  remplissait déjà. Ni l'un ni l'autre ne peut retenir les diagnostics : si une
+  des deux sources est muette, la vignette et la fiche restent, et la ligne dit
+  combien d'adresses n'ont pas d'emprise.
+
+  Retombée pour les autres couches : une sonde d'altitude est désormais payée
+  **par coordonnée** et non par marque, donc des marques empilées ne peuvent plus
+  épuiser le budget d'assise à elles seules.
+
 - **La légende des îlots de fraîcheur tenait 18 lignes, et toute la couche
   glissait sur les toits dès qu'on bougeait la carte.** Deux défauts sans
   rapport l'un avec l'autre, sauf qu'ils se voient sur le même écran.

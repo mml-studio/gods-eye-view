@@ -3047,6 +3047,57 @@ measures the residual offset in pixels from two camera poses; a unit test
 covers the seating arithmetic. Clamped polylines carry no `position` and are
 skipped — they were already on the ground.
 
+A height probe is paid **per coordinate, not per mark** (`renderedSurface.js`).
+Coincident marks are the normal case rather than the edge case, and the budget
+is 24 probes a pass: the DPE layer used to hand it 200 badges carrying 14
+distinct coordinates, one of them carrying 42, so the whole budget went on
+fourteen questions asked fourteen different numbers of times and dozens of
+marks were still on the fallback height six passes later. Readings taken in one
+pass are shared by every mark at the same coordinate to 1e-7 degrees (~11 mm),
+including the one-shot latch — the same ground is the same reading whoever
+bought it. It is a per-pass shortcut, not a cache with a lifetime.
+
+**The DPE layer draws BUILDINGS, not diagnostics** (`dpeSites.js`, since
+2026-09-14). It is the only one of the five whose register answers many rows
+per address — a block of flats produces one diagnostic per sale — and drawing
+one badge per row put 200 marks on 14 pixels, made the card a lottery between
+forty-two flats, and exhausted the seating budget described above. The served
+rows are grouped into SITES: by the building the register names (`id_rnb`), by
+the BAN address when it names none, by the bare coordinate when it has neither.
+An address whose identified rows all name the SAME building lends that
+identifier to its unidentified rows (111 of 200 rows carry one, 135 after the
+loan); an address that names TWO buildings lends neither, because that is a
+courtyard building behind a street one and choosing between them would be a
+coin flip dressed as a record.
+
+Each site draws its **footprint**, from the RNB's published `shape`, washed in
+its own mode letter at alpha 0.26 and outlined — clamped to whichever surface
+is being drawn, so on the photoreal stack the tint climbs the facades and the
+answer to "which building is this" is a whole building lit in its colour, with
+`Bâti 3D` switched off. Under it the **cadastral parcel** is drawn as a dashed
+achromatic line and never as a wash: the colour channel is spent on the seven
+official letters, and a DPE says nothing about land. The badge stands on the
+footprint's own label anchor — the midpoint of its longest interior chord, not
+its centroid, which for a building around a courtyard lands in the courtyard.
+
+Both shapes are resolved SERVER-SIDE by the `/api/dpe` proxy, six RNB calls in
+flight at a time plus one cadastre box shared with the `cadastre-fr` proxy's
+own snapped-box cache; measured 5.9 s cold and 0.39 s once that box is warm,
+against 10 sites. Neither upstream can withhold the diagnostics — a site with
+no shape keeps its badge and its card, and `getStats()` publishes `sites`,
+`sitesOutlined`, `sitesParcelled`, `sitesUnplaceable` and `sitesOverBudget`
+rather than implying every address got an outline. Three marks, one subject: a
+click on the wash, on its outline or on the parcel line selects the site's
+BADGE, through the shell's `selectionFor` hook — a clamped polygon has no size
+to grow and no colour to take, so without the redirect a reader clicked a
+building, got the right card, and saw nothing change.
+
+Measured on the live app, 1400 × 900, nadir at 420 m, before and after:
+200 badges → 10, worst height error 25.2 m → 0.0 m, worst screen offset
+25.5 px → 0.0 px, worst slide across a 250 m pan **72.6 px → 0.0 px**.
+`scripts/qa-dpe-sites.mjs` recomputes all of it, plus the thing that caused it
+(how many badges share a coordinate) and the card's four placement sentences.
+
 **Urbanisme answers a BLOCK below 1 500 m and a POINT above it.** It is the one
 layer of the five whose question depends on the camera as well as on where the
 camera points, because its own question is about the plot OPPOSITE: "could the
