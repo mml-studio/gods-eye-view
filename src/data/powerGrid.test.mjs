@@ -31,6 +31,9 @@ import powerGridLayer, {
   mapPowerAnalystRecord,
   powerClassificationTypeForScene,
   powerClassificationTypeForStack,
+  POWER_GRID_MAX_ALTITUDE_M,
+  formatSpacing,
+  powerBoxDegForAltitude,
   powerRetryDelayMs,
   powerViewportBox,
   resolvePowerPickId,
@@ -59,16 +62,21 @@ function seedRenderState({ overlayHost, towersShown = true } = {}) {
       baseSize: 10,
     });
   }
+  // Pylons are BILLBOARDS now, and how many are on screen is set by the camera
+  // rather than by the payload — so the seed states the drawn cohort.
+  const pylonIds = [];
   for (const tower of PAYLOAD.towers) {
     const id = `power-grid:tower:${tower.id}`;
+    pylonIds.push(id);
     records.set(id, {
       id,
-      kind: 'tower',
+      kind: 'pylon',
       tower,
+      mark: { lat: tower.lat, lon: tower.lon, vi: 0, strokeId: '', first: false },
       position: Cesium.Cartesian3.fromDegrees(tower.lon, tower.lat, 2.5),
-      point: { show: true, color: null, pixelSize: 0 },
+      billboard: { show: true, color: null, width: 0, height: 0 },
       baseColor: Cesium.Color.WHITE,
-      baseSize: 4,
+      baseSize: 17,
     });
   }
   for (const stroke of PAYLOAD.strokes) {
@@ -83,7 +91,13 @@ function seedRenderState({ overlayHost, towersShown = true } = {}) {
     });
   }
   _setPowerGridStateForTest({
-    records, payload: PAYLOAD, overlayHost, towersShown, enabled: true,
+    records,
+    payload: PAYLOAD,
+    overlayHost,
+    towersShown,
+    enabled: true,
+    pylonIds: towersShown ? pylonIds : [],
+    pylonSpacingM: towersShown ? 600 : 0,
   });
   return records;
 }
@@ -110,22 +124,92 @@ test('the layer contract the data manager and the share link both depend on', ()
   assert.ok(powerGridLayer.updateInterval > 0);
 });
 
-test('a viewport wider than the proxy will answer is refused, not truncated', () => {
-  const viewerFor = (south, west, north, east) => ({
-    scene: { globe: { ellipsoid: Cesium.Ellipsoid.WGS84 } },
-    camera: {
-      computeViewRectangle: () => Cesium.Rectangle.fromDegrees(west, south, east, north),
+/**
+ * A camera the box solver can read: a view rectangle, the point the middle of
+ * the screen meets the globe, and an altitude. Those three are exactly the
+ * inputs `powerViewportBox` consumes, so the fixture states them rather than
+ * simulating a frustum.
+ */
+function cameraFixture({ view, focus, heightM }) {
+  const ellipsoid = Cesium.Ellipsoid.WGS84;
+  return {
+    scene: {
+      globe: { ellipsoid },
+      canvas: { clientWidth: 1400, clientHeight: 900 },
+      requestRender() {},
     },
+    camera: {
+      positionCartographic: { height: heightM },
+      computeViewRectangle: () => (view
+        ? Cesium.Rectangle.fromDegrees(view.west, view.south, view.east, view.north)
+        : undefined),
+      pickEllipsoid: () => (focus
+        ? Cesium.Cartesian3.fromDegrees(focus.lon, focus.lat, 0, ellipsoid)
+        : undefined),
+    },
+  };
+}
+
+test('the request box follows what the camera LOOKS AT, not how far it can see', () => {
+  // THE REPORTED BUG, as a unit (2026-09-14): "il faut un certain zoom, une
+  // certaine inclinaison pour que le réseau daigne bien se montrer".
+  //
+  // Both cameras below are at the SAME altitude over the SAME point near
+  // Bayonne. The numbers are measured, in the browser, on the app: looking
+  // straight down the view rectangle is 0.278° of longitude, and at a 35° pitch
+  // it is 1.076° — because a tilted camera sees to the horizon. The 0.8° box
+  // ceiling falls between them, so the old rule (gate on the rectangle's span)
+  // loaded one and refused the other, and the oblique view is the one this
+  // globe opens on.
+  const focus = { lat: 43.4, lon: -1.49 };
+  const nadir = cameraFixture({
+    view: { south: 43.26, west: -1.63, north: 43.54, east: -1.35 },
+    focus,
+    heightM: 19_500,
   });
-  assert.deepEqual(powerViewportBox(viewerFor(48.6, 2.1, 48.8, 2.4)), {
-    south: 48.6, west: 2.1, north: 48.8, east: 2.4,
+  const tilted = cameraFixture({
+    view: { south: 43.12, west: -2.03, north: 43.69, east: -0.95 },
+    focus,
+    heightM: 19_500,
   });
-  // One hair over the ceiling on either axis is a zoom-in, not a partial answer.
-  const over = POWER_GRID_MAX_BOX_DEG + 0.01;
-  assert.equal(powerViewportBox(viewerFor(48, 2, 48 + over, 2.4)), null);
-  assert.equal(powerViewportBox(viewerFor(48, 2, 48.4, 2 + over)), null);
+
+  const fromNadir = powerViewportBox(nadir);
+  // Nadir and low, the view is the smaller of the two and the box IS the view:
+  // nothing is asked for that is not on screen.
+  assert.deepEqual(fromNadir, { south: 43.26, west: -1.63, north: 43.54, east: -1.35 });
+
+  const fromTilt = powerViewportBox(tilted);
+  assert.ok(fromTilt, 'a 35° pitch must not refuse the layer');
+  // Tilted, the box is the ceiling-sized square around the focus, clipped to
+  // the view — the near and middle ground, not the horizon.
+  assert.ok(fromTilt.north - fromTilt.south <= POWER_GRID_MAX_BOX_DEG + 1e-9);
+  assert.ok(fromTilt.east - fromTilt.west <= POWER_GRID_MAX_BOX_DEG + 1e-9);
+  assert.ok(fromTilt.south <= focus.lat && fromTilt.north >= focus.lat,
+    'and it is centred on what the operator is looking at');
+  assert.ok(fromTilt.west <= focus.lon && fromTilt.east >= focus.lon);
+
+  // The gate that remains is the ALTITUDE, because a 89 km patch under a camera
+  // at 400 km is a postage stamp on a continent.
+  assert.equal(powerViewportBox(cameraFixture({
+    view: { south: 40, west: -6, north: 52, east: 10 },
+    focus,
+    heightM: POWER_GRID_MAX_ALTITUDE_M + 1,
+  })), null);
+  assert.ok(powerViewportBox(cameraFixture({
+    view: { south: 40, west: -6, north: 52, east: 10 },
+    focus,
+    heightM: POWER_GRID_MAX_ALTITUDE_M - 1,
+  })), 'and one metre under it still loads');
+
+  // The middle of the screen is sky: there is no point to centre a box on, and
+  // the view itself is too wide to use as one.
+  assert.equal(powerViewportBox(cameraFixture({
+    view: { south: 40, west: -6, north: 52, east: 10 },
+    focus: null,
+    heightM: 30_000,
+  })), null);
   // A global / cross-dateline view has no bounded box to ask for.
-  assert.equal(powerViewportBox({ camera: { computeViewRectangle: () => null }, scene: { globe: {} } }), null);
+  assert.equal(powerViewportBox(cameraFixture({ view: null, focus, heightM: 10_000 })), null);
   assert.equal(powerViewportBox(null), null);
 });
 
@@ -299,15 +383,27 @@ test('the legend is by voltage band and carries the ground-route limit on every 
     assert.ok(row.count > 0);
     assert.match(row.color, /^#[0-9a-f]{6}$/i);
   }
-  // The pylon row states its own zoom gate rather than looking like an outage.
-  const pylons = legend.find((row) => row.label === 'Pylons');
-  assert.ok(pylons);
-  assert.match(pylons.blurb, new RegExp(`below ${POWER_GRID_TOWER_MAX_BOX_DEG}° of view`));
-  assert.match(pylons.blurb, /never inferred/);
+  // The pylons get NO row: `#map-legend` carries the colour channel, a picture
+  // of a pylon is decoded without a key, and a row would have to invent a
+  // swatch colour for a mark that wears four. What the shape cannot say goes in
+  // the block's note instead.
+  assert.equal(legend.some((row) => row.label === 'Pylons'), false);
+  const { note } = _powerRowControlsForTest();
+  assert.match(note, /one drawn per 600 m of mapped overhead route/i);
+  assert.match(note, /never interpolated between two/i);
+  assert.match(note, /also carry a pylon record/i);
 
-  // Pylons out of range: the row disappears instead of reporting zero.
+  // Nothing drawn: the note goes with it rather than describing an empty map.
   seedRenderState({ towersShown: false });
-  assert.equal(_powerRowControlsForTest().legend.some((row) => row.label === 'Pylons'), false);
+  assert.equal(_powerRowControlsForTest().note, '');
+});
+
+test('a pylon spacing is written the way a distance on a map is read', () => {
+  assert.equal(formatSpacing(240), '240 m');
+  assert.equal(formatSpacing(1600), '1.6 km');
+  assert.equal(formatSpacing(24_000), '24 km');
+  assert.equal(formatSpacing(0), '—');
+  assert.equal(formatSpacing(null), '—');
 });
 
 test('stats report strokes and mapped ROUTES separately, and say when truncated', () => {
@@ -447,17 +543,32 @@ test('a camera too wide for the grid is flown in, not told off', async () => {
   // false from update(), which the manager reads as the layer REJECTING its
   // lifecycle — the toggle flipped straight back to OFF under "could not start
   // cleanly", with a perfectly healthy feed behind it.
-  const state = { box: { south: 40, west: -6, north: 52, east: 10 } };
+  const state = {
+    box: { south: 40, west: -6, north: 52, east: 10 },
+    heightM: 4_000_000,
+  };
   const flights = [];
   const viewer = {
-    scene: { globe: { ellipsoid: Cesium.Ellipsoid.WGS84, getHeight: () => 0 } },
+    scene: {
+      globe: { ellipsoid: Cesium.Ellipsoid.WGS84, getHeight: () => 0 },
+      canvas: { clientWidth: 1400, clientHeight: 900 },
+      requestRender() {},
+    },
     camera: {
       frustum: { fov: Math.PI / 3, aspectRatio: 1.7 },
       heading: 0,
       pitch: -Math.PI / 2,
-      positionCartographic: { height: 4_000_000 },
+      get positionCartographic() { return { height: state.heightM }; },
       computeViewRectangle: () => Cesium.Rectangle.fromDegrees(
         state.box.west, state.box.south, state.box.east, state.box.north,
+      ),
+      // The middle of the screen, on the globe. From orbit it is the middle of
+      // the framed continent; after the flight it is wherever the camera landed.
+      pickEllipsoid: () => Cesium.Cartesian3.fromDegrees(
+        (state.box.west + state.box.east) / 2,
+        (state.box.south + state.box.north) / 2,
+        0,
+        Cesium.Ellipsoid.WGS84,
       ),
       flyTo(options) {
         const carto = Cesium.Cartographic.fromCartesian(options.destination);
@@ -466,6 +577,7 @@ test('a camera too wide for the grid is flown in, not told off', async () => {
         flights.push({ lat, lon, heightM: carto.height });
         // Whatever the solve asked for, the camera arrives somewhere bounded.
         state.box = { south: lat - 0.1, west: lon - 0.1, north: lat + 0.1, east: lon + 0.1 };
+        state.heightM = carto.height;
         options.complete?.();
       },
     },
@@ -496,12 +608,21 @@ test('the zoom gate asks for a zoom — it does not fail the lifecycle or raise 
   // and DataLayerManager reads a literal `false` as a refusal of the lifecycle
   // transition. The gate is a normal state, not a refusal.
   const overlayHost = { setEntries() {}, setVisible() {}, clearSource() {} };
-  // Wider than POWER_GRID_MAX_BOX_DEG in both axes — the country-wide view the
-  // bug was reported from.
+  // The country-wide view the bug was reported from: far above
+  // POWER_GRID_MAX_ALTITUDE_M, where the 89 km the layer can load would be a
+  // postage stamp on a continent.
   const wide = Cesium.Rectangle.fromDegrees(-5, 42, 9, 51);
   const viewer = {
-    camera: { computeViewRectangle: () => wide },
-    scene: { globe: { ellipsoid: Cesium.Ellipsoid.WGS84 }, requestRender() {} },
+    camera: {
+      computeViewRectangle: () => wide,
+      positionCartographic: { height: 3_000_000 },
+      pickEllipsoid: () => Cesium.Cartesian3.fromDegrees(2, 46.5, 0, Cesium.Ellipsoid.WGS84),
+    },
+    scene: {
+      globe: { ellipsoid: Cesium.Ellipsoid.WGS84 },
+      canvas: { clientWidth: 1400, clientHeight: 900 },
+      requestRender() {},
+    },
   };
   _setPowerGridStateForTest({ viewer, records: new Map(), payload: null, overlayHost });
 
@@ -520,10 +641,14 @@ test('the zoom gate asks for a zoom — it does not fail the lifecycle or raise 
   assert.ok(!stats.error, `a zoom prompt must not reach the fault slot, got ${stats.error}`);
   assert.match(
     stats.loadingLabel,
-    /zoom in below/i,
+    /descend below \d+ km/i,
     'the prompt travels in the guidance slot, where the row can print it',
   );
-  assert.match(stats.loadingLabel, new RegExp(String(POWER_GRID_MAX_BOX_DEG)),
+  // The threshold the prompt names is the one the gate actually enforces, and
+  // since 2026-09-14 that is an ALTITUDE, not a box span: "zoom in below 0.8°"
+  // was an instruction nobody could act on — degrees of view rectangle are not
+  // on any readout, and a tilt changed the number without the camera moving.
+  assert.match(stats.loadingLabel, new RegExp(String(POWER_GRID_MAX_ALTITUDE_M / 1000)),
     'and it names the actual threshold rather than a vague hint');
 });
 
@@ -531,4 +656,69 @@ test('a disabled layer is the only thing that refuses the transition', async () 
   const overlayHost = { setEntries() {}, setVisible() {}, clearSource() {} };
   _setPowerGridStateForTest({ viewer: null, records: new Map(), overlayHost, enabled: false });
   assert.equal(await powerGridLayer.update(null), false);
+});
+
+test('the box a camera asks for is sized by how high it is, not by the ceiling', () => {
+  // A camera at 3 km asking for the full 0.8° asks Overpass for 89 km of grid
+  // to draw 12 km of screen. The ceiling is a limit, not a target.
+  assert.ok(powerBoxDegForAltitude(3_000) < powerBoxDegForAltitude(12_000));
+  assert.equal(powerBoxDegForAltitude(120_000), POWER_GRID_MAX_BOX_DEG,
+    'and it never exceeds the box the proxy will answer');
+  assert.equal(powerBoxDegForAltitude(0), 0.05);
+  assert.equal(powerBoxDegForAltitude(NaN), 0.05);
+  // The consequence that matters beyond bandwidth: pylon RECORDS are fetched
+  // below POWER_GRID_TOWER_MAX_BOX_DEG, decided from the box. A focus box
+  // pinned at the ceiling would mean a TILTED camera never got one at any
+  // altitude, so a pylon's reference and design would be nadir-only.
+  assert.ok(powerBoxDegForAltitude(6_000) <= POWER_GRID_TOWER_MAX_BOX_DEG,
+    'a 6 km camera still gets the mapped pylon records, tilted or not');
+
+  // And it really is the altitude driving it, through the public entry point.
+  const focus = { lat: 43.4, lon: -1.49 };
+  const wideView = { south: 42.6, west: -2.3, north: 44.2, east: -0.7 };
+  const low = powerViewportBox(cameraFixture({ view: wideView, focus, heightM: 4_000 }));
+  const high = powerViewportBox(cameraFixture({ view: wideView, focus, heightM: 40_000 }));
+  assert.ok(low.north - low.south < high.north - high.south);
+});
+
+test('a view with nothing overhead in it SAYS so, instead of just drawing no pylon', () => {
+  // THE REPORTED DOUBT, as a unit (2026-09-14): "on est d'accord que les
+  // pylônes ne s'affichent pas ?" — asked over the Trocadéro, where the layer
+  // had drawn 126.2 km of mapped grid, 126.2 km of it UNDERGROUND, and no
+  // pylon. That was right: a cable has none. But the key said nothing at all,
+  // so the only reasonable reading left was "the pylons are broken". An
+  // absence with a reason is information; an absence on its own is a bug
+  // report, and this one cost a round trip.
+  const allUnderground = {
+    strokes: [], substations: [], towers: [], voltages: [], tiers: [],
+    stats: { lengthKm: 126.2, overheadKm: 0, undergroundKm: 126.2, strokes: 41, substations: 21 },
+  };
+  _setPowerGridStateForTest({
+    payload: allUnderground, records: new Map(), pylonIds: [], enabled: true,
+  });
+  const note = _powerRowControlsForTest().note;
+  assert.match(note, /none are missing/i, 'the absence must be explained, not merely true');
+  assert.match(note, /100% of the mapped grid in this view runs UNDERGROUND/);
+  assert.match(note, /a cable has no pylons/i);
+
+  // The guard that broke this on the first attempt: `overheadKm <= 0` is the
+  // case the sentence EXISTS for, so it must never be the reason to skip it.
+  assert.notEqual(note, '');
+
+  // A view that is mostly overhead says nothing here — the pylons speak for
+  // themselves, and a note about their absence would be about nothing.
+  _setPowerGridStateForTest({
+    payload: {
+      ...allUnderground,
+      stats: { lengthKm: 440, overheadKm: 377, undergroundKm: 63, strokes: 163, substations: 11 },
+    },
+    records: new Map(),
+    pylonIds: [],
+    enabled: true,
+  });
+  assert.equal(_powerRowControlsForTest().note, '');
+
+  // And an empty payload has nothing to say either way.
+  _setPowerGridStateForTest({ payload: null, records: new Map(), pylonIds: [], enabled: true });
+  assert.equal(_powerRowControlsForTest().note, '');
 });

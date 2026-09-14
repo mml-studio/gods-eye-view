@@ -101,6 +101,40 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   plus au milieu, donc la classe « puissance non exploitable » est aussi
   trouvable que n'importe quelle bande mesurée, et ce qui la distingue est sa
   FORME — la plaque creuse — et non sa teinte.
+- **Le réseau électrique refusait de s'afficher sur la vue que le globe ouvre —
+  et effaçait sa propre légende en le faisant.** Trois reproches, trois vraies
+  pannes.
+
+  **« Il faut un certain zoom, une CERTAINE INCLINAISON pour qu'il daigne se
+  montrer. »** La boîte demandée au proxy était l'étendue de
+  `computeViewRectangle`, et sur une caméra inclinée ce rectangle va jusqu'à
+  L'HORIZON. Mesuré dans le navigateur, au-dessus de Bayonne, à 19,5 km : **0,278°
+  de longitude à la verticale, 1,076° à 35° de tangage** — même altitude, boîte
+  presque quatre fois plus large. Le plafond de 0,8° tombait pile entre les deux,
+  donc la couche se chargeait à la verticale et se refusait à l'oblique, qui est
+  l'attitude par défaut de ce globe. La boîte est maintenant centrée sur le point
+  que la caméra REGARDE (`focusedViewBox`, le correctif que le cadastre et le GPU
+  avaient déjà payé sur un rapport identique), dimensionnée sur l'altitude, et le
+  portillon est l'altitude — 120 km. La caméra du rapport charge 326 km de tracé
+  et 11 postes là où elle affichait « zoom in ».
+
+  **« Le tracé se fait via un tout petit trait, c'est quasi invisible. »** Exact :
+  1,6 à 3,2 px, une couleur posée nue sur une orthophoto, sans fond. Les bandes
+  passent à 3–5,5 px et **chaque tracé est dessiné deux fois** — un fourreau
+  quasi-noir plus large dessous, la couleur de tension par-dessus. C'est la seule
+  réponse que la cartographie a pour un trait coloré sur une photo, et ce n'est
+  pas une teinte plus criarde. (`PolylineOutline` ferait les deux en une passe et
+  est inutilisable ici : le fragment shader des polylignes au sol de Cesium ne
+  déclare jamais le `v_width` que ce matériau lit, donc la primitive ne se lie
+  pas.)
+
+  **« J'ai pas l'impression qu'il y ait une légende. »** Il y en avait une, et la
+  couche la supprimait : une caméra passée au-dessus du plafond appelait
+  `clearRendered()`, qui met `_payload` à `null`, et la clé des tensions est
+  construite depuis `_payload.tiers`. Monter ne cessait donc pas d'ajouter — ça
+  EFFAÇAIT. Une caméra qui bouge ne périme aucune géométrie cartographiée : ce
+  qui est chargé reste dessiné, et clé, jusqu'à sortir du champ.
+
 - **318 bornes étaient dessinées sur Bordeaux, et personne ne les trouvait — y
   compris celui qui les avait dessinées.** Un lecteur a regardé la ville depuis
   12 653 m, à la verticale, sur l'imagerie photoréaliste, et a dit que les
@@ -147,6 +181,50 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   contre 318 disques de 7 px et 1,2 %. Quatre rasters servent toute la flotte,
   la couleur de bande voyageant sur `billboard.color` — 4 000 marques coûtent
   quatre entrées d'atlas, pas 4 000.
+
+### Added
+- **Une vue sans aérien le DIT, au lieu de simplement ne rien dessiner.** Le
+  lecteur a regardé le Trocadéro depuis 856 m et a demandé : « on est d'accord
+  que les pylônes ne s'affichent pas ? » Il avait raison — zéro pylône dessiné —
+  et la couche avait raison aussi : mesuré sur cette caméra exacte, **126,2 km de
+  réseau cartographié dans cette vue, dont 126,2 km enterrés, soit 100 %**. Paris
+  intra-muros n'a pas de ligne aérienne, et un câble n'a pas de pylônes ; les
+  tirets oranges et verts SONT le câble.
+
+  Ce qui manquait, c'est la phrase. **Une absence avec sa raison est une
+  information ; une absence toute seule est un rapport de bug**, et celle-ci a
+  coûté un aller-retour. La note sous la clé le dit maintenant.
+
+  **Et 33 tronçons de cette boîte étaient tagués `power=line` en faisant 3 à
+  45 m** — 499 m à eux tous : les liaisons *à l'intérieur* des postes. Sans
+  garde-fou, un pylône aurait fini dessiné au milieu d'un poste électrique. Le
+  seuil est à 150 m, bien sous une portée réelle entre deux pylônes (300 à 500 m
+  sur une 400 kV française, donc aucune vraie ligne n'est exclue) et loin
+  au-dessus de tout ce qu'un poste contient.
+
+- **Des pylônes sur les lignes aériennes, posés là où quelqu'un en a relevé
+  un.** Jusqu'ici l'aérien et l'enterré ne se distinguaient que par un trait
+  plein contre un trait pointillé, et les `power=tower` n'étaient dessinés qu'en
+  dessous de 0,25° de vue, en pastilles grises de 4 px — une taille à laquelle
+  un pylône n'est pas une structure, c'est un grain.
+
+  La marque est **`power_tower` de Temaki** (CC0, le glyphe de l'éditeur iD
+  d'OpenStreetMap), teintée de la couleur de tension de la ligne qu'elle porte,
+  **une tous les X mètres avec X résolu par la caméra** — elle s'espace quand on
+  monte et redescend jusqu'à chaque nœud cartographié quand on descend.
+
+  **Et aucune position n'est inventée.** Découper une ligne de 12 km en six
+  morceaux de 2 km poserait cinq pylônes dans des champs. Ce n'est pas
+  nécessaire, parce que la liste des nœuds d'un `power=line` EST sa liste de
+  pylônes : mesuré le 2026-09-14 contre le proxy en direct, **574 nœuds sur 574
+  tagués `power=tower` autour de Bayonne et 750 sur 775 autour de Saclay** sont
+  des sommets d'une ligne aérienne que cette couche dessine — et les 25 manquants
+  de Saclay appartiennent chacun à une voie qu'elle exclut volontairement, dont
+  une `disused:power=line` dont l'acier est toujours debout. Le rythme est donc
+  tenu en SAUTANT des sommets, jamais en en interpolant un. La fiche dit laquelle
+  des deux choses on a cliqué : un pylône avec sa référence et sa hauteur relevée,
+  ou un sommet de la voie cartographiée.
+
 
 ## [Unreleased] — 2026-09-10
 

@@ -3,6 +3,7 @@ import { governorRequestRender } from '../renderGovernor.js';
 import { registerSpriteCollection, restoreSpriteOrder, unregisterSpriteCollection } from './spriteOrder.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import { cachedGroundFloor, warmGroundFloor } from './groundFloor.js';
+import { provisionalFloor, sampleProvisionalFloors } from './provisionalFloor.js';
 import { horizonOccluder } from './iconOrientation.js';
 import {
   clearOverlaySource,
@@ -11,16 +12,24 @@ import {
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
 import { pickOverlayLabelId } from './overlayLabelPick.js';
+import { mapIconGlyph } from './mapIcons.js';
 import {
+  POWER_GRID_CASING_COLOR,
+  POWER_GRID_CASING_PX,
   POWER_GRID_MAX_BOX_DEG,
   POWER_GRID_TIERS,
-  POWER_GRID_TOWER_MAX_BOX_DEG,
+  POWER_PYLON_ICON_PX,
+  POWER_PYLON_MAX_MARKS,
   POWER_SUBSTATION_ROLE_UNSTATED,
   formatKilovolts,
-  powerBoxTooWide,
+  powerPositionKey,
+  powerPylonMarks,
+  powerPylonSpacingM,
   powerTierById,
+  powerTowerIndex,
 } from './powerGridFeed.js';
-import { applyViewGate } from './viewGate.js';
+import { applyViewGate, cameraViewBox } from './viewGate.js';
+import { boxesIntersect, focusedViewBox } from './viewportBox.js';
 
 /**
  * Power Grid — the high-voltage network as OpenStreetMap has mapped it, for the
@@ -35,8 +44,9 @@ import { applyViewGate } from './viewGate.js';
  *                     pylon route
  *   **the nodes**   — `power=substation` yards at the same voltages, sized by
  *                     band, which is where those routes actually terminate
- *   **the pylons**  — `power=tower` / `power=portal`, but only once you are
- *                     close enough for a pylon to be a thing rather than a dot
+ *   **the pylons**  — a Temaki `power_tower` glyph on the mapped vertices of the
+ *                     overhead ways, at the spacing the camera can read, tinted
+ *                     with the route's own voltage colour
  *
  * Keyless, ODbL 1.0, all through the `/api/power-grid` proxy. The upstream traps
  * live in `powerGridFeed.js` under test against a captured Overpass response;
@@ -69,6 +79,31 @@ import { applyViewGate } from './viewGate.js';
  *   against ONLY the active surface — the rule the submarine-cable, Vigicrues
  *   and gas layers established, with BOTH as the safe fallback for an unknown
  *   stack.
+ *
+ * ── WHAT THE 2026-09-14 PASS CHANGED, AND WHY ───────────────────────────────
+ *
+ * The operator's report was three sentences and every one of them was a real
+ * defect. They are recorded here because each fix is a rule, not a tweak.
+ *
+ * 1. **"Il faut un certain zoom, une certaine inclinaison pour que le réseau
+ *    daigne bien se montrer."** The request box was the span of
+ *    `computeViewRectangle`, which on a tilted camera reaches the HORIZON —
+ *    0.278° of longitude at Bayonne looking straight down from 19.5 km, and
+ *    1.076° at a 35° pitch from the SAME altitude. The 0.8° ceiling fell
+ *    between the two, so the layer refused the oblique view this globe opens
+ *    on. The box is now `focusedViewBox` around what the camera is aiming at,
+ *    sized from the ALTITUDE (`powerBoxDegForAltitude`) and gated on it
+ *    (`POWER_GRID_MAX_ALTITUDE_M`). See `powerViewportBox`.
+ *
+ * 2. **"Le tracé se fait via un tout petit trait, c'est quasi invisible."**
+ *    True at 1.6–3.2 px with no casing. The bands are 3–5.5 px now and every
+ *    stroke is drawn twice, near-black and wider underneath. See `buildStrokes`.
+ *
+ * 3. **"J'ai pas l'impression qu'il y ait une légende."** There was one, and
+ *    the layer was deleting it: a camera past the ceiling ran `clearRendered()`,
+ *    which nulls `_payload`, and the key is built from `_payload.tiers`. A
+ *    camera moving does not make mapped geometry wrong, so what was loaded now
+ *    stays drawn — and keyed — until it leaves the shot. See `load`.
  */
 
 const GRID_URL = '/api/power-grid';
@@ -108,18 +143,42 @@ const REQUEST_TIMEOUT_MS = 60_000;
 
 /** Points sit this far above the local ground floor. */
 const POINT_LIFT_M = 2.5;
+/**
+ * How far a cell the rendered-surface probe budget did not reach may borrow a
+ * floor from, in km. Wider than the street-scale layers' 10 km because a
+ * transmission corridor is a long thin object: the pylons a 40-probe budget
+ * misses are on the same relief as the ones it hit, tens of kilometres along
+ * the same line.
+ */
+const FLOOR_FILL_KM = 20;
 
-/** Pylons: small, dim, and never competing with the routes they carry. */
-const TOWER_COLOR = '#9fb0c4';
-const TOWER_POINT_PX = 4;
-const PORTAL_POINT_PX = 5;
+/**
+ * Pylons.
+ *
+ * They used to be 4 px grey dots and the colour was `#9fb0c4` — deliberately
+ * dim, so as not to compete with the routes. That was the wrong problem to
+ * solve: at 4 px a pylon competes with nothing because it is not visible, and
+ * what the overhead network needed was a mark that says "steel and conductors
+ * overhead" rather than one that says "a point is here". They are now Temaki's
+ * `power_tower` tinted with the route's OWN band colour, which is what makes a
+ * 400 kV corridor read as one object instead of a line and some dots.
+ */
+const PYLON_ALPHA = 0.95;
 
 const SELECTED_COLOR = '#00ffff';
 const SELECTED_POINT_PX = 20;
+const SELECTED_PYLON_PX = 26;
 const SELECTED_STROKE_WIDTH = 6;
 
 /** Stroke opacity — quiet infrastructure, not a warning. */
 const STROKE_ALPHA = 0.9;
+/**
+ * Casing opacity. Below 1 on purpose: the casing is a shadow under the route,
+ * not a second black line beside it, and at 0.72 the imagery still shows what
+ * the route is crossing.
+ */
+const CASING_ALPHA = 0.72;
+
 /** Underground strokes are dashed AND slightly dimmer: they are not overhead. */
 const UNDERGROUND_ALPHA = 0.72;
 const UNDERGROUND_DASH_LENGTH = 14;
@@ -167,30 +226,116 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
 });
 
 /**
- * The viewport this layer will ask for, or null when the camera is too high.
+ * Highest camera this layer will load for, in metres.
  *
- * A view wider than the proxy's own ceiling is a continental one, where every
- * mapped way in France would be a single grey smear and the element caps would
- * truncate arbitrarily. Rather than serve a truncated smear, the layer says
- * "zoom in" — the same contract the mapped-installation layer uses.
+ * The box ceiling is 0.8° ≈ 89 km of ground, and this is the altitude at which
+ * that patch stops being most of the screen: a nadir camera sees roughly 1.15 ×
+ * its height, so at 120 km the loaded grid still fills about three-quarters of
+ * the view. Above it the layer would be drawing a postage stamp in the middle
+ * of a continent, which is worse than saying so.
+ */
+export const POWER_GRID_MAX_ALTITUDE_M = 120_000;
+
+/**
+ * How much ground the request box spans, as a multiple of the camera's height.
+ *
+ * The ceiling is not the only thing that should size a request. A camera at
+ * 3 km asking for the full 0.8° is asking for 89 km of Overpass to draw 12 km
+ * of screen — slower to load, and no more visible for it.
+ *
+ * 4× is measured, not chosen: the tilted camera in the bug report (19.5 km,
+ * 35° pitch) frames 87 km × 63 km of ground, and 4 × 19.5 km = 78 km covers
+ * essentially all of it. Under a NADIR camera this never bites, because
+ * `focusedViewBox` clips to the view and the view is the smaller of the two.
+ *
+ * It also restores something the focus box would otherwise have taken away.
+ * Pylon RECORDS are fetched below `POWER_GRID_TOWER_MAX_BOX_DEG`, decided from
+ * the box; a focus box pinned at the ceiling would have meant a tilted camera
+ * never got one at any altitude. At 4× the records come back under ~7 km, which
+ * is where a reference and a design are worth reading.
+ */
+export const POWER_GRID_BOX_PER_ALTITUDE = 4;
+/** Metres per degree of latitude (WGS84 mean), to turn that into degrees. */
+const M_PER_DEG_LAT = 111_320;
+/** Never ask for less than the proxy's own snap step — a smaller box is free. */
+const POWER_GRID_MIN_BOX_DEG = 0.05;
+
+/**
+ * The box span this camera should ask for, in degrees.
+ * @param {number} altitudeM
+ * @returns {number}
+ */
+export function powerBoxDegForAltitude(altitudeM) {
+  if (!Number.isFinite(altitudeM) || altitudeM <= 0) return POWER_GRID_MIN_BOX_DEG;
+  const span = (altitudeM * POWER_GRID_BOX_PER_ALTITUDE) / M_PER_DEG_LAT;
+  return Math.min(POWER_GRID_MAX_BOX_DEG, Math.max(POWER_GRID_MIN_BOX_DEG, span));
+}
+
+/**
+ * The point on the globe the middle of the screen is looking at.
+ *
+ * `pickEllipsoid` and not `globe.pick`: the ellipsoid always answers, terrain
+ * may not have streamed yet, and a request box does not need centimetres — it
+ * needs to be in the right kilometre. Null when the middle of the screen is
+ * sky, which the caller handles rather than guessing. Same function, for the
+ * same reason, as `cadastreFocusPoint`.
+ * @param {?Cesium.Viewer} viewer
+ * @returns {?{lat:number, lon:number}}
+ */
+export function powerFocusPoint(viewer) {
+  const scene = viewer?.scene;
+  const camera = viewer?.camera;
+  if (!scene || typeof camera?.pickEllipsoid !== 'function') return null;
+  const width = scene.canvas?.clientWidth;
+  const height = scene.canvas?.clientHeight;
+  if (!width || !height) return null;
+  const ellipsoid = scene.globe?.ellipsoid || Cesium.Ellipsoid.WGS84;
+  const hit = camera.pickEllipsoid(new Cesium.Cartesian2(width / 2, height / 2), ellipsoid);
+  if (!hit) return null;
+  const carto = ellipsoid.cartesianToCartographic(hit);
+  if (!carto) return null;
+  const lat = Cesium.Math.toDegrees(carto.latitude);
+  const lon = Cesium.Math.toDegrees(carto.longitude);
+  return Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
+}
+
+/**
+ * The viewport this layer will ask for, or null when there is nothing to ask.
+ *
+ * THE GATE IS THE CAMERA'S ALTITUDE, AND THE BOX IS AROUND WHAT IT IS LOOKING
+ * AT. It used to be the span of `computeViewRectangle`, and that is the bug the
+ * operator reported on 2026-09-14 as "il faut un certain zoom, une certaine
+ * inclinaison pour que le réseau daigne bien se montrer".
+ *
+ * The rectangle a tilted camera reports reaches the HORIZON, so its span says
+ * almost nothing about how close the camera is. Measured over Bayonne at
+ * 19.5 km: **0.278° of longitude looking straight down, 1.076° at a 35° pitch**
+ * — the same altitude, 3.9× the box, one side of the 0.8° ceiling each. This
+ * globe opens on an oblique view, so the layer refused to load on exactly the
+ * camera the app hands its operator, and the row told them to zoom in when the
+ * lines were already under their nose.
+ *
+ * The repair is not a bigger ceiling — a bigger ceiling is a bigger Overpass
+ * query for ground that is a smear at that distance. It is `focusedViewBox`:
+ * a `maxDeg` box centred on the point the middle of the screen meets the globe,
+ * clipped to the view. Nadir and low, the view is the smaller of the two and
+ * the result IS the view. Tilted, it is the near and middle ground around what
+ * is being looked at, and the far half of the screen — where a 400 kV line is a
+ * third of a pixel — is simply not asked for. Lifted from `cadastreFeed.js`,
+ * which learned it from the same bug report a fortnight earlier.
  *
  * @param {Cesium.Viewer|null} viewer
  * @returns {?{south:number, west:number, north:number, east:number}}
  */
 export function powerViewportBox(viewer) {
-  const rectangle = viewer?.camera?.computeViewRectangle(viewer.scene.globe.ellipsoid);
-  if (!rectangle) return null;
-  const south = Cesium.Math.toDegrees(rectangle.south);
-  const north = Cesium.Math.toDegrees(rectangle.north);
-  const west = Cesium.Math.toDegrees(rectangle.west);
-  const east = Cesium.Math.toDegrees(rectangle.east);
-  if (!Number.isFinite(south + north + west + east)) return null;
-  // A cross-dateline or global view requires a zoom before a bounded request.
-  if (east <= west || north <= south) return null;
-  // Shares the proxy's own tolerant comparison, so the client can never ask for
-  // a box the proxy will then refuse on a floating-point hair.
-  if (powerBoxTooWide({ south, west, north, east })) return null;
-  return { south, west, north, east };
+  // The shared `cameraViewBox`, not a local conversion: the same arithmetic the
+  // view gate solves its flights against, so the box this layer asks for and
+  // the box a flight is planned from cannot drift apart.
+  const view = cameraViewBox(viewer);
+  if (!view) return null;
+  const altitude = viewer?.camera?.positionCartographic?.height;
+  if (!Number.isFinite(altitude) || altitude > POWER_GRID_MAX_ALTITUDE_M) return null;
+  return focusedViewBox(view, powerFocusPoint(viewer), powerBoxDegForAltitude(altitude));
 }
 
 /**
@@ -249,8 +394,21 @@ export function buildPowerSelectionLabel(record, payload = {}) {
     return [title, ...details].join('\n');
   }
 
-  if (record?.kind === 'tower') {
-    const tower = record.tower || {};
+  // A pylon mark. Two different objects wear one glyph and the card is where
+  // the difference is stated: a mark that landed on a node tagged
+  // `power=tower` is a PYLON with a record, and one that landed on an untagged
+  // vertex of the mapped way is exactly that — a point someone surveyed on a
+  // line that has pylons, which is not the same claim as "a pylon is here".
+  if (record?.kind === 'tower' || record?.kind === 'pylon') {
+    const tower = record.tower || null;
+    if (!tower) {
+      const voltage = voltages[record?.mark?.vi] || {};
+      details.push(`⚡ ${formatKilovolts(voltage.v)} overhead route`);
+      details.push('△ Vertex of the mapped way — a pylon stands on it, and');
+      details.push('   OpenStreetMap has not tagged this one');
+      details.push('© OpenStreetMap contributors (ODbL 1.0)');
+      return ['Pylon position', ...details].join('\n');
+    }
     const title = tower.portal ? 'Portal' : 'Pylon';
     if (tower.ref) details.push(`# ${tower.ref}`);
     if (tower.design) details.push(`△ ${String(tower.design).replaceAll('_', ' ')}`);
@@ -404,6 +562,12 @@ export function mapPowerAnalystRecord(substation, payload = {}, index = 0) {
 
 let _viewer = null;
 let _points = null;
+/** @type {?Cesium.BillboardCollection} The pylon glyphs along the overhead routes. */
+let _pylons = null;
+/** @type {Array<string>} Render ids currently held by `_pylons`, for a clean rebuild. */
+let _pylonIds = [];
+/** Ground metres between two drawn pylons on the last rebuild; 0 = none drawn. */
+let _pylonSpacingM = 0;
 let _overlayHost = DEFAULT_OVERLAY_HOST;
 let _enabled = false;
 let _classificationType = Cesium.ClassificationType.BOTH;
@@ -443,6 +607,8 @@ let _selectedId = null;
 
 /** @type {object} The loaded document — dictionaries included. */
 let _payload = null;
+/** @type {?object} The box `_payload` was loaded for, so a drift can be judged. */
+let _loadedBox = null;
 let _loading = false;
 let _error = null;
 let _status = 'idle';
@@ -457,9 +623,41 @@ function setStatus(status, error = null) {
   governorRequestRender('power-grid-status');
 }
 
+/**
+ * The pylon raster, built once.
+ *
+ * `mapIconGlyph` returns a data URI, and Cesium's billboard atlas keys on that
+ * STRING — so six hundred pylons sharing one URI cost ONE atlas entry, where
+ * six hundred canvases would have cost six hundred. 72 px covers the 17 CSS px
+ * the glyph draws at, with room for a retina buffer; the atlas has no mipmaps,
+ * so a much larger raster would only be minified into mush.
+ * @returns {?string}
+ */
+function pylonGlyph() {
+  if (_pylonGlyph === undefined) _pylonGlyph = mapIconGlyph('temaki', 'power_tower', { px: 72 });
+  return _pylonGlyph;
+}
+/** @type {string|null|undefined} `undefined` = not built yet. */
+let _pylonGlyph;
+
+/**
+ * A mark's ellipsoidal height: the DEM floor when it has landed, the surface
+ * being DRAWN when it has not, and the ellipsoid only when neither answers.
+ *
+ * The middle term matters more here than it looks. `cachedGroundFloor` resolves
+ * over the network, and until it answers a sprite drawn with
+ * `disableDepthTestDistance: Infinity` still PAINTS — at height 0, hundreds of
+ * metres under its own ground. A sprite that is not on the ground has a screen
+ * position that is a function of the camera pose, so it SLIDES across the
+ * landscape on every pan and then jumps into place. That was tolerable when
+ * this layer drew a handful of yards; it is not with six hundred pylons on the
+ * overhead routes. `provisionalFloor.js` reads the rendered surface
+ * synchronously and is always overridden by the DEM.
+ */
 function pointPosition(lat, lon) {
   const floor = cachedGroundFloor(lat, lon);
-  const height = (Number.isFinite(floor) ? floor : 0) + POINT_LIFT_M;
+  const resolved = Number.isFinite(floor) ? floor : provisionalFloor(lat, lon);
+  const height = (Number.isFinite(resolved) ? resolved : 0) + POINT_LIFT_M;
   return Cesium.Cartesian3.fromDegrees(lon, lat, height);
 }
 
@@ -483,7 +681,25 @@ function clearStrokePrimitives() {
  * The split is by what has to differ: overhead strokes share ONE primitive and
  * carry their band colour as a per-instance attribute, while underground ones
  * need a dashed material and a material is per-primitive, so they get one batch
- * per band. Five batches at most, whatever the stroke count.
+ * per band. Six batches at most, whatever the stroke count.
+ *
+ * ── THE CASING IS THE FIRST BATCH, AND IT IS WHY THIS LAYER IS VISIBLE ──────
+ *
+ * Every stroke is drawn TWICE: once near-black and `POWER_GRID_CASING_PX`
+ * wider, then once in its band colour. Without it a #7ee0a8 line at 1.6 px over
+ * a pine plantation is, in the operator's words, "quasi invisible" — a coloured
+ * line on an orthophoto has no reliable background, and the answer cartography
+ * has for that is a casing, not a louder hue. The casing instances go in FIRST,
+ * in their own primitive, because `scene.groundPrimitives` draws in insertion
+ * order and the core has to land on top of its own shadow.
+ *
+ * Per-instance colour is safe on a GROUND POLYLINE and is not safe on a ground
+ * POLYGON: a polyline's shadow volume culls by distance to the line, so it does
+ * not have the bounding-rectangle rule that forces one colour per batch on
+ * `GroundPrimitive`. `PolylineOutline` would fold casing and core into one
+ * pass and cannot be used at all here — Cesium's ground-polyline fragment
+ * shader never declares the `v_width` varying that material reads, so the
+ * primitive fails to link.
  *
  * @param {object} payload Projected `/api/power-grid` document.
  */
@@ -500,13 +716,17 @@ function buildStrokes(payload) {
 
   const strokes = Array.isArray(payload?.strokes) ? payload.strokes : [];
   const voltages = Array.isArray(payload?.voltages) ? payload.voltages : [];
+  const casing = [];
   const overhead = [];
   /** @type {Map<string, Array<Cesium.GeometryInstance>>} tier id → dashed instances. */
   const underground = new Map();
   /** Per-bucket build record; see `_batchManifest`. */
+  const casingIds = [];
   const overheadIds = [];
   const undergroundIds = new Map();
   const overheadWidths = new Map();
+  const casingColor = Cesium.Color.fromCssColorString(POWER_GRID_CASING_COLOR)
+    .withAlpha(CASING_ALPHA);
 
   for (let i = 0; i < strokes.length; i += 1) {
     const stroke = strokes[i];
@@ -516,10 +736,22 @@ function buildStrokes(payload) {
     const tier = powerTierById(voltage?.tier);
     if (!tier) continue;
     const id = `power-grid:stroke:${stroke.id || i}`;
+    const positions = Cesium.Cartesian3.fromDegreesArray(coords);
+    // The casing carries NO id: it is the same object as the core drawn wider,
+    // and giving it one would put two pick answers on one stroke — the second
+    // of which has no record behind it.
+    casing.push(new Cesium.GeometryInstance({
+      geometry: new Cesium.GroundPolylineGeometry({
+        positions,
+        width: tier.widthPx + POWER_GRID_CASING_PX,
+      }),
+      attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(casingColor) },
+    }));
+    casingIds.push(id);
     const instance = new Cesium.GeometryInstance({
       id,
       geometry: new Cesium.GroundPolylineGeometry({
-        positions: Cesium.Cartesian3.fromDegreesArray(coords),
+        positions,
         width: tier.widthPx,
       }),
       attributes: {
@@ -543,6 +775,28 @@ function buildStrokes(payload) {
     }
   }
 
+  if (casing.length) {
+    // FIRST into the collection, so the coloured cores draw over their own
+    // shadow rather than under it. Every stroke is in here, overhead and
+    // underground alike: a dashed cable needs its gaps to read as gaps, and a
+    // gap over a bright field is only a gap against something dark.
+    const primitive = _viewer.scene.groundPrimitives.add(new Cesium.GroundPolylinePrimitive({
+      geometryInstances: casing,
+      classificationType: _classificationType,
+      appearance: new Cesium.PolylineColorAppearance({ translucent: true }),
+    }));
+    _strokePrimitives.push(primitive);
+    _batchManifest.push({
+      primitive,
+      tierId: null,
+      underground: false,
+      casing: true,
+      widthPx: [...new Set(POWER_GRID_TIERS.map((tier) => tier.widthPx + POWER_GRID_CASING_PX))],
+      color: POWER_GRID_CASING_COLOR,
+      strokeIds: casingIds,
+    });
+  }
+
   if (overhead.length) {
     // One batch for every overhead stroke at every voltage: the band colour and
     // the band width travel per instance, so merging them costs no fidelity.
@@ -556,6 +810,7 @@ function buildStrokes(payload) {
       primitive,
       tierId: null,
       underground: false,
+      casing: false,
       // Mixed by design — the per-instance widths this batch was built from.
       widthPx: [...overheadWidths.values()],
       color: null,
@@ -581,6 +836,7 @@ function buildStrokes(payload) {
       primitive,
       tierId,
       underground: true,
+      casing: false,
       widthPx: [tier.widthPx],
       color: tier.color,
       strokeIds: undergroundIds.get(tierId) || [],
@@ -595,28 +851,9 @@ function buildPoints(payload) {
   _points.removeAll();
 
   const substations = Array.isArray(payload?.substations) ? payload.substations : [];
-  const towers = Array.isArray(payload?.towers) ? payload.towers : [];
   const voltages = Array.isArray(payload?.voltages) ? payload.voltages : [];
   const warm = [];
-
-  // Pylons first, so a substation sharing a coordinate with one paints over it.
-  for (const tower of towers) {
-    if (!Number.isFinite(tower?.lat) || !Number.isFinite(tower?.lon)) continue;
-    const id = `power-grid:tower:${tower.id}`;
-    const position = pointPosition(tower.lat, tower.lon);
-    const size = tower.portal ? PORTAL_POINT_PX : TOWER_POINT_PX;
-    const color = Cesium.Color.fromCssColorString(TOWER_COLOR).withAlpha(0.85);
-    const point = _points.add({
-      id,
-      position,
-      color,
-      pixelSize: size,
-      outlineWidth: 0,
-      disableDepthTestDistance: Number.POSITIVE_INFINITY,
-    });
-    _records.set(id, { id, kind: 'tower', tower, position, point, baseColor: color, baseSize: size });
-    warm.push({ lat: tower.lat, lon: tower.lon });
-  }
+  sampleProvisionalFloors(_viewer?.scene, substations, { fillKm: FLOOR_FILL_KM });
 
   for (const substation of substations) {
     if (!Number.isFinite(substation?.lat) || !Number.isFinite(substation?.lon)) continue;
@@ -641,6 +878,151 @@ function buildPoints(payload) {
   }
 
   warmGroundFloor(warm.slice(0, 600));
+}
+
+/**
+ * Metres of ground one screen pixel covers, at the point the camera looks at.
+ *
+ * Solved at the FOCUS DISTANCE rather than from the camera's altitude, because
+ * a tilted camera is much further from what it is aiming at than it is high —
+ * sizing the pylon rhythm off the altitude would put the marks four times too
+ * close together on exactly the oblique view this globe opens on.
+ *
+ * @param {?Cesium.Viewer} viewer
+ * @returns {number} Metres per CSS pixel; 0 when nothing can be solved.
+ */
+export function powerMetresPerPixel(viewer) {
+  const camera = viewer?.camera;
+  const scene = viewer?.scene;
+  if (!camera || !scene) return 0;
+  const height = scene.canvas?.clientHeight;
+  if (!height) return 0;
+  const focus = powerFocusPoint(viewer);
+  const ellipsoid = scene.globe?.ellipsoid || Cesium.Ellipsoid.WGS84;
+  // No focus point means the middle of the screen is sky; the altitude is then
+  // the only distance there is, and it is a floor on the real one.
+  const distance = focus
+    ? Cesium.Cartesian3.distance(
+      camera.positionWC,
+      Cesium.Cartesian3.fromDegrees(focus.lon, focus.lat, 0, ellipsoid),
+    )
+    : camera.positionCartographic?.height;
+  if (!Number.isFinite(distance) || distance <= 0) return 0;
+  const fovy = scene.camera?.frustum?.fovy;
+  const halfAngle = Number.isFinite(fovy) ? fovy / 2 : Cesium.Math.toRadians(30);
+  return (2 * distance * Math.tan(halfAngle)) / height;
+}
+
+/**
+ * Draw a pylon along every mapped overhead route, at the rhythm this camera can
+ * read.
+ *
+ * ── WHY THIS EXISTS AND WHAT IT IS ALLOWED TO CLAIM ─────────────────────────
+ *
+ * The layer used to draw `power=tower` nodes as 4 px grey dots, below 0.25° of
+ * view and nowhere else. At that size a pylon is not a structure, it is a
+ * speck; and above that zoom the overhead network had nothing on it at all, so
+ * a red line and a red dashed line were the only difference between a corridor
+ * of 400 kV steel and a trench.
+ *
+ * So the mark is Temaki's `power_tower` — CC0, the glyph the OpenStreetMap iD
+ * editor puts on the tag — tinted with the route's own voltage colour, and it
+ * is placed by `powerPylonMarks` on the MAPPED VERTICES of the overhead ways.
+ * Not at an interpolated spacing: the vertices of a `power=line` way ARE its
+ * pylons (574 of 574 tagged towers fell on one at Bayonne, 750 of 775 at
+ * Saclay, see `powerPylonMarks` for what the 25 are), so the rhythm can be
+ * honoured by SKIPPING vertices and never by inventing one between them.
+ *
+ * Two consequences are load-bearing:
+ *
+ *   • The mark is drawn from the STROKES, so it appears at every zoom the
+ *     strokes do — there is no second request and no second ceiling. The
+ *     `power=tower` NODES are still fetched below
+ *     `POWER_GRID_TOWER_MAX_BOX_DEG`, and what they add is the CARD: a
+ *     reference, a design, a height. A mark that finds one is a pylon with a
+ *     record; a mark that does not is a vertex of the mapped way, and its card
+ *     says exactly that rather than promoting it.
+ *
+ *   • The spacing is re-solved on every camera settle, not once per load.
+ *     Zooming out thins the marks instead of clumping them; zooming in walks
+ *     back down to every mapped vertex, which on a French 400 kV line is every
+ *     pylon there is.
+ */
+function buildPylons() {
+  if (!_pylons) return;
+  // A rebuild replaces every pylon RECORD, so a selected one would be left
+  // pointing at an object that no longer exists — a card anchored to a deleted
+  // billboard, which is a card the operator cannot dismiss by clicking away.
+  // The id is remembered across the rebuild and re-selected if the new spacing
+  // still draws it; if it does not, the selection goes with the mark.
+  const selectedPylon = _pylonIds.includes(_selectedId) ? _selectedId : null;
+  if (selectedPylon) clearSelection();
+  for (const id of _pylonIds) _records.delete(id);
+  _pylonIds = [];
+  _pylons.removeAll();
+  if (!_payload || !_viewer) {
+    _pylonSpacingM = 0;
+    return;
+  }
+
+  const spacing = powerPylonSpacingM(powerMetresPerPixel(_viewer));
+  _pylonSpacingM = spacing;
+  const marks = powerPylonMarks(_payload, { spacingM: spacing, maxCount: POWER_PYLON_MAX_MARKS });
+  // Ground the cold cells against the surface actually being drawn BEFORE the
+  // positions below are taken: synchronous, no network of ours, ≤40 probes, and
+  // nothing at all above 25 km of camera. A route corridor is a long thin thing,
+  // so the borrow radius is generous — the pylons a budget did not reach are
+  // still on the same hillside as the ones it did.
+  sampleProvisionalFloors(_viewer?.scene, marks, { fillKm: FLOOR_FILL_KM });
+  const towers = powerTowerIndex(_payload);
+  const voltages = Array.isArray(_payload.voltages) ? _payload.voltages : [];
+  const glyph = pylonGlyph();
+  if (!glyph) return;
+  const warm = [];
+
+  for (const mark of marks) {
+    const tier = powerTierById(voltages[mark.vi]?.tier);
+    const tower = towers.get(powerPositionKey(mark.lat, mark.lon)) || null;
+    const id = tower
+      ? `power-grid:tower:${tower.id}`
+      : `power-grid:pylon:${mark.strokeId}:${mark.lat.toFixed(5)},${mark.lon.toFixed(5)}`;
+    // A junction vertex belongs to two ways and can be offered twice under two
+    // stroke ids; the spacing grid drops the second, but a tagged tower keyed
+    // by its own id could still collide with itself across a rebuild.
+    if (_records.has(id)) continue;
+    const position = pointPosition(mark.lat, mark.lon);
+    const color = Cesium.Color.fromCssColorString(tier?.color || POWER_GRID_TIERS.at(-1).color)
+      .withAlpha(PYLON_ALPHA);
+    const billboard = _pylons.add({
+      id,
+      position,
+      image: glyph,
+      width: POWER_PYLON_ICON_PX,
+      height: POWER_PYLON_ICON_PX,
+      color,
+      // The glyph stands ON its coordinate, so the base of the pylon is the
+      // mapped point rather than its middle.
+      verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+      // One depth for a whole square draws a PARASOL on a tilted camera; the
+      // horizon curtain in `onPreRender` is the other half of this pair.
+      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+    });
+    _records.set(id, {
+      id,
+      kind: 'pylon',
+      tower,
+      mark,
+      tierId: tier?.id || null,
+      position,
+      billboard,
+      baseColor: color,
+      baseSize: POWER_PYLON_ICON_PX,
+    });
+    _pylonIds.push(id);
+    warm.push({ lat: mark.lat, lon: mark.lon });
+  }
+  warmGroundFloor(warm.slice(0, 400));
+  if (selectedPylon && _records.has(selectedPylon)) selectObject(selectedPylon);
 }
 
 /** Ambient labels: the named yards only. 2,000 pylon labels is not a map. */
@@ -693,6 +1075,12 @@ function restoreRecordStyle(record) {
     }
     return;
   }
+  if (record.billboard) {
+    record.billboard.color = record.baseColor;
+    record.billboard.width = record.baseSize;
+    record.billboard.height = record.baseSize;
+    return;
+  }
   if (!record.point) return;
   record.point.color = record.baseColor;
   record.point.pixelSize = record.baseSize;
@@ -727,6 +1115,10 @@ function selectObject(id) {
         appearance: new Cesium.PolylineColorAppearance({ translucent: true }),
       }));
     }
+  } else if (record.billboard) {
+    record.billboard.color = Cesium.Color.fromCssColorString(SELECTED_COLOR);
+    record.billboard.width = SELECTED_PYLON_PX;
+    record.billboard.height = SELECTED_PYLON_PX;
   } else if (record.point) {
     record.point.color = Cesium.Color.fromCssColorString(SELECTED_COLOR);
     record.point.pixelSize = SELECTED_POINT_PX;
@@ -808,8 +1200,12 @@ function onPreRender() {
   if (!camera) return;
   const occluder = horizonOccluder(camera);
   for (const record of _records.values()) {
-    if (!record.point) continue;
-    record.point.show = occluder.isPointVisible(record.position);
+    // Both the yard discs and the pylon glyphs draw with depth testing off, so
+    // both need the curtain: without it a substation on the far side of the
+    // planet paints straight through the globe.
+    const sprite = record.point || record.billboard;
+    if (!sprite) continue;
+    sprite.show = occluder.isPointVisible(record.position);
   }
 }
 
@@ -851,6 +1247,24 @@ function clearUnavailableRetry({ resetBackoff = true } = {}) {
   if (resetBackoff) _retryDelayMs = 0;
 }
 
+/**
+ * The camera settled: re-space the pylons NOW, ask for geometry in a moment.
+ *
+ * Two different clocks on purpose. The pylon rhythm is solved from geometry
+ * already in hand, so it can follow the camera on the frame it stops — waiting
+ * out the request debounce would leave the marks visibly clumped or thinned for
+ * half a second after every zoom. The REQUEST keeps its debounce, because it
+ * crosses the network.
+ */
+function onCameraSettle() {
+  if (!_enabled) return;
+  if (_payload) {
+    buildPylons();
+    governorRequestRender('power-grid-pylon-spacing');
+  }
+  scheduleLoad();
+}
+
 function scheduleLoad() {
   if (!_enabled) return;
   // A camera-driven load supersedes any pending retry; the load reschedules on
@@ -865,9 +1279,29 @@ function clearRendered() {
   clearSelection();
   clearStrokePrimitives();
   _points?.removeAll();
+  _pylons?.removeAll();
+  _pylonIds = [];
+  _pylonSpacingM = 0;
   _records.clear();
   _payload = null;
+  _loadedBox = null;
   _overlayHost.clearSource(POWER_GRID_OVERLAY_SOURCE_ID);
+}
+
+/**
+ * Whether the box last loaded is still anywhere in shot.
+ *
+ * The camera's FULL rectangle on purpose, horizon included — the question is
+ * "could the operator see this", not "would the layer ask for it", and those
+ * are two different questions in a layer whose request box is deliberately
+ * smaller than its view.
+ * @returns {boolean}
+ */
+function viewIntersectsLoadedBox() {
+  if (!_loadedBox) return false;
+  const view = cameraViewBox(_viewer);
+  if (!view) return false;
+  return boxesIntersect(view, _loadedBox);
 }
 
 async function load() {
@@ -877,15 +1311,19 @@ async function load() {
     _abort?.abort();
     _abort = null;
     _loading = false;
-    clearRendered();
     clearUnavailableRetry();
-    // NULL, not the prompt. `setStatus`'s second argument is `_error`, and the
-    // Data Layers row prints a non-empty `error` in its FAULT slot — under a
-    // green ON chip, because `layerFeedState()` has always carved `zoom-in` out
-    // as guidance. The two halves of one row contradicted each other and the
-    // layer read as broken while doing exactly its job. The prompt itself is
-    // `buildLoadingLabel()`'s, which is the guidance slot the row also reads.
-    setStatus('zoom-in', null);
+    // THE GRID ALREADY DRAWN STAYS DRAWN, as long as it is still under the
+    // camera. This used to `clearRendered()`, and that one line took the map
+    // AND THE LEGEND WITH IT: `getRowControls()` builds the voltage key from
+    // `_payload.tiers`, so a camera that climbed past the ceiling did not just
+    // stop adding — it erased what was there and left the key an empty block,
+    // which is the "il n'y a pas de légende" the operator reported on
+    // 2026-09-14. Nothing about the mapped grid went stale when the camera
+    // moved; what expired is the layer's licence to ask for MORE of it. Kept
+    // only while the loaded box is still in shot — a patch of the Landes has
+    // no business hanging under a camera over Poland.
+    if (_loadedBox && !viewIntersectsLoadedBox()) clearRendered();
+    setStatus(_payload ? 'out-of-gate' : 'zoom-in', null);
     governorRequestRender('power-grid-zoom-out');
     return false;
   }
@@ -909,8 +1347,10 @@ async function load() {
 
     clearRendered();
     _payload = payload;
+    _loadedBox = box;
     buildStrokes(payload);
     buildPoints(payload);
+    buildPylons();
     publishOverlay();
     _stale = payload.status === 'stale';
     _towersShown = Boolean(payload.towersRequested);
@@ -978,20 +1418,81 @@ function collectDetectableObjects(options = {}) {
 
 function buildLoadingLabel() {
   if (_loading) return 'loading the mapped grid for this view...';
-  if (_status === 'zoom-in') return `zoom in below ${POWER_GRID_MAX_BOX_DEG}° to load the mapped grid`;
+  if (_status === 'zoom-in') {
+    return `descend below ${Math.round(POWER_GRID_MAX_ALTITUDE_M / 1000)} km to load the mapped grid`;
+  }
   if (_status === 'error') return _error || 'unavailable';
   if (_status === 'empty') return 'nothing high-voltage mapped in this view';
   const stats = _payload?.stats;
   if (!stats) return '';
   const parts = [`${formatGridKm(stats.lengthKm)} of mapped route`];
   if (stats.substations) parts.push(`${stats.substations} substations`);
-  if (_towersShown && stats.towers) parts.push(`${stats.towers} pylons`);
+  if (_pylonIds.length) parts.push(`${_pylonIds.length} pylons`);
   const truncated = Object.entries(_payload?.saturated || {})
     .filter(([, value]) => value)
     .map(([key]) => key);
   if (truncated.length) parts.push(`${truncated.join(' + ')} truncated — zoom in`);
   if (_stale) parts.push('serving cached geometry');
+  // LAST, and phrased as what the operator is looking at rather than as an
+  // instruction: the grid on screen is real, it is simply the last box asked
+  // for, and the camera has since moved off it.
+  if (_status === 'out-of-gate') parts.push('grid held from the last framed view');
   return parts.join(' · ');
+}
+
+/**
+ * What the pylon glyphs mean, for the line under the key.
+ *
+ * Two facts, and neither is decodable from the picture: the SPACING is set by
+ * the camera rather than by the grid, and the position is a node somebody
+ * surveyed rather than a point divided out of a line. Both would be silently
+ * assumed the other way round.
+ * @returns {string}
+ */
+function pylonLegendNote() {
+  if (!_pylonIds.length) {
+    // SILENCE IS THE WRONG ANSWER HERE, and it is the one the operator got.
+    // Over the Trocadéro on 2026-09-14 the layer drew 126 km of mapped grid,
+    // every metre of it underground, and no pylon — correctly, because a cable
+    // has none. But the key said nothing at all, so the reasonable reading was
+    // "the pylons are broken". An absence with a reason is information; an
+    // absence on its own is a bug report.
+    const stats = _payload?.stats;
+    // NOT `overheadKm <= 0`: that is the very case this sentence exists for —
+    // a view with nothing overhead in it — and guarding on it silenced the
+    // Trocadéro, where overheadKm is exactly 0.0. Only an absent or empty
+    // payload has nothing to say.
+    if (!stats || !(stats.lengthKm > 0) || !Number.isFinite(stats.undergroundKm)) return '';
+    const undergroundShare = stats.undergroundKm / stats.lengthKm;
+    if (undergroundShare >= 0.98) {
+      return 'No pylons here, and none are missing: '
+        + `${Math.round(undergroundShare * 100)}% of the mapped grid in this view runs `
+        + 'UNDERGROUND, which is how a dense city is fed. A cable has no pylons, '
+        + 'and the dashed strokes are the cable.';
+    }
+    return '';
+  }
+  const parts = [
+    `Pylons: one drawn per ${formatSpacing(_pylonSpacingM)} of mapped overhead route, `
+    + 'thinning as you climb and walking back down to every mapped vertex as you descend.',
+    'Each one stands on a node OpenStreetMap has surveyed — never interpolated between two.',
+  ];
+  if (_towersShown && Number.isFinite(_payload?.stats?.towers) && _payload.stats.towers > 0) {
+    parts.push(`${_payload.stats.towers} of the nodes in view also carry a pylon record `
+      + '(reference, design, height where it was measured); click one to read it.');
+  }
+  return parts.join(' ');
+}
+
+/**
+ * A pylon spacing, written the way a distance on a map is read.
+ * @param {?number} metres
+ * @returns {string}
+ */
+export function formatSpacing(metres) {
+  if (!Number.isFinite(metres) || metres <= 0) return '—';
+  if (metres >= 1000) return `${(metres / 1000).toFixed(metres >= 10_000 ? 0 : 1)} km`;
+  return `${Math.round(metres / 10) * 10} m`;
 }
 
 /**
@@ -1009,6 +1510,7 @@ function renderDiagnostics() {
   return _batchManifest.map((entry) => ({
     tierId: entry.tierId,
     underground: entry.underground,
+    casing: entry.casing === true,
     widthPx: entry.widthPx,
     color: entry.color,
     strokes: entry.strokeIds.length,
@@ -1046,6 +1548,10 @@ const powerGridLayer = {
     _points.show = false;
     viewer.scene.primitives.add(_points);
     registerSpriteCollection(POWER_GRID_LAYER_ID, _points);
+    _pylons = new Cesium.BillboardCollection({ scene: viewer.scene });
+    _pylons.show = false;
+    viewer.scene.primitives.add(_pylons);
+    registerSpriteCollection(POWER_GRID_LAYER_ID, _pylons);
 
     _enabled = false;
     _records = new Map();
@@ -1058,6 +1564,8 @@ const powerGridLayer = {
     _lastUpdate = null;
     _stale = false;
     _towersShown = false;
+    _pylonIds = [];
+    _pylonSpacingM = 0;
     _retryDelayMs = 0;
     _classificationType = powerClassificationTypeForScene(viewer?.scene);
 
@@ -1080,6 +1588,7 @@ const powerGridLayer = {
     _enabled = true;
     _error = null;
     if (_points) _points.show = true;
+    if (_pylons) _pylons.show = true;
     for (const primitive of _strokePrimitives) primitive.show = true;
     // The boot-time stack settle fires no event, so re-derive on every enable
     // rather than trusting whatever the last event left behind.
@@ -1092,7 +1601,7 @@ const powerGridLayer = {
       _preRenderRemover = viewer.scene.preRender.addEventListener(onPreRender);
     }
     if (!_moveEndRemover) {
-      _moveEndRemover = viewer.camera.moveEnd.addEventListener(scheduleLoad);
+      _moveEndRemover = viewer.camera.moveEnd.addEventListener(onCameraSettle);
     }
     publishOverlay();
     restoreSpriteOrder(viewer);
@@ -1109,6 +1618,7 @@ const powerGridLayer = {
     _abort?.abort();
     _abort = null;
     if (_points) _points.show = false;
+    if (_pylons) _pylons.show = false;
     for (const primitive of _strokePrimitives) primitive.show = false;
     _overlayHost.clearSource(POWER_GRID_OVERLAY_SOURCE_ID);
     _overlayHost.setVisible(POWER_GRID_OVERLAY_SOURCE_ID, false);
@@ -1189,7 +1699,15 @@ const powerGridLayer = {
    * carry the two limits that matter — the routes are drawn on the ground and
    * are not at conductor height, and an empty band means nothing MAPPED at that
    * voltage here.
-   * @returns {{chips: Array<object>, legend: Array<object>}}
+   *
+   * THE PYLONS GET NO ROW OF THEIR OWN, and that is the house rule rather than
+   * an omission. `#map-legend` carries the COLOUR channel: a shape a reader
+   * decodes without a key does not earn a line, and a picture of a pylon is a
+   * pylon. A row would also have to invent a swatch colour, because a pylon
+   * wears the colour of the route it stands on — four different ones on screen
+   * at once. What the shape does NOT say goes in the block's `note`: how often
+   * one is drawn, and that it sits on a node somebody surveyed.
+   * @returns {{chips: Array<object>, legend: Array<object>, note: string}}
    */
   getRowControls() {
     const legend = [];
@@ -1208,17 +1726,7 @@ const powerGridLayer = {
           + 'not the conductor height, which OpenStreetMap does not publish.',
       });
     }
-    if (_towersShown && _payload?.stats?.towers) {
-      legend.push({
-        label: 'Pylons',
-        color: TOWER_COLOR,
-        count: _payload.stats.towers,
-        blurb: 'Mapped pylons and portals, shown only below '
-          + `${POWER_GRID_TOWER_MAX_BOX_DEG}° of view. Height is mapped for a minority of them `
-          + 'and is never inferred for the rest.',
-      });
-    }
-    return { chips: [], legend };
+    return { chips: [], legend, note: pylonLegendNote() };
   },
 
   /**
@@ -1237,7 +1745,9 @@ const powerGridLayer = {
       count: (stats?.substations || 0) + (stats?.strokes || 0),
       lastUpdate: _lastUpdate,
       loading: _loading,
-      status: _status === 'ready' ? 'ok' : _status,
+      // `out-of-gate` is a camera state, not a data state: the payload beneath it
+      // is the one that loaded cleanly, so the row must not go amber for it.
+      status: (_status === 'ready' || _status === 'out-of-gate') ? 'ok' : _status,
       stale: _stale,
       strokes: stats?.strokes ?? null,
       // OSM splits one liaison across many ways, so the honest "how many lines"
@@ -1246,7 +1756,13 @@ const powerGridLayer = {
       lengthKm: stats?.lengthKm ?? null,
       undergroundKm: stats?.undergroundKm ?? null,
       substations: stats?.substations ?? null,
+      // Two different numbers, and they answer two different questions. `towers`
+      // is how many nodes OpenStreetMap has TAGGED `power=tower` in this box
+      // (only asked for below POWER_GRID_TOWER_MAX_BOX_DEG). `pylonsDrawn` is
+      // how many glyphs are on screen, which is set by the camera, not the data.
       towers: _towersShown ? (stats?.towers ?? null) : null,
+      pylonsDrawn: _pylonIds.length || null,
+      pylonSpacingM: _pylonSpacingM || null,
       saturated: Boolean(_payload?.saturated
         && Object.values(_payload.saturated).some(Boolean)),
       feedSource: _payload?.source || null,
@@ -1286,6 +1802,12 @@ const powerGridLayer = {
       viewer?.scene?.primitives?.remove?.(_points);
       _points = null;
     }
+    if (_pylons) {
+      unregisterSpriteCollection(POWER_GRID_LAYER_ID, _pylons);
+      viewer?.scene?.primitives?.remove?.(_pylons);
+      _pylons = null;
+    }
+    _pylonIds = [];
     _records.clear();
     _payload = null;
     _viewer = null;
@@ -1295,6 +1817,7 @@ const powerGridLayer = {
 /** Seed rendered records so selection/card/legend paths run without WebGL. */
 export function _setPowerGridStateForTest({
   viewer, records, payload, overlayHost, towersShown = true, enabled = true,
+  pylonIds = [], pylonSpacingM = 0, status = 'ready', loadedBox = null,
 } = {}) {
   _viewer = viewer || null;
   if (records) _records = records instanceof Map ? records : new Map(Object.entries(records));
@@ -1302,8 +1825,15 @@ export function _setPowerGridStateForTest({
   _overlayHost = overlayHost || DEFAULT_OVERLAY_HOST;
   _enabled = enabled;
   _towersShown = towersShown;
+  // The pylon glyphs are placed by the CAMERA, so a headless test states how
+  // many are on screen rather than making one appear. Reset by DEFAULT: this
+  // is drawn state, and a seed that silently inherited the previous test's
+  // cohort would let a legend row survive into a test that drew nothing.
+  _pylonIds = [...pylonIds];
+  _pylonSpacingM = pylonSpacingM;
+  _loadedBox = loadedBox;
   _selectedId = null;
-  _status = 'ready';
+  _status = status;
 }
 
 /** @returns {?string} */
@@ -1334,6 +1864,12 @@ export function _powerStatsForTest() {
 /** @returns {Array<object>} See `powerGridLayer.getRenderDiagnostics`. */
 export function _powerBatchesForTest() {
   return renderDiagnostics();
+}
+
+/** Re-space and redraw the pylon glyphs, as a camera settle would. */
+export function _buildPowerPylonsForTest() {
+  buildPylons();
+  return _pylonIds.slice();
 }
 
 export default powerGridLayer;
