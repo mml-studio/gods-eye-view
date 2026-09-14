@@ -259,6 +259,112 @@ async function main() {
       const report = await page.evaluate((id) => window.__godsEyeView.dataManager.layers.get(id)?.module?.getLoadReport?.() || null, layerId);
       check('[deep] the form-plugged data.gouv dataset loads the view through the Tabular API', Number(deepCount) > 10 && report?.via === 'tabular' && /dans la vue|affichés sur/.test(deepStats?.coverage || ''), JSON.stringify({ deepStats, via: report?.via, requests: report?.requests, total: report?.total }));
       await shoot(page, 'deep-geodae-default-view.png');
+
+      // iv-d. The CATALOG GeoDAE over Lyon — the dense case the label variant,
+      // the rule groups and the chips exist for. Everything below is read off
+      // the MODEL: no entity of this layer ever paints under SwiftShader, so a
+      // pixel assertion here would be proving the harness, not the change.
+      // The camera is BORROWED, not moved: the two steps after this one plug
+      // and read Paris datasets, and a viewport-scoped layer left looking at
+      // Lyon answers them with an empty view for two minutes. Measured: leaving
+      // the camera here cost the pharmacies' coverage line and the reload's ON
+      // state, and neither failure had anything to do with what they claimed.
+      const parked = await page.evaluate(async () => {
+        const viewer = window.__godsEyeView.viewer;
+        // `window.Cesium` is gone since the layer split; the airports harness's
+        // trick gets the class off a live value instead.
+        const Cartesian3 = viewer.camera.positionWC.constructor;
+        const before = {
+          position: [viewer.camera.positionWC.x, viewer.camera.positionWC.y, viewer.camera.positionWC.z],
+          heading: viewer.camera.heading,
+          pitch: viewer.camera.pitch,
+          roll: viewer.camera.roll,
+        };
+        viewer.camera.cancelFlight?.();
+        viewer.camera.setView({
+          destination: Cartesian3.fromDegrees(4.8357, 45.7640, 4000),
+          orientation: { heading: 0, pitch: -Math.PI / 3, roll: 0 },
+        });
+        // `setView` does not raise `moveEnd`, and every per-view answer in this
+        // app is re-decided on the settle — without this the layer would keep
+        // fetching for the view it was parked on before.
+        viewer.camera.moveEnd.raiseEvent();
+        viewer.scene.render();
+        await new Promise((resolve) => { setTimeout(resolve, 700); });
+        return before;
+      });
+      await page.evaluate(async () => {
+        await window.__godsEyeView.dataManager.setEnabled('ds-defibrillateurs-geodae', true, { origin: 'user' });
+      });
+      // One read, so the count, the legend and the chips describe the SAME
+      // load: this layer refetches on every settle, and three separate
+      // evaluates could straddle two of them.
+      const lyon = await waitFor(page, () => {
+        const dm = window.__godsEyeView.dataManager;
+        const module = dm.layers.get('ds-defibrillateurs-geodae')?.module;
+        const loaded = module?.getLoadReport?.()?.features?.length || 0;
+        if (loaded <= 160) return null;
+        const controls = module.getRowControls?.() || {};
+        return {
+          loaded,
+          count: dm.getAll().find((entry) => entry.id === 'ds-defibrillateurs-geodae')?.stats?.count || 0,
+          ambient: module.getAmbientVariant?.(),
+          legend: controls.legend || null,
+          chips: (controls.chips || []).map((chip) => ({ id: chip.id, active: chip.active, title: chip.title })),
+        };
+      }, { timeout: 120_000, interval: 500 });
+      check('[deep] a dense GeoDAE view is drawn as labels, not as a card each',
+        lyon?.ambient === 'label', JSON.stringify({ loaded: lyon?.loaded, ambient: lyon?.ambient }));
+
+      // D1: the colour channel is spent on reachability, and every group it can
+      // paint is named next to its drawn count. The three counts have to add up
+      // to the whole load — a row that fell through every rule and every
+      // fallback would be a mark with no entry in the key.
+      const legendTotal = (lyon?.legend || []).reduce((sum, row) => sum + (row.count || 0), 0);
+      check('[deep] the legend names the three access groups, and they account for every row',
+        Array.isArray(lyon?.legend) && lyon.legend.length === 3
+        && /24 h\/24/.test(lyon.legend[0].label)
+        && legendTotal === lyon.loaded,
+        JSON.stringify({ legend: lyon?.legend, legendTotal, loaded: lyon?.loaded }));
+      check('[deep] the row carries the three filter chips, « Tous » first and active',
+        Array.isArray(lyon?.chips) && lyon.chips.length === 3
+        && lyon.chips[0].id === 'filter:tous' && lyon.chips[0].active === true,
+        JSON.stringify(lyon?.chips));
+
+      const filtered = await page.evaluate(() => {
+        const dm = window.__godsEyeView.dataManager;
+        dm.setLayerParams('ds-defibrillateurs-geodae', { filter: 'h24' }, { origin: 'user' });
+        const module = dm.layers.get('ds-defibrillateurs-geodae')?.module;
+        const chips = module?.getRowControls?.()?.chips || [];
+        return {
+          params: module?.getParams?.() || null,
+          active: chips.find((chip) => chip.active)?.id || null,
+          // The chip hides marks; it does NOT unload rows, so the row's own
+          // count must not move an inch.
+          count: dm.getAll().find((entry) => entry.id === 'ds-defibrillateurs-geodae')?.stats?.count || 0,
+        };
+      });
+      check('[deep] a chip filters the drawn marks without losing a single row',
+        filtered?.params?.filter === 'h24' && filtered.active === 'filter:h24'
+        && filtered.count === lyon?.count,
+        JSON.stringify({ filtered, countBefore: lyon?.count }));
+      await page.evaluate(async (before) => {
+        const gev = window.__godsEyeView;
+        gev.dataManager.setLayerParams('ds-defibrillateurs-geodae', { filter: 'tous' }, { origin: 'user' });
+        await gev.dataManager.setEnabled('ds-defibrillateurs-geodae', false, { origin: 'user' });
+        // Give the camera back, and raise the settle that makes every
+        // viewport-scoped layer ask again for the view it was reading before.
+        const viewer = gev.viewer;
+        const Cartesian3 = viewer.camera.positionWC.constructor;
+        viewer.camera.cancelFlight?.();
+        viewer.camera.setView({
+          destination: new Cartesian3(before.position[0], before.position[1], before.position[2]),
+          orientation: { heading: before.heading, pitch: before.pitch, roll: before.roll },
+        });
+        viewer.camera.moveEnd.raiseEvent();
+        viewer.scene.render();
+        await new Promise((resolve) => { setTimeout(resolve, 700); });
+      }, parked);
     }
 
     // iv-b. the load's own account of itself, caught during step iv
@@ -325,11 +431,19 @@ async function main() {
 
     // v. persistence across a reload, then unplug
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 90_000 });
+    // Waits for the TREES to be back on, not merely for the list to exist.
+    // `datasetBox` restores every plugged dataset with a fire-and-forget
+    // `setEnabled`, so the three of them race: reading the list the instant it
+    // is non-empty reports whichever finished first, and the trees — one
+    // Opendatasoft round trip — routinely lose to two data.gouv neighbours.
+    // The assertion is unchanged and can still fail: a restoration that never
+    // happens times out here exactly as it failed before.
     const restored = await waitFor(page, () => {
       const box = window.__godsEyeView?.datasets;
       if (!box) return null;
       const entries = box.list().filter((entry) => entry.origin === 'plugged');
-      return entries.length ? entries.map((entry) => ({ id: entry.id, enabled: entry.enabled })) : null;
+      if (!entries.some((entry) => entry.id === 'qa-arbres-paris' && entry.enabled)) return null;
+      return entries.map((entry) => ({ id: entry.id, enabled: entry.enabled }));
     }, { timeout: 120_000 });
     check('plugged datasets survive a reload with their ON state', Array.isArray(restored) && restored.some((entry) => entry.id === 'qa-arbres-paris' && entry.enabled), JSON.stringify(restored));
     const unplugged = await page.evaluate(async () => {

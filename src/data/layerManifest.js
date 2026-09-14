@@ -473,7 +473,8 @@ export const LAYER_MANIFEST = Object.freeze([
     name: 'Aéroports',
     icon: '✈',
     source: 'OurAirports · IGN',
-    capabilities: Object.freeze(['destroy', 'getStats', 'setParams']),
+    capabilities: Object.freeze(['destroy', 'getStats', 'setParams', 'getParams']),
+    defaultParams: Object.freeze({ floor: 'all' }),
     load: () => import('./localLayers.js')
       .then((module) => module.default.find((layer) => layer.id === 'local-airports')),
   }),
@@ -491,7 +492,8 @@ export const LAYER_MANIFEST = Object.freeze([
     name: 'Barrages & digues',
     icon: '▰',
     source: 'OpenStreetMap',
-    capabilities: Object.freeze(['destroy', 'getStats', 'setParams']),
+    capabilities: Object.freeze(['destroy', 'getStats', 'setParams', 'getParams']),
+    defaultParams: Object.freeze({ kinds: 'all' }),
     load: () => import('./localLayers.js')
       .then((module) => module.default.find((layer) => layer.id === 'local-dams')),
   }),

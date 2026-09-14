@@ -182,3 +182,97 @@ test('the palette colour is stable per id', () => {
   assert.equal(datasetPaletteColor('abc'), datasetPaletteColor('abc'));
   assert.match(datasetPaletteColor('abc'), /^#[0-9a-f]{6}$/);
 });
+
+const GEODAE_FEATURE = Object.freeze({
+  title: ['c_nom'],
+  ambient: 'label',
+  blank: ['non renseigné'],
+  details: [
+    { field: 'c_disp_j', label: 'Jours', format: 'days' },
+    { field: 'c_etat_fonct', label: 'État', omitWhen: ['En fonctionnement'] },
+  ],
+  group: {
+    rules: [
+      { key: 'h24', label: 'Accessible 24 h/24', color: '#5ce6a8', when: { c_disp_h: ['24h/24'] } },
+      { key: 'libre', color: '#ff5c7a', when: { c_acc_lib: ['t'] } },
+    ],
+    other: { color: '#7d8aa0', label: 'Accès restreint' },
+  },
+  filters: [
+    { id: 'tous', label: 'Tous' },
+    { id: 'h24', label: '24 h/24', groups: ['h24'] },
+  ],
+});
+
+test('a rule group, a blank list, a detail format and the chips normalize', () => {
+  const manifest = normalizeDatasetManifest({ ...VALID_CSV, feature: GEODAE_FEATURE });
+  const feature = manifest.feature;
+  assert.equal(feature.ambient, 'label');
+  assert.deepEqual(feature.blank, ['non renseigné']);
+  assert.deepEqual(feature.details[0], { field: 'c_disp_j', label: 'Jours', unit: null, format: 'days', omitWhen: null });
+  assert.deepEqual(feature.details[1].omitWhen, ['En fonctionnement']);
+  assert.equal(feature.group.field, null, 'a rule group classifies on several columns, not on one');
+  assert.deepEqual(feature.group.rules.map((rule) => rule.key), ['h24', 'libre']);
+  assert.deepEqual(feature.group.rules[0].when, { c_disp_h: ['24h/24'] });
+  // `styles` is the legend, keyed by the group key a row resolves to, and a
+  // rule with no label is labelled by its own key rather than left blank.
+  assert.deepEqual(feature.group.styles, {
+    h24: { color: '#5ce6a8', label: 'Accessible 24 h/24' },
+    libre: { color: '#ff5c7a', label: 'libre' },
+  });
+  assert.deepEqual(feature.group.other, { color: '#7d8aa0', label: 'Accès restreint' });
+  assert.deepEqual(feature.filters, [
+    { id: 'tous', label: 'Tous', title: null, groups: null },
+    { id: 'h24', label: '24 h/24', title: null, groups: ['h24'] },
+  ]);
+  // Round-trips as a file: the derived legend is not written back beside the
+  // rules it was derived from.
+  const file = exportableManifest(manifest);
+  assert.equal(file.feature.group.styles, undefined);
+  assert.deepEqual(datasetManifestFaults(file), []);
+  assert.deepEqual(normalizeDatasetManifest(file), manifest);
+});
+
+test('a manifest that says nothing about the ambient or the blanks gets neutral defaults', () => {
+  const manifest = normalizeDatasetManifest({ ...VALID_CSV, feature: { title: ['nom'] } });
+  assert.equal(manifest.feature.ambient, null, 'the layer decides from the feature count');
+  assert.deepEqual(manifest.feature.blank, []);
+  assert.equal(manifest.feature.filters, null);
+  assert.equal(manifest.feature.details[0], undefined);
+});
+
+test('the new feature fields are validated, not trusted', () => {
+  const faultsFor = (feature) => datasetManifestFaults({ ...VALID_CSV, feature });
+  assert.match(faultsFor({ ambient: 'fiche' }).join(' '), /`feature\.ambient`/);
+  assert.match(faultsFor({ blank: [''] }).join(' '), /`feature\.blank`/);
+  assert.match(faultsFor({ details: [{ field: 'a', format: 'markdown' }] }).join(' '), /format\?/);
+  assert.match(faultsFor({ details: [{ field: 'a', omitWhen: 'x' }] }).join(' '), /omitWhen\?/);
+
+  // A group may be written one way or the other, never both.
+  assert.match(
+    faultsFor({ group: { field: 'a', styles: { x: { color: '#111111' } }, rules: [{ key: 'k', color: '#222222', when: { a: ['1'] } }] } }).join(' '),
+    /`rules` ou `field`\/`styles`/,
+  );
+  assert.match(faultsFor({ group: { rules: [{ key: 'k', color: 'red', when: { a: ['1'] } }] } }).join(' '), /rules\[0\]\.color/);
+  assert.match(faultsFor({ group: { rules: [{ key: 'k', color: '#111111' }] } }).join(' '), /rules\[0\]\.when/);
+  assert.match(faultsFor({ group: { rules: [{ key: 'k', color: '#111111', when: { a: [] } }] } }).join(' '), /rules\[0\]\.when\["a"\]/);
+  assert.match(faultsFor({ group: { rules: [{ key: '__other__', color: '#111111', when: { a: ['1'] } }] } }).join(' '), /réservé/);
+  assert.match(
+    faultsFor({ group: { rules: [{ key: 'k', color: '#111111', when: { a: ['1'] } }, { key: 'k', color: '#222222', when: { b: ['2'] } }] } }).join(' '),
+    /en double/,
+  );
+
+  // A chip that names a group nobody declared would silently empty the map.
+  assert.match(
+    faultsFor({ group: { rules: [{ key: 'k', color: '#111111', when: { a: ['1'] } }] }, filters: [{ id: 'tous', label: 'Tous' }, { id: 'x', label: 'X', groups: ['absent'] }] }).join(' '),
+    /groupe « absent » inconnu/,
+  );
+  // And a strip with no way back to "everything" is a trap.
+  assert.match(
+    faultsFor({ group: { rules: [{ key: 'k', color: '#111111', when: { a: ['1'] } }] }, filters: [{ id: 'x', label: 'X', groups: ['k'] }] }).join(' '),
+    /retour à « tout »/,
+  );
+  assert.match(faultsFor({ filters: [{ id: 'tous', label: 'Tous' }] }).join(' '), /sans `feature\.group`/);
+
+  assert.deepEqual(faultsFor(GEODAE_FEATURE), []);
+});

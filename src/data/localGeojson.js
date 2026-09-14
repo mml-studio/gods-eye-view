@@ -99,6 +99,22 @@ const LOCAL_GLOBE_LOD_MAX_MARKS = 600;
  */
 export const LOCAL_POOL_KIND = '__gevLocalPool';
 
+/**
+ * Widest label title, in characters, before the ellipsis.
+ *
+ * Measured on the 888 GeoDAE rows inside Lyon: median 22 characters, p90 41,
+ * max 96 ("DAE - Piscine Saint-Exupéry (Piscine d'hiver), entrée personnel côté
+ * …"). 40 keeps nine names in ten whole and cuts the tail that would otherwise
+ * set the width of the entire strip on its own.
+ */
+export const LOCAL_OVERLAY_LABEL_MAX_TITLE = 40;
+
+/** One-line title for a label entry, ellipsis inside the budget. */
+export function clampOverlayLabelTitle(text, max = LOCAL_OVERLAY_LABEL_MAX_TITLE) {
+  const value = String(text ?? '');
+  return value.length > max ? `${value.slice(0, max - 1).trimEnd()}…` : value;
+}
+
 /** Scratch for the frustum gate — the test reads it and never keeps it. */
 const LOCAL_CULL_SPHERE = new Cesium.BoundingSphere();
 // Stems are anchored at ellipsoid height 0, but high-elevation features
@@ -625,22 +641,54 @@ export function createLocalInfrastructureOverlayEntry({
   maxDistance = LOCAL_OVERLAY_MAX_DISTANCE_M,
   /** @type {?{title:string, details:string[]}} Pre-written copy; bypasses the id-branched table. */
   copy = null,
+  /*
+   * ── CARD OR LABEL ──────────────────────────────────────────────────────
+   *
+   * A CARD is the historical entry and the right one for a pack whose members
+   * are landmarks: an airport, a dam, a datacentre. There are tens of them in
+   * view and each earns four lines.
+   *
+   * A LABEL is the same entry with the detail withheld until the click. It
+   * exists for a set the card was never sized for: over Lyon the GeoDAE box
+   * draws 1 176 defibrillators, the host materializes at most
+   * `LOCAL_OVERLAY_COHORT_LIMIT` ambient entries, and what reached the screen
+   * was ~25 seven-line cards — a 2 % sample of the set, at full card height,
+   * covering most of the city it was drawn over. The information is not lost;
+   * it moves to the click, where the reader has asked for exactly one of them.
+   *
+   * Only the variant and the collision group change. The label keeps
+   * `interactive: true`, because the NAME is still the click surface — a
+   * pastille a few pixels wide is not what anybody aims at.
+   */
+  /** @type {'card'|'label'} */
+  variant = 'card',
 }) {
   const resolvedCopy = copy || localInfrastructureOverlayCopy(properties, layerId, { areaM2 });
   const range = Number.isFinite(maxDistance) && maxDistance > 0
     ? maxDistance
     : LOCAL_OVERLAY_MAX_DISTANCE_M;
+  const label = variant === 'label';
   return {
     id: String(id),
     source: layerId,
     position,
-    variant: 'card',
-    title: resolvedCopy.title,
-    details: resolvedCopy.details,
+    variant: label ? 'label' : 'card',
+    // A card WRAPS (`WRAPPING_VARIANTS` in `worldOverlayDraw.js`); a label
+    // does not, by design — it is one line. So a name the register let run
+    // long draws as one very wide chip that sets the width of the whole strip
+    // and hides what it is standing next to. Clamped HERE and not in the
+    // pack's `cardCopy`, so the full name still reaches the context card the
+    // click opens: this is a drawing limit, not a shorter name.
+    title: label ? clampOverlayLabelTitle(resolvedCopy.title) : resolvedCopy.title,
+    details: label ? [] : resolvedCopy.details,
     accent,
     priority,
-    collisionGroup: 'ambient-card',
-    zIndex: 30,
+    collisionGroup: label ? 'ambient-label' : 'ambient-card',
+    // Both are the paint lane's own index × 10 (`WORLD_OVERLAY_PAINT_LANES`),
+    // written out because this entry sets `zIndex` explicitly and would
+    // otherwise keep the card's depth while painting on the label lane —
+    // a label stacked over the cards it is supposed to sit under.
+    zIndex: label ? 10 : 30,
     // The NAME is a click surface, not a caption. The marker is a pastille a
     // few pixels wide at the tip of a recall stem; the card beside it carries
     // the airport's name and is several times its area, so it is what a reader
@@ -1026,8 +1074,21 @@ export function createLocalGeoJsonLayer({
    * sits on its field. 150 m is under the 300 m (1 000 ft AGL) traffic-pattern
    * altitude, so the pastille can never reach a height an aircraft is flown at.
    */
-  /** @type {number} Ceiling on the recall stem, in metres. Uncapped by default. */
+  /**
+   * A FUNCTION is allowed here — resolved once per load, not per feature —
+   * because a plugged dataset does not know at construction whether it is
+   * about to draw forty rows or twelve hundred, and the cap that is right for
+   * one is wrong for the other. A number behaves exactly as it always did.
+   * @type {number|(() => number)} Ceiling on the recall stem, in metres. Uncapped by default.
+   */
   stemMaxHeightM = Number.POSITIVE_INFINITY,
+  /**
+   * What the floating entry beside each mark is: a `'card'` (title + details)
+   * or a `'label'` (title alone, details at the click). A function is resolved
+   * once per load, for the same reason as `stemMaxHeightM` above.
+   * @type {'card'|'label'|(() => ('card'|'label'))}
+   */
+  overlayVariant = 'card',
   /*
    * ── OPTIONAL: A SOURCE THAT IS NOT A BUNDLED FILE ──────────────────────
    *
@@ -1601,6 +1662,11 @@ export function createLocalGeoJsonLayer({
         return true;
       },
 
+      /** A copy, never the live bag: the manager publishes what it reads. */
+      getParams() {
+        return { ..._params };
+      },
+
       setRowControlsListener(listener) {
         _rowControlsListener = typeof listener === 'function' ? listener : null;
       },
@@ -1687,6 +1753,18 @@ export function createLocalGeoJsonLayer({
             type: 'FeatureCollection',
             features
           };
+
+          // Both settled ONCE, here, for the whole walk below: a source that
+          // resolves them per feature would be asked tens of thousands of
+          // times, and — worse — two features of the same load could disagree
+          // about how tall their stems are and whether their names carry
+          // detail. A plain value passes through untouched.
+          const resolvedStemMaxHeightM = typeof stemMaxHeightM === 'function'
+            ? stemMaxHeightM()
+            : stemMaxHeightM;
+          const resolvedOverlayVariant = typeof overlayVariant === 'function'
+            ? overlayVariant()
+            : overlayVariant;
 
           // Natively parse into entities and use it as our _dataSource
           loaded = await Cesium.GeoJsonDataSource.load(geojson, {
@@ -1980,7 +2058,7 @@ export function createLocalGeoJsonLayer({
                */
               markerMaxDistance: markerRange > 0 ? markerRange : 0,
               /** Ceiling on the recall stem, in metres. */
-              stemMaxHeightM,
+              stemMaxHeightM: resolvedStemMaxHeightM,
               /** Published segments of this feature, drawn in `_runwayLines`. */
               runways,
               /** Ground extent of the drawn footprint, 0 when there is none. */
@@ -2011,6 +2089,7 @@ export function createLocalGeoJsonLayer({
                 areaM2,
                 maxDistance: cardRange,
                 copy,
+                variant: resolvedOverlayVariant,
               }) : null,
             });
           }

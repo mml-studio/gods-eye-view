@@ -5,15 +5,21 @@ import {
   bboxContains,
   bboxSpanDeg,
   createDatasetLayer,
+  datasetActiveFilter,
+  datasetAmbientVariant,
   datasetCardCopy,
   datasetCoverageLine,
+  datasetFilterChips,
+  datasetGroupResolver,
   datasetLegend,
+  DATASET_DENSE_FEATURE_COUNT,
   padBbox,
   shouldRefetch,
   datasetProgressLine,
   datasetRemainingLabel,
   datasetRemainingMs,
 } from './datasetLayer.js';
+import { LOCAL_OVERLAY_LABEL_MAX_TITLE, clampOverlayLabelTitle } from './localGeojson.js';
 
 const ATTRIBUTION = { publisher: 'P', licence: 'Licence Ouverte 2.0' };
 
@@ -277,4 +283,216 @@ test('the measured 150-page load is predicted within its stated error', () => {
   const atFifth = { received: 6000, ceiling: 30000, requests: 30, startedAt: started };
   const predicted = 6680 + datasetRemainingMs(atFifth, 6680);
   assert.ok(Math.abs(predicted - 33400) / 33400 < 0.15, `predicted ${Math.round(predicted)} ms`);
+});
+
+// ── What the GeoDAE row looks like on the wire ─────────────────────────────
+// The cells below are copied from the resource, not invented: the Postgres
+// array literals, the "non renseigné" spelling of an absence, and the state
+// column that says the same thing on 883 of the 888 rows inside Lyon.
+const GEODAE = Object.freeze({
+  id: 'dae', label: 'DAE', attribution: ATTRIBUTION,
+  source: { kind: 'datagouv', resourceId: 'edb6a9e1-2f16-4bbf-99e7-c3eb6b90794c', scope: 'viewport' },
+  geometry: { lon: 'c_long_coor1', lat: 'c_lat_coor1' },
+  feature: {
+    title: ['c_nom'],
+    blank: ['non renseigné'],
+    details: [
+      { field: 'c_adr_voie', label: 'Voie' },
+      { field: 'c_disp_j', label: 'Jours', format: 'days' },
+      { field: 'c_disp_h', label: 'Heures', format: 'list' },
+      { field: 'c_etat_fonct', label: 'État', omitWhen: ['En fonctionnement'] },
+    ],
+    group: {
+      rules: [
+        { key: 'h24', label: 'Accessible 24 h/24', color: '#5ce6a8', when: { c_disp_h: ['24h/24'] } },
+        { key: 'libre', label: 'Accès libre', color: '#ff5c7a', when: { c_acc_lib: ['t'] } },
+      ],
+      other: { color: '#7d8aa0', label: 'Accès restreint' },
+    },
+    filters: [
+      { id: 'tous', label: 'Tous' },
+      { id: 'libre', label: 'Accès libre', groups: ['h24', 'libre'] },
+      { id: 'h24', label: '24 h/24', groups: ['h24'] },
+    ],
+  },
+});
+
+const TYPICAL_LYON_ROW = Object.freeze({
+  name: 'Piscine Garibaldi',
+  c_adr_voie: 'rue Garibaldi',
+  c_com_nom: 'Lyon',
+  c_acc: 'Intérieur',
+  c_acc_lib: 't',
+  c_disp_j: '{"non renseigné"}',
+  c_disp_h: '{"heures ouvrables"}',
+  c_etat_fonct: 'En fonctionnement',
+});
+
+test('a card drops the lines that say nothing, and keeps the one that does', () => {
+  const write = datasetCardCopy(normalizeDatasetManifest(GEODAE));
+  // Before: six lines, of which Commune (888/888 Lyon), Accès (885/888
+  // Intérieur) and État (883/888) were constants, and two were `{…}` literals.
+  assert.deepEqual(write(TYPICAL_LYON_ROW), {
+    title: 'Piscine Garibaldi',
+    details: ['Voie : rue Garibaldi', 'Heures : heures ouvrables'],
+  });
+  // The weekday literal becomes a range, and the exceptional state is the only
+  // one that reaches a card at all.
+  assert.deepEqual(write({
+    ...TYPICAL_LYON_ROW,
+    c_disp_j: '{lundi,mardi,mercredi,jeudi,vendredi}',
+    c_disp_h: '{24h/24}',
+    c_etat_fonct: 'Hors service',
+  }).details, [
+    'Voie : rue Garibaldi',
+    'Jours : lun–ven',
+    'Heures : 24h/24',
+    'État : Hors service',
+  ]);
+});
+
+test('the label writer keeps the name alone, and keeps it whole', () => {
+  const write = datasetCardCopy(normalizeDatasetManifest(GEODAE), { titleOnly: true });
+  assert.deepEqual(write(TYPICAL_LYON_ROW), { title: 'Piscine Garibaldi', details: [] });
+  // The full name survives here: it is what the context card shows after the
+  // click. Only what is DRAWN on the label lane is clamped, one layer down.
+  const long = 'DAE - Piscine Saint-Exupéry (Piscine d’hiver), entrée personnel';
+  assert.equal(write({ ...TYPICAL_LYON_ROW, name: long }).title, long);
+  assert.equal(clampOverlayLabelTitle(long).length, LOCAL_OVERLAY_LABEL_MAX_TITLE);
+  assert.match(clampOverlayLabelTitle(long), /…$/);
+  assert.equal(clampOverlayLabelTitle('Piscine Garibaldi'), 'Piscine Garibaldi');
+});
+
+test('the ambient variant follows the set, unless the manifest overrules it', () => {
+  const derived = normalizeDatasetManifest(GEODAE);
+  assert.equal(derived.feature.ambient, null, 'saying nothing is allowed and is the default');
+  assert.equal(datasetAmbientVariant(derived, 40), 'card');
+  assert.equal(datasetAmbientVariant(derived, DATASET_DENSE_FEATURE_COUNT), 'card', 'the cohort can still hold it');
+  assert.equal(datasetAmbientVariant(derived, DATASET_DENSE_FEATURE_COUNT + 1), 'label');
+  assert.equal(datasetAmbientVariant(derived, 1176), 'label', 'the measured Lyon view');
+
+  const forcedCard = normalizeDatasetManifest({ ...GEODAE, feature: { ...GEODAE.feature, ambient: 'card' } });
+  assert.equal(datasetAmbientVariant(forcedCard, 5000), 'card');
+  const forcedLabel = normalizeDatasetManifest({ ...GEODAE, feature: { ...GEODAE.feature, ambient: 'label' } });
+  assert.equal(datasetAmbientVariant(forcedLabel, 3), 'label');
+});
+
+test('rule groups are ordered, first match wins, and the rest fall to `other`', () => {
+  const manifest = normalizeDatasetManifest(GEODAE);
+  const groupOf = datasetGroupResolver(manifest.feature.group);
+  // Both rules match this row; the manifest's order decides, and 24h/24 is the
+  // stronger answer to "can I reach it right now".
+  assert.equal(groupOf({ c_disp_h: '{24h/24}', c_acc_lib: 't' }), 'h24');
+  assert.equal(groupOf({ c_disp_h: '{"heures ouvrables"}', c_acc_lib: 't' }), 'libre');
+  assert.equal(groupOf({ c_disp_h: '{"non renseigné"}', c_acc_lib: 'f' }), '__other__');
+  assert.equal(groupOf({}), '__other__');
+
+  // The exact-value form is untouched.
+  const flatGroup = normalizeDatasetManifest({
+    id: 'g2', label: 'G2', attribution: ATTRIBUTION, source: { kind: 'geojson', url: 'https://x.test/a.geojson' },
+    feature: { group: { field: 'acc', styles: { Intérieur: { color: '#111111' } }, other: { color: '#222222' } } },
+  });
+  const flatOf = datasetGroupResolver(flatGroup.feature.group);
+  assert.equal(flatOf({ acc: 'Intérieur' }), 'Intérieur');
+  assert.equal(flatOf({ acc: 'Extérieur' }), '__other__');
+  assert.equal(datasetGroupResolver(null), null);
+});
+
+test('the legend reads a rule group exactly as it reads a value group', () => {
+  const manifest = normalizeDatasetManifest(GEODAE);
+  const tally = new Map([
+    ['h24', { total: 41, visible: 41 }],
+    ['libre', { total: 543, visible: 543 }],
+    ['__other__', { total: 304, visible: 304 }],
+  ]);
+  assert.deepEqual(datasetLegend(manifest, tally, 888), [
+    { color: '#5ce6a8', label: 'Accessible 24 h/24', count: 41 },
+    { color: '#ff5c7a', label: 'Accès libre', count: 543 },
+    { color: '#7d8aa0', label: 'Accès restreint', count: 304 },
+  ]);
+});
+
+test('a chip says how much of the map it keeps, and the first one is the way back', () => {
+  const manifest = normalizeDatasetManifest(GEODAE);
+  const tally = new Map([
+    ['h24', { total: 41, visible: 41 }],
+    ['libre', { total: 543, visible: 543 }],
+    ['__other__', { total: 304, visible: 304 }],
+  ]);
+  const chips = datasetFilterChips(manifest, { filter: 'h24' }, tally);
+  assert.deepEqual(chips.map((chip) => chip.id), ['filter:tous', 'filter:libre', 'filter:h24']);
+  assert.deepEqual(chips.map((chip) => chip.active), [false, false, true]);
+  assert.deepEqual(chips.map((chip) => chip.params), [{ filter: 'tous' }, { filter: 'libre' }, { filter: 'h24' }]);
+  assert.match(chips[0].title, /888 sur 888/);
+  assert.match(chips[1].title, /584 sur 888/);
+  assert.match(chips[2].title, /41 sur 888/);
+
+  // An unknown or missing selection falls back to the first chip rather than
+  // to an empty map.
+  assert.equal(datasetActiveFilter(manifest, { filter: 'inexistant' }).id, 'tous');
+  assert.equal(datasetActiveFilter(manifest, null).id, 'tous');
+  assert.deepEqual(datasetFilterChips(
+    normalizeDatasetManifest({ id: 'nf', label: 'NF', attribution: ATTRIBUTION, source: { kind: 'geojson', url: 'https://x.test/a.geojson' } }),
+    {},
+    new Map(),
+  ), []);
+});
+
+test('a dense load draws labels and short stems; a sparse one keeps its cards', async () => {
+  const manifest = normalizeDatasetManifest({
+    ...GEODAE,
+    source: { ...GEODAE.source, kind: 'wfs', url: 'https://wfs.test/ows', typeName: 'a:b' },
+    geometry: undefined,
+  });
+  const published = [];
+  const build = (count) => {
+    const features = [];
+    for (let i = 0; i < count; i++) {
+      features.push({
+        ...POINT(2.3 + i * 0.0001, 48.8 + i * 0.0001, `DAE ${i}`),
+        properties: { ...TYPICAL_LYON_ROW, name: `DAE ${i}` },
+      });
+    }
+    return features;
+  };
+  const run = async (count) => {
+    const h = harness({ features: build(count) });
+    const layer = createDatasetLayer(manifest, {
+      fetchImpl: h.fetchImpl,
+      relay: null,
+      viewportOf: () => ({ west: 2.2, south: 48.7, east: 2.5, north: 48.95 }),
+      loaderOptions: {
+        overlayHost: { setVisible() {}, setEntries(_id, entries) { published.push(entries); }, clearSource() {} },
+        projectToWindow: () => ({ x: 1, y: 1 }),
+        screenSpaceEventHandlerFactory: () => ({ setInputAction() {}, destroy() {} }),
+      },
+    });
+    try {
+      await layer.enable(h.viewer);
+      return layer;
+    } finally {
+      h.restore();
+    }
+  };
+
+  const sparse = await run(3);
+  assert.equal(sparse.getAmbientVariant(), 'card');
+
+  const dense = await run(DATASET_DENSE_FEATURE_COUNT + 5);
+  assert.equal(dense.getAmbientVariant(), 'label');
+  // The chips exist and the layer now accepts the params they carry.
+  const controls = dense.getRowControls();
+  assert.equal(controls.chips.length, 3);
+  assert.equal(typeof dense.setParams, 'function');
+  assert.equal(dense.setParams({ filter: 'h24' }), true);
+  assert.deepEqual(dense.getParams(), { filter: 'h24' });
+  assert.equal(dense.setParams({ filter: 'h24' }), false, 'the same chip twice is not a change');
+  assert.equal(dense.getRowControls().chips.find((chip) => chip.id === 'filter:h24').active, true);
+
+  // A dataset with no filters keeps rejecting params, as it always did.
+  const plain = normalizeDatasetManifest({
+    id: 'plain', label: 'Plain', attribution: ATTRIBUTION,
+    source: { kind: 'geojson', url: 'https://x.test/a.geojson' },
+  });
+  assert.equal(createDatasetLayer(plain, { fetchImpl: async () => { throw new Error('unused'); } }).setParams, undefined);
 });

@@ -241,8 +241,15 @@ export function tabularColumnsFor(manifest) {
   const declared = [
     ...(feature.title || []),
     ...((feature.details || []).map((detail) => detail.field)),
-    ...(feature.group ? [feature.group.field] : []),
-  ];
+    // A group classifies on ONE column when it is written as `field`/`styles`,
+    // and on as many as its rules read when it is written as `rules`. Asking
+    // for the first form's column and forgetting the second's is the quiet
+    // failure this list exists to prevent: the rows still arrive, every rule
+    // misses, and the whole set is drawn in the `other` colour with a legend
+    // that confidently prints zeroes.
+    ...(feature.group?.field ? [feature.group.field] : []),
+    ...(feature.group?.rules || []).flatMap((rule) => Object.keys(rule.when || {})),
+  ].filter(Boolean);
   if (!declared.length) return null;
   return [...new Set([...wanted, ...declared])];
 }

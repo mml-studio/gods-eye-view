@@ -142,12 +142,43 @@ la boîte sert à brancher.
   //  (inutile pour geojson, geojsonl, wfs, opendatasoft : la géométrie est native)
   "feature": {
     "title": ["c_nom", "c_adr_voie"],      // le premier champ non vide fait le titre
-    "details": [ { "field": "c_com_nom", "label": "Commune" }, { "field": "puissance", "unit": "kW" } ],
-    "group": {                             // facultatif : une couleur par valeur d'un champ
+    "ambient": "label",                    // facultatif : "card" (titre + détail) ou "label" (titre seul,
+                                           //   détail au clic). Omis, la couche décide : au-delà de 160
+                                           //   objets chargés, une carte par objet est impossible de
+                                           //   toute façon — voir « Ce qui flotte à côté d'une marque »
+    "blank": ["non renseigné"],            // facultatif : les écritures qui veulent dire « je ne sais pas ».
+                                           //   Une ligne qui ne dirait que ça n'est pas écrite du tout
+    "details": [
+      { "field": "c_com_nom", "label": "Commune" },
+      { "field": "puissance", "unit": "kW" },
+      { "field": "c_disp_j", "label": "Jours", "format": "days" },   // "list" : littéral {a,b} Postgres
+                                                                    // "days" : + runs compactés en lun–ven
+      { "field": "c_etat_fonct", "label": "État",
+        "omitWhen": ["En fonctionnement"] }  // la valeur majoritaire se tait, l'exception s'écrit
+    ],
+    "group": {                             // facultatif : une couleur par valeur d'un champ…
       "field": "c_acc",
       "styles": { "Extérieur": { "color": "#ff5c7a" }, "Intérieur": { "color": "#ffb3c0" } },
       "other": { "color": "#9aa7bd", "label": "Accès non renseigné" }
-    }
+    },
+    // …ou, quand la distinction que cherche le lecteur tient dans PLUSIEURS
+    // colonnes, une liste ordonnée de règles, la première qui matche gagne :
+    // "group": {
+    //   "rules": [
+    //     { "key": "h24", "label": "Accessible 24 h/24", "color": "#5ce6a8",
+    //       "when": { "c_disp_h": ["24h/24"] } },
+    //     { "key": "libre", "label": "Accès libre", "color": "#ff5c7a",
+    //       "when": { "c_acc_lib": ["t"] } }
+    //   ],
+    //   "other": { "color": "#7d8aa0", "label": "Accès restreint" }
+    // },
+    "filters": [                           // facultatif : les puces de la ligne. Rien n'est déchargé —
+                                           //   les marques des groupes non nommés sont masquées, et
+                                           //   l'effectif comme la légende continuent de tout compter
+      { "id": "tous", "label": "Tous" },   //   une puce sans "groups" est le retour à « tout » (obligatoire)
+      { "id": "dehors", "label": "Extérieur", "groups": ["Extérieur"] }
+    ]                                      //   les "groups" sont les clés du "group" ci-dessus : une valeur
+                                           //   de "styles", une "key" de "rules", ou "__other__"
   },
   "attribution": {                         // obligatoire — un jeu sans éditeur ni licence ne s'affiche pas
     "publisher": "Atlasanté — GeoDAE",
@@ -172,6 +203,25 @@ sol, le clic qui sélectionne et cadre. Trois crochets l'ouvrent sans qu'il
 apprenne quoi que ce soit des plateformes : `loadFeatures` (d'où viennent les
 objets), `cardCopy` (ce que dit une carte) et `invalidate` (oublier pour
 recharger).
+
+### Ce qui flotte à côté d'une marque
+
+L'hôte partagé matérialise au plus **160 entrées ambiantes par source**
+(`LOCAL_OVERLAY_COHORT_LIMIT`). Un jeu plus gros que ça ne peut donc PAS
+montrer une carte par objet : ce qu'il montre est un échantillon de lui-même,
+dessiné à pleine hauteur de carte, par-dessus la carte. Mesuré sur GeoDAE
+au-dessus de Lyon : 1 176 objets dans la vue, ~25 cartes à l'écran de sept
+lignes chacune, plus de 60 % du viewport couvert par un échantillon de 2 %.
+
+Au-delà de ce seuil la boîte passe donc en `label` : le **titre seul** flotte,
+et le détail attend le clic — qui ouvre la fiche de contexte avec la ligne
+entière, pas seulement les champs déclarés. Rien n'est perdu, tout est déplacé
+d'un cran. La tige de rappel est plafonnée à 18 m dans ce régime, pour la même
+raison qu'elle l'est à 150 m au-dessus d'un aéroport : elle lève la marque
+au-dessus du maillage photoréaliste sans devenir, à mille exemplaires, une
+hachure sur la ville.
+
+`feature.ambient` tranche dans les deux sens quand l'auteur sait mieux.
 
 Et ce que la doctrine (`docs/CARTOGRAPHIE.md`) exige d'une couche :
 
