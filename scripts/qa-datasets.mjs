@@ -156,12 +156,37 @@ async function main() {
 
     // i. the shipped catalog
     const catalog = await page.evaluate(() => window.__godsEyeView.datasets.list().filter((entry) => entry.origin === 'catalog').map((entry) => entry.layerId));
-    check('catalog datasets are registered', catalog.length >= 2, catalog.join(', '));
+    check('catalog datasets are registered', catalog.length >= 1, catalog.join(', '));
+    // A catalog manifest reaches the panel one of TWO ways since 2026-09-14: as
+    // a row of its own, or — when it declares `fusion` — as a chip on the row
+    // it names. Both are "on the panel"; neither may be silently absent.
     const catalogRows = await page.evaluate((ids) => ids.map((id) => {
       const row = document.querySelector(`#data-toggles [data-layer-id="${id}"]`);
-      return { id, present: Boolean(row), group: row?.closest('.data-category')?.dataset?.categoryId || null, name: row?.querySelector('.data-name')?.textContent || null };
+      const record = window.__godsEyeView.dataManager.getAll().find((layer) => layer.id === id);
+      const host = record?.fusedInto
+        ? document.querySelector(`#data-toggles [data-layer-id="${record.fusedInto}"]`)
+        : null;
+      return {
+        id,
+        present: Boolean(row),
+        group: row?.closest('.data-category')?.dataset?.categoryId || null,
+        name: row?.querySelector('.data-name')?.textContent || null,
+        fusedInto: record?.fusedInto || null,
+        hostRow: Boolean(host),
+        hostMeta: host?.querySelector('.data-toggle-meta')?.textContent || null,
+      };
     }), catalog);
-    check('every catalog dataset has a row in its group', catalogRows.every((row) => row.present && row.group), JSON.stringify(catalogRows));
+    check(
+      'every catalog dataset reaches the panel — as a row, or as a chip on its host',
+      catalogRows.every((row) => (row.fusedInto ? row.hostRow && !row.present : row.present && row.group)),
+      JSON.stringify(catalogRows),
+    );
+    const fused = catalogRows.filter((row) => row.fusedInto);
+    check(
+      'a fused dataset is named on its dark host row, since the strip is empty there',
+      fused.every((row) => /Défibrillateurs/.test(row.hostMeta || '')),
+      JSON.stringify(fused),
+    );
     const plugPanel = await page.evaluate(() => Boolean(document.querySelector('#dataset-plug-panel [data-dsp-open]')));
     check('the plug panel is mounted under the layer list', plugPanel);
 

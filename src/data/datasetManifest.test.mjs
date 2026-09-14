@@ -137,6 +137,20 @@ test('derived registry entries: id, taxonomy row, source line, credit', () => {
   assert.deepEqual(row, {
     id: 'ds-bornes-test', category: 'plugged', label: 'Bornes de test', kind: 'dataset',
     coverage: 'fr', auth: 'none', cadence: 'static', scopeChip: 'FR',
+    // Null, and PRESENT: a manifest that is its own row still states that it is
+    // one, so the manager reads the same two fields on every entry.
+    fusedInto: null, companion: null,
+  });
+
+  // A manifest that declares itself a chip carries the host and the chip.
+  const fused = normalizeDatasetManifest({
+    ...VALID_CSV,
+    fusion: { into: 'medecins-fr', chip: 'Défibrillateurs', title: 'Ce qu’un passant décroche' },
+  });
+  const fusedRow = datasetTaxonomyEntry(fused, () => null);
+  assert.equal(fusedRow.fusedInto, 'medecins-fr');
+  assert.deepEqual(fusedRow.companion, {
+    id: 'ds-bornes-test', chip: 'Défibrillateurs', title: 'Ce qu’un passant décroche', optIn: false,
   });
   assert.equal(datasetSourceLine(manifest), 'Example · Licence Ouverte 2.0');
   const credit = datasetCredit(manifest);

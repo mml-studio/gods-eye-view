@@ -160,7 +160,7 @@ test('describeVoiceLayers reports the registry, with live state when there is a 
   const all = describeVoiceLayers();
   assert.equal(all.length, VOICE_LAYER_IDS.length);
   const doctors = all.find((row) => row.id === 'medecins-fr');
-  assert.equal(doctors.label, 'Médecins');
+  assert.equal(doctors.label, 'Santé & secours');
   assert.equal(doctors.group, 'BÂTI & TERRITOIRE');
   assert.equal(doctors.enabled, null, 'no manager means no claim about state');
 
@@ -170,7 +170,7 @@ test('describeVoiceLayers reports the registry, with live state when there is a 
   const live = describeVoiceLayers({ dataManager: manager, query: 'docteurs' });
   assert.deepEqual(live, [{
     id: 'medecins-fr',
-    label: 'Médecins',
+    label: 'Santé & secours',
     group: 'BÂTI & TERRITOIRE',
     coverage: 'fr',
     enabled: true,

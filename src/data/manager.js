@@ -358,6 +358,14 @@ export class DataLayerManager {
    * manifest names — which must be one the manager was sealed with, because
    * a row in a group that does not exist is a row nobody sees.
    *
+   * A dataset MAY also arrive as a chip on an existing row rather than as a row
+   * of its own — `taxonomyEntry.fusedInto` names the host and `.companion`
+   * carries the chip. That half cannot live in `layerFusions.js`: that table is
+   * validated at import against the sealed core layer set, and a plugged
+   * dataset is not in it and never will be. So the splice happens here, at the
+   * one moment both sides are known, and it is REVERSIBLE — `unregisterDataset`
+   * takes the chip back off the host row.
+   *
    * @param {object} layerModule The layer, same contract as `register()`.
    * @param {object} taxonomyEntry `{id, category, label, kind, coverage, auth, cadence, scopeChip}`.
    * @returns {string} The registered layer id.
@@ -373,10 +381,18 @@ export class DataLayerManager {
       && !this._registrationCategories.some((category) => category.id === taxonomyEntry.category)) {
       throw new Error(`Unknown dataset category: ${taxonomyEntry.category}`);
     }
+    // Checked BEFORE the layer is registered, so a manifest naming a host that
+    // does not exist fails loudly instead of landing as an invisible layer:
+    // `fusedInto` keeps it off the panel, and with no host row to carry its
+    // chip there would be no control for it anywhere.
+    if (taxonomyEntry.fusedInto) this._assertFusionHost(taxonomyEntry);
     this._registerLayer(layerModule);
     this._datasetLayerIds.add(layerModule.id);
     if (this._registrationTaxonomy) {
       this._registrationTaxonomy.set(layerModule.id, Object.freeze({ ...taxonomyEntry }));
+      if (taxonomyEntry.fusedInto && taxonomyEntry.companion) {
+        this._spliceCompanion(taxonomyEntry.fusedInto, taxonomyEntry.companion);
+      }
     }
     this._renderToggles();
     return layerModule.id;
@@ -385,12 +401,64 @@ export class DataLayerManager {
   /** Destroy and forget a plugged dataset. False when the id is not one, or teardown was refused. */
   async unregisterDataset(layerId) {
     if (!this._datasetLayerIds.has(layerId)) return false;
+    const entry = this._registrationTaxonomy?.get(layerId);
     const destroyed = await this.destroyLayer(layerId);
     if (destroyed) {
       this._registrationTaxonomy?.delete(layerId);
+      if (entry?.fusedInto) this._unspliceCompanion(entry.fusedInto, layerId);
       this._renderToggles();
     }
     return destroyed;
+  }
+
+  /**
+   * Refuse a fused dataset whose host cannot carry it.
+   *
+   * Two ways that happens, and they fail for the same reason: the chip would
+   * have nowhere to be drawn. An unknown host has no row at all, and a host
+   * that is ITSELF a companion is a chip on somebody else's row — nesting a
+   * strip inside a strip is not a thing the panel can draw, and silently
+   * promoting the dataset to the grandparent row would file it under a subject
+   * the manifest never named.
+   */
+  _assertFusionHost(taxonomyEntry) {
+    const host = this._registrationTaxonomy?.get(taxonomyEntry.fusedInto);
+    if (!host) {
+      throw new Error(`Unknown fusion host for dataset ${taxonomyEntry.id}: ${taxonomyEntry.fusedInto}`);
+    }
+    if (host.fusedInto) {
+      throw new Error(`Fusion host ${taxonomyEntry.fusedInto} is itself a companion`);
+    }
+    if (!taxonomyEntry.companion?.chip) {
+      throw new Error(`Fused dataset ${taxonomyEntry.id} carries no chip label`);
+    }
+  }
+
+  /** Add one companion to a host row's strip, keeping the order it arrived in. */
+  _spliceCompanion(hostId, companion) {
+    const host = this._registrationTaxonomy?.get(hostId);
+    if (!host) return;
+    const companions = Array.isArray(host.companions) ? host.companions : [];
+    if (companions.some((entry) => entry?.id === companion.id)) return;
+    this._registrationTaxonomy.set(hostId, Object.freeze({
+      ...host,
+      companions: Object.freeze([...companions, Object.freeze({ ...companion })]),
+    }));
+  }
+
+  /** Take one companion back off a host row's strip. */
+  _unspliceCompanion(hostId, companionId) {
+    const host = this._registrationTaxonomy?.get(hostId);
+    if (!Array.isArray(host?.companions)) return;
+    const companions = host.companions.filter((entry) => entry?.id !== companionId);
+    if (companions.length === host.companions.length) return;
+    this._registrationTaxonomy.set(hostId, Object.freeze({
+      ...host,
+      // Back to null rather than to an empty array, so a host that never had a
+      // strip is indistinguishable from one whose only chip has left — which is
+      // what every reader of this field already assumes.
+      companions: companions.length ? Object.freeze(companions) : null,
+    }));
   }
 
   /** Whether a layer id was registered through `registerDataset()`. */
@@ -2260,6 +2328,10 @@ export class DataLayerManager {
             scopeChip: taxonomy.scopeChip ?? null,
             auth: taxonomy.auth,
             cadence: taxonomy.cadence,
+            // Whether this layer draws anything at all from a wide view. Read
+            // by `_buildMetaText` to warn a reader BEFORE they switch a row on
+            // over a country and see nothing. See `layerTaxonomy.js`.
+            closeRange: taxonomy.closeRange === true,
           })
           : null,
         enabled: entry.enabled,
@@ -3761,6 +3833,42 @@ export class DataLayerManager {
     list.replaceChildren(fragment);
   }
 
+  /**
+   * What a row says while it is OFF — the one state in which the layer itself
+   * cannot speak.
+   *
+   * Two facts belong here and nowhere else, because both are decided before
+   * anything loads: WHAT IS UNDER THE ROW, and WHETHER IT WILL DRAW AT ALL
+   * from where the camera is.
+   *
+   * WHY NOT GREYED CHIPS. The strip is empty while a row is off, by product
+   * decision (2026-09-14): a panel that painted 25 dim buttons over 33 rows is
+   * a panel nobody reads. But a fusion that nobody can SEE is a fusion that
+   * hid a layer rather than filing it, so the chips' labels are printed here
+   * as TEXT, on a line that already exists, at the cost of no new pixel.
+   *
+   * THREE NAMES, THEN A COUNT. The meta line is one line at 300 px, and « +2 »
+   * carries the same information as two names that would be truncated anyway.
+   *
+   * @returns {string} The line, or '' when the row has nothing extra to say.
+   */
+  _dormantMetaText(layer) {
+    const parts = [];
+    const companions = this._fusionCompanions(layer.id);
+    if (companions.length) {
+      const primaryChip = fusionPrimaryChipFor(layer.id);
+      const names = (primaryChip ? [primaryChip, ...companions] : companions)
+        .map((entry) => entry.chip)
+        .filter(Boolean);
+      const shown = names.slice(0, 3).join(', ');
+      parts.push(names.length > 3 ? `${shown} +${names.length - 3}` : shown);
+    }
+    // LAST, so it is the word the line ends on: it is the one that predicts
+    // whether switching the row on will show anything.
+    if (layer.tags?.closeRange) parts.push('vue rapprochée');
+    return parts.join(' · ');
+  }
+
   _buildMetaText(layer) {
     const stats = layer.stats || {};
     const feedState = layerFeedState(stats);
@@ -3772,6 +3880,13 @@ export class DataLayerManager {
     }
     if (layer.lifecycleUncertain) {
       return `UNCERTAIN · ${source} · lifecycle state requires reconciliation`;
+    }
+    // An OFF row has no module loaded and therefore no stats worth printing:
+    // the age it would show is `jamais`, which is true and useless. What it can
+    // say is what it holds and whether it needs a close camera.
+    if (!layer.enabled) {
+      const dormant = this._dormantMetaText(layer);
+      if (dormant) return `${source} · ${dormant}`;
     }
     // GUIDANCE BEFORE FAULT — the same carve-out `layerFeedState()` makes for
     // the chip. A layer at its zoom gate is not failing, and the two halves of

@@ -521,6 +521,7 @@ import {
   projectFraicheurRefuges,
 } from './src/data/fraicheurFeed.js';
 import {
+  FRAICHEUR_REMARKABLE_WHERE,
   FRAICHEUR_TREE_BOX_STEP_DEG,
   FRAICHEUR_TREE_BUDGET,
   FRAICHEUR_TREE_DATASET,
@@ -7844,6 +7845,7 @@ function anfrFranceProxy() {
  *
  *   GET /api/fraicheur-fr/refuges                       — the whole city, once
  *   GET /api/fraicheur-fr/arbres?south&west&north&east  — one snapped box of trees
+ *   GET /api/fraicheur-fr/remarquables                  — the 183 remarkable trees, whole city
  *   GET /api/fraicheur-fr/status                        — provenance and cache state
  *
  * WHY A PROXY AT ALL. `opendata.paris.fr` answers `access-control-allow-origin:
@@ -8006,6 +8008,26 @@ async function refreshFraicheurTrees(box) {
   return projectFraicheurTrees({ features, totalInBox: Number.isFinite(total) ? total : null, box });
 }
 
+/**
+ * Build the remarkable-tree register — the whole city, in one document.
+ *
+ * NO PROBE, unlike the viewport route above. The probe exists to decide whether
+ * an export worth megabytes is bought at all; this clause returns 183 rows and
+ * the export IS the cheap call. Asking twice would double a request against a
+ * shared daily allowance to be told a number that cannot surprise us.
+ *
+ * `box: null` travels into the projection deliberately: this payload describes
+ * no box, and `totalInBox` falls back to what was actually returned, so nothing
+ * downstream can read a count that was never measured for a rectangle.
+ */
+async function refreshFraicheurRemarkableTrees() {
+  const features = await fetchFraicheurJson(
+    fraicheurExportUrl(FRAICHEUR_TREE_DATASET, FRAICHEUR_TREE_FIELDS, FRAICHEUR_REMARKABLE_WHERE),
+    FRAICHEUR_TREE_MAX_BYTES,
+  );
+  return projectFraicheurTrees({ features, totalInBox: null, box: null });
+}
+
 async function readFraicheurDisk() {
   if (_fraicheurDiskChecked) return;
   _fraicheurDiskChecked = true;
@@ -8088,6 +8110,25 @@ function ensureFraicheurTrees(key, box) {
 }
 
 /**
+ * The same single-flight and the same two caches as a tree box, on a key that
+ * is a WORD rather than a rectangle. Re-using them is the point: one register
+ * of 183 rows does not deserve a third cache with its own eviction and its own
+ * bugs, and `boxKey` never produces a key this could collide with.
+ */
+const FRAICHEUR_REMARKABLE_KEY = 'remarquables';
+
+function ensureFraicheurRemarkableTrees() {
+  return coalesceProxyRequest(_fraicheurTreeInFlight, FRAICHEUR_REMARKABLE_KEY, async () => {
+    const payload = await refreshFraicheurRemarkableTrees();
+    const entry = { version: FRAICHEUR_CACHE_VERSION, at: Date.now(), payload };
+    _fraicheurTreeCache.set(FRAICHEUR_REMARKABLE_KEY, entry);
+    trimFraicheurTreeCache();
+    writeFraicheurTreeDisk(FRAICHEUR_REMARKABLE_KEY, entry);
+    return entry;
+  });
+}
+
+/**
  * Vite plugin: Paris cool-islands, green spaces, fountains and street trees.
  * @returns {import('vite').Plugin}
  */
@@ -8161,6 +8202,32 @@ function fraicheurParisProxy() {
             return;
           }
           json(503, { error: 'Paris cool-island registers are temporarily unavailable' });
+        }
+        return;
+      }
+
+      if (route === '/remarquables') {
+        const now = Date.now();
+        const cached = _fraicheurTreeCache.get(FRAICHEUR_REMARKABLE_KEY);
+        if (cached && now - cached.at <= FRAICHEUR_TREE_TTL_MS) {
+          json(200, { ...cached.payload, fetchedAt: cached.at, stale: false }, { 'X-FRAICHEUR-FR': 'HIT' });
+          return;
+        }
+        const onDisk = await readFraicheurTreeDisk(FRAICHEUR_REMARKABLE_KEY);
+        if (onDisk) {
+          _fraicheurTreeCache.set(FRAICHEUR_REMARKABLE_KEY, onDisk);
+          trimFraicheurTreeCache();
+          json(200, { ...onDisk.payload, fetchedAt: onDisk.at, stale: false }, { 'X-FRAICHEUR-FR': 'DISK' });
+          return;
+        }
+        try {
+          const request = ensureFraicheurRemarkableTrees();
+          const entry = await request.promise;
+          json(200, { ...entry.payload, fetchedAt: entry.at, stale: false },
+            { 'X-FRAICHEUR-FR': request.shared ? 'INFLIGHT' : 'MISS' });
+        } catch (error) {
+          console.warn('[Fraicheur Proxy] remarkable trees unavailable:', error?.message || error);
+          json(503, { error: 'The remarkable-tree register is temporarily unavailable' });
         }
         return;
       }

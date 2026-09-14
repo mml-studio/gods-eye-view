@@ -194,6 +194,7 @@ import {
   summarizeFraicheurRefuges,
 } from './fraicheurFeed.js';
 import {
+  FRAICHEUR_REMARKABLE_COUNT,
   FRAICHEUR_TREE_BANDS,
   FRAICHEUR_TREE_BOX_STEP_DEG,
   FRAICHEUR_TREE_BUDGET,
@@ -220,6 +221,9 @@ export const FRAICHEUR_FR_OVERLAY_SOURCE_OPTIONS = Object.freeze({
 /** Keyless, same-origin. See `fraicheurParisProxy` in vite.config.js. */
 export const FRAICHEUR_REFUGES_URL = '/api/fraicheur-fr/refuges';
 export const FRAICHEUR_TREES_URL = '/api/fraicheur-fr/arbres';
+
+/** The whole-city remarkable register. No box, and no altitude gate. */
+export const FRAICHEUR_REMARQUABLES_URL = '/api/fraicheur-fr/remarquables';
 
 /**
  * The rectangle the layer will fetch inside, from the feed's own measurement of
@@ -315,7 +319,25 @@ const TREE_MAX_PX = 9;
  * `fraicheurTreeLabel` already had the wording for a register that is not
  * drawing; it gains one more reason.
  */
-export const FRAICHEUR_REGISTERS = Object.freeze(['spaces', 'equipment', 'fountains', 'trees']);
+/*
+ * A FIFTH register, added 2026-09-14: the 183 remarkable trees, which used to
+ * be a row of their own in the Data Layers panel through a plugged manifest.
+ *
+ * It was a duplicate of this layer and not a source of its own — the same
+ * `les-arbres` register, the same `remarquable = 'OUI'` rows that
+ * `fraicheurTreeBand` has always drawn as its own band. What the manifest had
+ * and this layer did not was REACH: the tree register is gated at 1 500 m of
+ * altitude because 219 432 dots cannot be bought per viewport, so from any view
+ * that holds Paris whole the remarkable trees were invisible here and visible
+ * there.
+ *
+ * So the chip carries the reach rather than the row: 183 rows fit in one
+ * document, the gate does not apply to them, and they are the only half of the
+ * canopy a reader can look for from the sky. See `FRAICHEUR_REMARKABLE_WHERE`.
+ */
+export const FRAICHEUR_REGISTERS = Object.freeze([
+  'spaces', 'equipment', 'fountains', 'trees', 'remarkable',
+]);
 
 /** Register → the chip label, the record kind it draws, and its default. */
 export const FRAICHEUR_REGISTER_SPECS = Object.freeze({
@@ -323,6 +345,7 @@ export const FRAICHEUR_REGISTER_SPECS = Object.freeze({
   equipment: Object.freeze({ chip: 'REFUGES', kind: 'equipment', on: true }),
   fountains: Object.freeze({ chip: 'FONTAINES', kind: 'fountain', on: true }),
   trees: Object.freeze({ chip: 'ARBRES', kind: 'tree', on: false }),
+  remarkable: Object.freeze({ chip: 'REMARQUABLES', kind: 'remarkable', on: false }),
 });
 
 /** Record kind → register, the inverse of {@link FRAICHEUR_REGISTER_SPECS}. */
@@ -433,6 +456,10 @@ let _treeBoxKey = null;
 let _treeTotal = null;
 /** @type {?Cesium.PointPrimitiveCollection} 219 432-strong register, bottom. */
 let _treePoints = null;
+let _remarkablePayload = null;
+let _remarkableStatus = 'idle';
+/** @type {?Cesium.PointPrimitiveCollection} The 183, above the ordinary canopy. */
+let _remarkablePoints = null;
 /** @type {?Cesium.PointPrimitiveCollection} */
 let _fountainPoints = null;
 /** @type {?Cesium.PointPrimitiveCollection} */
@@ -922,6 +949,7 @@ function drawRefuges(payload) {
     const point = addPoint(_fountainPoints, { id, at, color, pixelSize: FOUNTAIN_PX });
     _records.set(id, { id, kind: 'fountain', row: fountain, at, color, point, basePixelSize: FOUNTAIN_PX });
   }
+  drawRemarkable(_remarkablePayload);
   // Last, and it is what grounds the whole rebuild: every register's records
   // exist by the time it returns, and it is also the entry point the tree
   // viewport uses on its own.
@@ -931,6 +959,39 @@ function drawRefuges(payload) {
   // object has not moved, and its render id carries its geometry, so it is the
   // same id on the other side of the rebuild.
   if (previous && _records.has(previous)) selectObject(previous);
+}
+
+/**
+ * Repaint the 183 remarkable trees. Whole city, one document, no box.
+ *
+ * THE IDS ARE PREFIXED, so the same tree can be held by both registers at once
+ * — and below 1 500 m with both chips on, it is. That is a deliberate 183
+ * primitives of duplication rather than a filter in `drawTrees`, because the
+ * alternative couples the two: skipping the remarkable rows over there would
+ * make this function's payload a precondition of that one's correctness, and a
+ * chip flipped off would leave 183 holes in the ordinary canopy until the next
+ * viewport fetch. Two dots of the same colour and the same size at the same
+ * coordinate are invisible; a hole in a tree map is not.
+ */
+function drawRemarkable(payload) {
+  _remarkablePoints?.removeAll();
+  for (const [id, record] of [..._records]) {
+    if (record.kind === 'remarkable') _records.delete(id);
+  }
+  const trees = Array.isArray(payload?.trees) ? payload.trees : [];
+  for (const tree of trees) {
+    const at = { lon: tree.p[0], lat: tree.p[1] };
+    const id = `${FRAICHEUR_FR_LAYER_ID}:rq:${tree.id}`;
+    if (_records.has(id)) continue;
+    const color = fraicheurTreeColor(tree);
+    const point = addPoint(_remarkablePoints, { id, at, color, pixelSize: TREE_MAX_PX });
+    _records.set(id, {
+      id, kind: 'remarkable', row: tree, at, color, point, basePixelSize: TREE_MAX_PX,
+    });
+  }
+  resetFloorRetries();
+  groundDrawnObjects();
+  governorRequestRender('fraicheur-fr-remarkable');
 }
 
 /** Repaint the tree collection from one viewport payload. */
@@ -979,6 +1040,7 @@ function applyRegisterVisibility() {
   if (_equipmentPoints) _equipmentPoints.show = on && _registers.equipment;
   if (_fountainPoints) _fountainPoints.show = on && _registers.fountains;
   if (_treePoints) _treePoints.show = on && _registers.trees;
+  if (_remarkablePoints) _remarkablePoints.show = on && _registers.remarkable;
   if (_fills) _fills.show = on && _registers.spaces;
   if (_caniculeStrokes) _caniculeStrokes.show = on && _registers.spaces;
   if (_highlight) _highlight.show = on && _registers.spaces;
@@ -989,10 +1051,10 @@ function applyRegisterVisibility() {
  *
  * NOT the exclusive strip `edf-power-plants` uses for its filières: those are
  * three readings of ONE fleet and picking two of three is a muddle, where these
- * are four different registers that answer the same question in four ways —
+ * are five different registers that answer the same question in five ways —
  * "where can I cool off" is answered by a park, a mister and a tap on the same
  * screen, which is why they are fetched together in the first place. So the
- * chips are independent, and all four off is a legitimate (if empty) state
+ * chips are independent, and all five off is a legitimate (if empty) state
  * rather than something to guard against: the row still reads, and one click
  * brings a register back.
  *
@@ -1007,6 +1069,10 @@ function registerChips() {
     equipment: summary?.equipment ?? null,
     fountains: summary?.fountains ?? null,
     trees: _registers.trees ? (_treePayload?.trees?.length ?? null) : _treeTotal,
+    // The only count on this strip that is known BEFORE the chip is pressed:
+    // the register is frozen and its size is published. See
+    // `FRAICHEUR_REMARKABLE_COUNT` for why it is a claim and not an assertion.
+    remarkable: _remarkablePayload?.trees?.length ?? FRAICHEUR_REMARKABLE_COUNT,
   };
   return FRAICHEUR_REGISTERS.map((id) => {
     const active = _registers[id] === true;
@@ -1023,6 +1089,18 @@ function registerChips() {
       params: { [id]: !active },
     };
   });
+}
+
+/**
+ * True for both tree registers.
+ *
+ * `tree` and `remarkable` are two REGISTERS of one object: the row shape is the
+ * projection `projectFraicheurTrees` builds either way, so the card, the DETECT
+ * label and the type noun are the same for both and the only thing that differs
+ * is which chip put the dot on screen.
+ */
+function isTreeRecord(record) {
+  return record?.kind === 'tree' || record?.kind === 'remarkable';
 }
 
 /** True when the register a record came from is currently drawing. */
@@ -1121,13 +1199,13 @@ export function buildFraicheurSelectionLabel(record, payload = null) {
   } else if (record?.kind === 'fountain') {
     card = fountainCardLines(record.row, now);
     footer = 'Eau de Paris — ODbL';
-  } else if (record?.kind === 'tree') {
+  } else if (isTreeRecord(record)) {
     card = treeCardLines(record.row);
     footer = 'Ville de Paris, Direction des Espaces Verts — ODbL';
   }
   if (!card) return '';
   const details = card.details.filter(Boolean);
-  if (record.kind !== 'tree') {
+  if (!isTreeRecord(record)) {
     details.push(`Heure de Paris : ${clock.day} ${clock.hhmm}`);
   }
   details.push(footer);
@@ -1419,6 +1497,50 @@ async function loadTrees() {
   }
 }
 
+/**
+ * Ask for the 183 remarkable trees, once.
+ *
+ * NO ALTITUDE GATE and no box — the two things that make this register
+ * different from the canopy it is a subset of. It is also asked for ONCE per
+ * session: the register is frozen (`cadence: 'static'` on the manifest it
+ * replaced), so a second camera move over Paris re-reads what is already held
+ * rather than the proxy's cache.
+ */
+async function loadRemarkable() {
+  if (!_registers.remarkable) {
+    if (_remarkablePayload) {
+      _remarkablePayload = null;
+      drawRemarkable(null);
+    }
+    _remarkableStatus = 'off';
+    return false;
+  }
+  if (_remarkablePayload) return false;
+  if (_remarkableStatus === 'loading') return false;
+  _remarkableStatus = 'loading';
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const fetchImpl = _fetchImpl || (typeof fetch === 'function' ? fetch : null);
+    if (!fetchImpl) throw new Error('no fetch available');
+    const response = await fetchImpl(FRAICHEUR_REMARQUABLES_URL, { signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    if (controller.signal.aborted || !_enabled) return false;
+    _remarkablePayload = payload;
+    drawRemarkable(payload);
+    _remarkableStatus = payload.trees?.length ? 'ready' : 'empty';
+    return true;
+  } catch (error) {
+    if (error?.name === 'AbortError') return false;
+    console.warn('[Data:Fraîcheur FR] remarkable trees unavailable:', error?.message || error);
+    _remarkableStatus = 'unavailable';
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function load({ force = false } = {}) {
   if (!_enabled || !_viewer) return false;
   _inView = fraicheurInView(_viewer);
@@ -1431,7 +1553,8 @@ async function load({ force = false } = {}) {
   }
   const packed = await loadRefuges({ force });
   const treed = await loadTrees();
-  return packed || treed;
+  const remarkable = await loadRemarkable();
+  return packed || treed || remarkable;
 }
 
 function scheduleLoad() {
@@ -1469,7 +1592,13 @@ function collectDetectableObjects(options = {}) {
     if (!registerDrawn(record)) continue;
     if (record.kind === 'space' && record.row?.canicule === true) tiers[0].push(record);
     else if (record.kind === 'equipment') tiers[1].push(record);
-    else if (record.kind === 'tree' && record.row?.remarquable === true) tiers[2].push(record);
+    else if (isTreeRecord(record) && record.row?.remarquable === true) {
+      // One tree, one callout. Below 1 500 m with both chips on, the same
+      // remarkable tree is held by both registers, and DETECT naming it twice
+      // would read as two trees standing in the same spot.
+      if (record.kind === 'tree' && _registers.remarkable) continue;
+      tiers[2].push(record);
+    }
     else if (record.kind === 'fountain' && record.row?.available === false) tiers[3].push(record);
   }
   const ordered = [...tiers[0], ...tiers[1], ...tiers[2], ...tiers[3]];
@@ -1497,7 +1626,7 @@ function collectDetectableObjects(options = {}) {
 export function fraicheurDetectLabel(record) {
   if (record?.kind === 'space') return record.row?.name || 'Espace vert frais';
   if (record?.kind === 'equipment') return record.row?.name || record.row?.type || 'Îlot de fraîcheur';
-  if (record?.kind === 'tree') return record.row?.name || 'Arbre remarquable';
+  if (isTreeRecord(record)) return record.row?.name || 'Arbre remarquable';
   return record?.row?.street || 'Fontaine';
 }
 
@@ -1505,7 +1634,7 @@ export function fraicheurDetectLabel(record) {
 export function fraicheurDetectType(record) {
   if (record?.kind === 'space') return 'Cool green space';
   if (record?.kind === 'equipment') return 'Cool refuge';
-  if (record?.kind === 'tree') return 'Remarkable tree';
+  if (isTreeRecord(record)) return 'Remarkable tree';
   return 'Drinking fountain';
 }
 
@@ -1568,6 +1697,8 @@ const fraicheurParisLayer = {
     _treeStatus = 'idle';
     _treeBoxKey = null;
     _treeTotal = null;
+    _remarkablePayload = null;
+    _remarkableStatus = 'idle';
     _selectedId = null;
     _loading = false;
     _error = null;
@@ -1580,9 +1711,10 @@ const fraicheurParisLayer = {
     // Bottom-to-top within this layer's own slot: 12 500 tree dots must never
     // hide the 535 refuges the layer is named after, nor a broken tap.
     _treePoints = new Cesium.PointPrimitiveCollection({ blendOption: Cesium.BlendOption.TRANSLUCENT });
+    _remarkablePoints = new Cesium.PointPrimitiveCollection({ blendOption: Cesium.BlendOption.TRANSLUCENT });
     _fountainPoints = new Cesium.PointPrimitiveCollection({ blendOption: Cesium.BlendOption.TRANSLUCENT });
     _equipmentPoints = new Cesium.PointPrimitiveCollection({ blendOption: Cesium.BlendOption.TRANSLUCENT });
-    for (const collection of [_treePoints, _fountainPoints, _equipmentPoints]) {
+    for (const collection of [_treePoints, _remarkablePoints, _fountainPoints, _equipmentPoints]) {
       collection.show = false;
       viewer.scene.primitives.add(collection);
       registerSpriteCollection(FRAICHEUR_FR_LAYER_ID, collection);
@@ -1801,6 +1933,18 @@ const fraicheurParisLayer = {
     if (_registers.trees && _treePayload?.summary?.bands) {
       for (const band of _treePayload.summary.bands) {
         if (!(band.count > 0)) continue;
+        // The whole-city register OWNS this swatch while it is on. Printed from
+        // both, the same colour would carry two numbers — one for the city and
+        // one for what happens to be on screen — and a key that contradicts
+        // itself is worse than a key with one row fewer.
+        if (band.id === 'remarquable' && _registers.remarkable) continue;
+        legend.push({ label: band.label, color: band.color, count: band.count, blurb: band.blurb });
+      }
+    }
+
+    if (_registers.remarkable && _remarkablePayload?.summary?.bands) {
+      for (const band of _remarkablePayload.summary.bands) {
+        if (!(band.count > 0)) continue;
         legend.push({ label: band.label, color: band.color, count: band.count, blurb: band.blurb });
       }
     }
@@ -1841,9 +1985,13 @@ const fraicheurParisLayer = {
     // nothing was probing the ground under them.
     resetFloorRetries();
     refreshFloors();
-    // The trees are the one register with a request behind the button — off
-    // clears them here, on refetches on the next pass.
+    // Two registers have a request behind the button — off clears them here,
+    // on fetches on the next pass. They differ in what "on" costs: the trees go
+    // back to the proxy for every viewport, the remarkable 183 are asked for
+    // once and then held.
     if (!_registers.trees) void loadTrees();
+    else scheduleLoad();
+    if (!_registers.remarkable) void loadRemarkable();
     else scheduleLoad();
     _rowControlsListener?.();
     governorRequestRender('fraicheur-fr-registers');
@@ -1882,12 +2030,13 @@ const fraicheurParisLayer = {
       _moveEndRemover = null;
     }
     clearSurfaces();
-    for (const collection of [_treePoints, _fountainPoints, _equipmentPoints]) {
+    for (const collection of [_treePoints, _remarkablePoints, _fountainPoints, _equipmentPoints]) {
       if (!collection) continue;
       unregisterSpriteCollection(FRAICHEUR_FR_LAYER_ID, collection);
       (viewer || _viewer)?.scene?.primitives?.remove?.(collection);
     }
     _treePoints = null;
+    _remarkablePoints = null;
     _fountainPoints = null;
     _equipmentPoints = null;
     _records.clear();
@@ -1895,6 +2044,8 @@ const fraicheurParisLayer = {
     _summary = null;
     _summaryMinute = null;
     _treePayload = null;
+    _remarkablePayload = null;
+    _remarkableStatus = 'idle';
     _viewer = null;
   },
 };
@@ -1911,7 +2062,7 @@ const fraicheurParisLayer = {
  * which really does add a `GroundPolylinePrimitive` to the scene.
  */
 export function _setFraicheurStateForTest({
-  viewer, payload, trees = null, overlayHost, enabled = true, inView = true,
+  viewer, payload, trees = null, remarkable = null, overlayHost, enabled = true, inView = true,
   treeStatus = 'idle', treeTotal = null, now = Date.now(), fetchImpl,
   registers,
 } = {}) {
@@ -1919,7 +2070,12 @@ export function _setFraicheurStateForTest({
   // means to see them, and making it also pass `registers: { trees: true }`
   // would be a second way to say the same thing. An explicit `registers` still
   // wins, which is how the chip behaviour itself is tested.
-  _registers = { ...fraicheurDefaultRegisters(), ...(trees ? { trees: true } : {}), ...(registers || {}) };
+  _registers = {
+    ...fraicheurDefaultRegisters(),
+    ...(trees ? { trees: true } : {}),
+    ...(remarkable ? { remarkable: true } : {}),
+    ...(registers || {}),
+  };
   _fetchImpl = fetchImpl || null;
   _nowOverride = Number.isFinite(now) ? Number(now) : null;
   _viewer = viewer || null;
@@ -1928,6 +2084,8 @@ export function _setFraicheurStateForTest({
   _treePayload = trees;
   _treeStatus = treeStatus;
   _treeTotal = treeTotal;
+  _remarkablePayload = remarkable;
+  _remarkableStatus = remarkable ? 'ready' : 'idle';
   _records = new Map();
   const fake = (pixelSize) => ({ pixelSize, outlineColor: null, outlineWidth: 1 });
   for (const space of payload?.spaces || []) {
@@ -1957,6 +2115,13 @@ export function _setFraicheurStateForTest({
     _records.set(id, {
       id, kind: 'tree', row: tree, at: { lon: tree.p[0], lat: tree.p[1] },
       color: fraicheurTreeColor(tree), point: fake(size), basePixelSize: size,
+    });
+  }
+  for (const tree of remarkable?.trees || []) {
+    const id = `${FRAICHEUR_FR_LAYER_ID}:rq:${tree.id}`;
+    _records.set(id, {
+      id, kind: 'remarkable', row: tree, at: { lon: tree.p[0], lat: tree.p[1] },
+      color: fraicheurTreeColor(tree), point: fake(TREE_MAX_PX), basePixelSize: TREE_MAX_PX,
     });
   }
   _enabled = enabled;
@@ -1994,6 +2159,8 @@ export function _clearFraicheurSelectionForTest() {
   _treePayload = null;
   _treeStatus = 'idle';
   _treeTotal = null;
+  _remarkablePayload = null;
+  _remarkableStatus = 'idle';
   _records = new Map();
   _enabled = false;
   _inView = false;
@@ -2031,6 +2198,11 @@ export async function _fraicheurLoadForTest(options = {}) {
 }
 
 /** What the layer thinks about the trees right now, for the load-path tests. */
+/** What the whole-city remarkable register holds. */
+export function _fraicheurRemarkableStateForTest() {
+  return { status: _remarkableStatus, drawn: _remarkablePayload?.trees?.length ?? 0 };
+}
+
 export function _fraicheurTreeStateForTest() {
   return { status: _treeStatus, total: _treeTotal, boxKey: _treeBoxKey, drawn: _treePayload?.trees?.length ?? 0 };
 }

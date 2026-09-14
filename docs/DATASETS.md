@@ -81,9 +81,22 @@ fenêtre d'attribution, sa carte et sa légende. Le test
 la même discipline que les registres du cœur, où une couche sans catégorie
 est une panne au démarrage.
 
-Deux exemples sont livrés : les défibrillateurs GeoDAE (data.gouv.fr, API
-tabulaire, chargés pour la vue) et les arbres remarquables de Paris
-(Opendatasoft, jeu entier).
+Un exemple est livré : les défibrillateurs GeoDAE (data.gouv.fr, API
+tabulaire, chargés pour la vue). Il ne prend pas de ligne dans le panneau —
+son bloc `fusion` le pose comme une puce de « Santé & secours » :
+
+```json
+"fusion": {
+  "into": "medecins-fr",
+  "chip": "Défibrillateurs",
+  "title": "Base nationale GeoDAE — ce qu'un passant peut décrocher"
+}
+```
+
+`into` est l'identifiant d'une couche du cœur, qui doit exister et ne pas être
+elle-même une puce ; sinon le branchement est refusé au lieu de poser une
+couche que rien ne commande. `chip` fait 24 caractères au plus, et `optIn`
+(facultatif) laisse la puce éteinte quand la ligne s'allume.
 
 **Un manifeste n'est pas livré pour ce qu'une couche dessine déjà.** Les
 emprises d'aérodromes de la BD TOPO ont eu le leur, et il a été retiré : la

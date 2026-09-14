@@ -73,17 +73,20 @@ test('the row toggle carries its followers and leaves the opt-in companions alon
 });
 
 test('a companion resolves back to the row it disappeared into', () => {
-  assert.equal(fusedIntoFor('sitadel-fr'), 'ads-fr');
+  assert.equal(fusedIntoFor('sitadel-fr'), 'urbanisme-gpu');
+  assert.equal(fusedIntoFor('ads-fr'), 'urbanisme-gpu');
+  assert.equal(fusedIntoFor('marine-buoys'), 'ais-live-vessels');
+  assert.equal(fusedIntoFor('gironde-megafire-2026'), 'local-firms');
   assert.equal(fusedIntoFor('bruit-fr'), 'local-airports');
   assert.equal(fusedIntoFor('military'), 'flights');
   assert.equal(fusedIntoFor('cctv'), null);
-  assert.equal(fusedIntoFor('ads-fr'), null);
+  assert.equal(fusedIntoFor('urbanisme-gpu'), null);
 });
 
 test('the taxonomy carries the fusion facets, and the panel projection drops the companions', () => {
   const byId = new Map(LAYER_TAXONOMY.map((entry) => [entry.id, entry]));
-  assert.equal(byId.get('sitadel-fr').fusedInto, 'ads-fr');
-  assert.equal(byId.get('ads-fr').companions.length, 1);
+  assert.equal(byId.get('sitadel-fr').fusedInto, 'urbanisme-gpu');
+  assert.equal(byId.get('urbanisme-gpu').companions.length, 2);
   assert.equal(byId.get('cadastre-fr').companions, null);
   assert.equal(byId.get('cadastre-fr').fusedInto, null);
 
@@ -96,7 +99,7 @@ test('the taxonomy carries the fusion facets, and the panel projection drops the
   }
 });
 
-test('the merge is measured, not asserted: the panel loses 22 rows and keeps every layer', () => {
+test('the merge is measured, not asserted: the panel loses 25 rows and keeps every layer', () => {
   // The number is the point of the whole exercise, so it is pinned. If a new
   // layer lands, the row count moves and this assertion moves with it — what
   // must not move silently is the DIFFERENCE between what is registered and
@@ -107,8 +110,13 @@ test('the merge is measured, not asserted: the panel loses 22 rows and keeps eve
   // were merged into ONE module rather than kept as two chips on one row. A
   // fusion hides a row; a merge deletes one, and the two are not the same
   // operation. See `idfmNetwork.js`.
+  //
+  // 22 until 2026-09-14, when the second round folded three more: the PLU took
+  // the permits under it (« Urbanisme »), the moorings joined the vessels whose
+  // cards already read them, and the Gironde archive became the past tense of
+  // « Feux actifs ».
   const folded = LAYER_FUSIONS.reduce((total, fusion) => total + fusion.companions.length, 0);
-  assert.equal(folded, 22);
+  assert.equal(folded, 25);
 
   const rows = groupLayerIdsByCategory().flatMap((group) => group.layerIds);
   const datasets = LAYER_TAXONOMY.filter((entry) => entry.kind === 'dataset');

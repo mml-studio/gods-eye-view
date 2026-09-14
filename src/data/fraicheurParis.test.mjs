@@ -28,6 +28,7 @@ import fraicheurParisLayer, {
   FRAICHEUR_FR_OVERLAY_SOURCE_ID,
   FRAICHEUR_PARIS_BOX,
   FRAICHEUR_REFUGES_URL,
+  FRAICHEUR_REMARQUABLES_URL,
   FRAICHEUR_TREES_URL,
   buildFraicheurLoadingLabel,
   buildFraicheurSelectionLabel,
@@ -48,6 +49,7 @@ import fraicheurParisLayer, {
   _fraicheurLoadForTest,
   _fraicheurRowControlsForTest,
   _fraicheurSelectedIdForTest,
+  _fraicheurRemarkableStateForTest,
   _fraicheurStatsForTest,
   _fraicheurTreeStateForTest,
   _selectFraicheurForTest,
@@ -94,6 +96,21 @@ const TREES = projectFraicheurTrees({
   features: read('fraicheur-arbres-sample.json'),
   totalInBox: 18,
   box: { south: 48.816, west: 2.346, north: 48.836, east: 2.366 },
+});
+/**
+ * The remarkable register, built from the same sample through the same
+ * projection — which is what the proxy does with `remarquable = 'OUI'`.
+ * Deliberately FILTERED here rather than faked: a fixture that carried a tree
+ * the register would not return would prove the drawing and not the register.
+ */
+const REMARKABLE = projectFraicheurTrees({
+  features: {
+    type: 'FeatureCollection',
+    features: read('fraicheur-arbres-sample.json').features
+      .filter((feature) => feature?.properties?.remarquable === 'OUI'),
+  },
+  totalInBox: null,
+  box: null,
 });
 const idOf = (row) => `${FRAICHEUR_FR_LAYER_ID}:${row.id}`;
 
@@ -730,6 +747,75 @@ test('the real load path builds the two proxy URLs the vite plugin answers', asy
   const again = await _fraicheurLoadForTest();
   assert.equal(again, false);
   assert.equal(calls.length, 2);
+  _clearFraicheurSelectionForTest();
+});
+
+test('the remarkable register is the half of the canopy a high camera still gets', async () => {
+  // 4 000 m, well over FRAICHEUR_TREE_MAX_ALTITUDE_M, which is the whole point:
+  // this is the altitude a reader looking at Paris whole is at, and it is where
+  // the ordinary tree register refuses outright.
+  const high = { height: 4000, span: 0.05 };
+  const calls = [];
+  const viewer = { ...fakeCamera(high), ...fakeViewer() };
+  viewer.scene = { ...fakeCamera(high).scene, ...fakeViewer().scene };
+  const fetchImpl = async (url) => {
+    calls.push(String(url));
+    if (String(url).startsWith(FRAICHEUR_REFUGES_URL)) {
+      return { ok: true, json: async () => ({ ...PACK, fetchedAt: AFTERNOON }) };
+    }
+    if (String(url).startsWith(FRAICHEUR_REMARQUABLES_URL)) {
+      return { ok: true, json: async () => REMARKABLE };
+    }
+    return { ok: true, json: async () => TREES };
+  };
+  _setFraicheurStateForTest({
+    payload: null, viewer, overlayHost: recordingHost(), fetchImpl, now: AFTERNOON,
+    registers: { trees: true, remarkable: true },
+  });
+  const changed = await _fraicheurLoadForTest({ force: true });
+  assert.equal(changed, true);
+
+  assert.ok(FRAICHEUR_TREE_MAX_ALTITUDE_M < high.height, 'the gate must be under the camera');
+  assert.equal(_fraicheurTreeStateForTest().status, 'too-high', 'the tree box is refused up here');
+  const remarkable = _fraicheurRemarkableStateForTest();
+  assert.equal(remarkable.status, 'ready');
+  assert.equal(remarkable.drawn, REMARKABLE.trees.length);
+  assert.ok(REMARKABLE.trees.length > 0, 'the fixture must carry at least one OUI');
+  assert.ok(calls.includes(FRAICHEUR_REMARQUABLES_URL), 'the whole-city register takes no box');
+
+  // Frozen register, asked for ONCE. A pan that re-runs the load must not spend
+  // a second request on 183 rows that cannot have changed.
+  const before = calls.length;
+  await _fraicheurLoadForTest();
+  assert.equal(calls.length, before);
+  _clearFraicheurSelectionForTest();
+});
+
+test('the remarkable chip owns its swatch, and a tree it holds is called out once', () => {
+  const viewer = { ...fakeCamera(), ...fakeViewer() };
+  viewer.scene = { ...fakeCamera().scene, ...fakeViewer().scene };
+  _setFraicheurStateForTest({
+    payload: PACK, trees: TREES, remarkable: REMARKABLE, viewer,
+    overlayHost: recordingHost(), now: AFTERNOON,
+    registers: { trees: true, remarkable: true },
+  });
+  const controls = _fraicheurRowControlsForTest();
+  const chip = controls.chips.find((entry) => entry.id === 'reg:remarkable');
+  assert.ok(chip, 'the strip carries a fifth chip');
+  assert.equal(chip.label, 'REMARQUABLES');
+  assert.equal(chip.active, true);
+
+  // ONE row for the remarkable band, not two: with both registers on it is
+  // printed from the whole-city payload, never also from the viewport.
+  const band = FRAICHEUR_TREE_BANDS.find((entry) => entry.id === 'remarquable');
+  const rows = controls.legend.filter((entry) => entry.label === band.label);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].count, REMARKABLE.trees.length);
+
+  // Same tree, both registers, one callout.
+  const detectables = _fraicheurDetectablesForTest({ maxCount: 40 });
+  const named = detectables.filter((entry) => entry.type === 'Remarkable tree');
+  assert.equal(named.length, REMARKABLE.trees.length);
   _clearFraicheurSelectionForTest();
 });
 

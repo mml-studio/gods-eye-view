@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { REGISTERED_LAYER_IDS } from './layerState.js';
 import {
@@ -71,7 +72,7 @@ test('every category label carries its French accents', () => {
   // unaccented label here would render as a permanent typo in the panel.
   const byId = new Map(LAYER_CATEGORIES.map((entry) => [entry.id, entry.label]));
   assert.equal(byId.get('energy'), 'ÉNERGIE');
-  assert.equal(byId.get('defence'), 'DÉFENSE');
+  assert.equal(byId.get('built-environment'), 'BÂTI & TERRITOIRE');
   assert.equal(byId.get('ground-mobility'), 'MOBILITÉ TERRESTRE');
   assert.equal(byId.get('comms-sensors'), 'RÉSEAUX & CAPTEURS');
 });
@@ -83,10 +84,10 @@ test('grouping preserves category order and drops coordinators', () => {
   // military-awareness loads nothing of its own — it orchestrates four other
   // layers behind the CONTACTS panel. It must never occupy a row or inflate a
   // group count, but it must still be categorized.
-  const defence = groups.find((group) => group.id === 'defence');
-  assert.ok(!defence.layerIds.includes('military-awareness'));
+  const cielEtMer = groups.find((group) => group.id === 'air-space');
+  assert.ok(!cielEtMer.layerIds.includes('military-awareness'));
   assert.equal(layerTaxonomyFor('military-awareness').kind, 'coordinator');
-  assert.equal(layerTaxonomyFor('military-awareness').category, 'defence');
+  assert.equal(layerTaxonomyFor('military-awareness').category, 'air-space');
 
   const grouped = groups.flatMap((group) => group.layerIds);
   // Datasets MINUS the fused companions: those are a chip on somebody else's
@@ -169,4 +170,52 @@ test('a coverage value with no chip mapping is rejected at import time', () => {
   for (const entry of LAYER_TAXONOMY) {
     assert.ok(mapped.has(entry.coverage), `${entry.id} has an unmapped coverage`);
   }
+});
+
+test('the close-range facet is cross-checked against the modules, not trusted', () => {
+  // The MODULE is the authority: a layer draws nothing from a wide view because
+  // its code says so, and the panel must not be able to promise otherwise. So
+  // this reads the real files.
+  //
+  // `layerManifest.js` is the only place that maps a layer id to its module
+  // path without importing 60 modules (which is the whole point of that
+  // generated file), and it is itself re-derived from the modules on every
+  // `npm test`.
+  const manifest = readFileSync(new URL('./layerManifest.js', import.meta.url), 'utf8');
+  const modulePathById = new Map();
+  // Scanned as PAIRS rather than split into blocks: an entry holds nested
+  // `Object.freeze(` calls for its capabilities and its default params, so
+  // splitting on that string cuts an entry in half before its `load()`.
+  const entries = manifest.matchAll(/id: '([^']+)',[\s\S]*?import\('\.\/([^']+)'\)/g);
+  for (const [, id, path] of entries) modulePathById.set(id, path);
+  assert.ok(modulePathById.size >= 58, 'the manifest must still be parseable');
+
+  // The shared address-scan shell: ten layers build on it, and every one of
+  // them goes dormant above `ADDRESS_SCAN_MAX_ALTITUDE_M` or lower.
+  const scanning = new Set();
+  for (const [id, path] of modulePathById) {
+    const source = readFileSync(new URL(`./${path}`, import.meta.url), 'utf8');
+    if (source.includes('createAddressScanLayer')) scanning.add(id);
+  }
+  assert.ok(scanning.size >= 10, `expected the address-scan family, found ${scanning.size}`);
+
+  const declared = new Set(LAYER_TAXONOMY.filter((entry) => entry.closeRange).map((entry) => entry.id));
+  for (const id of scanning) {
+    assert.ok(declared.has(id), `${id} runs an address scan and must declare closeRange`);
+  }
+
+  // The two that gate on their own rather than through that shell. Named here,
+  // and not derived, because their gates are their own — 1 500 m of altitude
+  // for the cadastre, a 0.08° box for the buildings — and a regex that tried to
+  // recognise "has a gate" would recognise half the app.
+  const ownGate = ['cadastre-fr', 'bdtopo-buildings'];
+  for (const id of ownGate) assert.ok(declared.has(id), `${id} must declare closeRange`);
+
+  // Nothing else may carry it: the facet prints a warning on a dark row, and a
+  // warning on a layer that draws fine from orbit is a lie the reader cannot
+  // check.
+  assert.deepEqual(
+    [...declared].filter((id) => !scanning.has(id) && !ownGate.includes(id)),
+    [],
+  );
 });

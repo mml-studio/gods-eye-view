@@ -35,12 +35,16 @@ Updated: September 8, 2026
 > la vue affiche « rapprochez-vous » comme consigne (`status: 'zoom-in'`),
 > pas comme panne. La légende porte une entrée par groupe avec son effectif.
 >
-> **Deux manifestes livrés** : défibrillateurs GeoDAE (data.gouv.fr, vue),
-> arbres remarquables de Paris (Opendatasoft, entier). Licences confirmées sur
-> les pages des jeux et portées dans `DATA_SOURCES.md`. Un troisième — les
-> emprises d'aérodromes BD TOPO — a été retiré : la couche Aéroports embarque
-> 418 de ces emprises, et deux lignes pour le même sujet dans la même liste
-> faisaient arbitrer au lecteur un recouvrement invisible.
+> **Un manifeste livré** : défibrillateurs GeoDAE (data.gouv.fr, vue), et il
+> n'a pas de ligne à lui — son bloc `fusion` en fait une puce de « Santé &
+> secours », la ligne des médecins. Licence confirmée sur la page du jeu et
+> portée dans `DATA_SOURCES.md`. Deux autres ont été retirés pour la même
+> raison, qui est la règle : **un manifeste n'est pas livré pour ce qu'une
+> couche dessine déjà.** Les emprises d'aérodromes BD TOPO — la couche
+> Aéroports en embarque 418 — et les arbres remarquables de Paris, dont les
+> 183 sont un palier de la couche Îlots de fraîcheur, et depuis le 14/09 une
+> puce REMARQUABLES qui les charge pour la ville entière sans la limite de
+> 1 500 m qui gouverne le reste de la canopée.
 >
 > **Vérifié** : 6 393 tests unitaires, 0 échec (60 nouveaux) ; `npm run
 > qa:datasets -- --url … --deep` en navigateur, 16 contrôles au vert :
