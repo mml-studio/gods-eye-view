@@ -1,10 +1,13 @@
 import * as Cesium from 'cesium';
+import { governorRequestRender } from '../renderGovernor.js';
 import {
   clearOverlaySource,
+  hitTestWorldOverlay,
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
-import { PRISM_HEIGHT_SWATCH_COLOR, prismHeightGlyph } from './choroplethPrism.js';
+import { pickOverlayLabelId } from './overlayLabelPick.js';
+import { isOwnedByOtherLayer, registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 
 /**
  * USGS earthquakes — last 24 hours, M2.5+, drawn as a 3D phenomenon.
@@ -74,10 +77,11 @@ import { PRISM_HEIGHT_SWATCH_COLOR, prismHeightGlyph } from './choroplethPrism.j
  *
  * A diameter LINEAR IN MAGNITUDE encodes the number the feed publishes and the
  * number the reader has heard on the radio, and it puts equal magnitude steps
- * at equal pixel steps — which is exactly how the scale is quoted. The legend
- * says so in as many words: the mark measures the MAGNITUDE, not the energy.
- * An M7 disc is 3.25× the M2.5 disc across while releasing about 5.6 million
- * times the energy, and that gap belongs written down, not hidden in a radius.
+ * at equal pixel steps — which is exactly how the scale is quoted. The key says
+ * so in six words and the card of any event says it again with that event's own
+ * numbers: the mark measures the MAGNITUDE, not the energy. An M7 disc is 3.25×
+ * the M2.5 disc across while releasing about 5.6 million times the energy, and
+ * that gap belongs written down, not hidden in a radius.
  *
  * Pixels, not metres: `PointGraphics.pixelSize` is constant on screen and is
  * never composed with `scaleByDistance` here (B2). Deliberately no
@@ -199,8 +203,38 @@ import { PRISM_HEIGHT_SWATCH_COLOR, prismHeightGlyph } from './choroplethPrism.j
  * Every event above M2.5 in the feed is DRAWN. What is capped is the floating
  * magnitude LABEL: {@link EARTHQUAKE_OVERLAY_COHORT_LIMIT} of them, selected
  * by descending magnitude with the event id as tie-break
- * ({@link selectEarthquakeOverlayCohort}). The legend publishes
- * « n étiquettes / N séismes » and the criterion whenever the cap bites.
+ * ({@link selectEarthquakeOverlayCohort}). The key publishes
+ * « n étiquettes / N séismes » and the criterion, in its `note` slot, whenever
+ * the cap bites.
+ *
+ * ── D1 · what the key answers, and what the card answers ───────────────────
+ *
+ * The key used to hold both — a numbered tick for each of four magnitudes,
+ * another four for depth, and four titled paragraphs of caveat. Measured in
+ * Chrome at 1440×900 on the live feed of 2026-09-10 (29 events, this layer
+ * alone), that key was 827 px of content inside the 216 px window the rail
+ * gives it: THREE QUARTERS OF IT WAS SCROLLED OUT OF SIGHT of the map it
+ * exists to key. It is now 215 px, so on that feed it fits without scrolling
+ * at all — 31 lines and 375 words become 11 and 93. The split runs along the
+ * line CARTOGRAPHIE D1 draws:
+ *
+ *   · THE KEY answers « what does this colour mean », because that is the one
+ *     question no shape answers by itself, and it publishes the DOMAIN of the
+ *     two channels that are shapes — M2.5…M9.5 and 0…700 km. That is what
+ *     #141 did to the buoy scale and #166 to the road ladder: a graduated
+ *     ruler of one ink whose rows differ only in size is not a key, it is the
+ *     mark reprinted n times, and one line stating its bounds replaces it.
+ *   · THE CARD answers « what is THIS event », on click, with the caveat
+ *     attached to the very number it qualifies: this magnitude is not this
+ *     energy, this ruler length is not this focus position. A sentence read
+ *     next to the number it is about is a sentence that lands; the same
+ *     sentence in a permanent block is furniture.
+ *
+ * The A1 fallbacks split the same way. « profondeur non publiée » keeps its
+ * key row, because a hollow ring is a shape a reader decodes WRONG without a
+ * key — they read it as a small event. « tige plancher » and the label cap do
+ * not: neither is visible on the map as anything, both are disclosures, and
+ * disclosures have their own slot (`note`) under the classes they qualify.
  *
  * ── F1 · occlusion policy: regime (a), occluded ────────────────────────────
  *
@@ -259,6 +293,7 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
   setVisible: setOverlaySourceVisible,
   clearSource: clearOverlaySource,
+  hitTest: hitTestWorldOverlay,
 });
 
 // ---------------------------------------------------------------------------
@@ -273,8 +308,15 @@ export const EARTHQUAKE_MAG_DOMAIN_MAX = 9.5;
 export const EARTHQUAKE_MAG_BASE_PX = 6;
 /** Diameter added per whole magnitude unit — the scale's own step, in pixels. */
 export const EARTHQUAKE_MAG_PX_PER_UNIT = 3;
-/** Magnitudes printed in the legend's size ruler. */
-export const EARTHQUAKE_MAG_TICKS = Object.freeze([3, 5, 7, 9]);
+/**
+ * Seismic moment ratio for one whole magnitude unit.
+ *
+ * Mw = ⅔·log₁₀(M₀) − 6.06, so one unit is 10^1.5 ≈ 31.6 of moment. Printed on
+ * every card next to the magnitude, because that ratio is the exact distance
+ * between what the disc says (a number) and what the event did (an energy),
+ * and the disc cannot carry it — see the header.
+ */
+export const EARTHQUAKE_ENERGY_RATIO_PER_UNIT = 31.6;
 
 /**
  * Screen diameter, in constant pixels, for one magnitude.
@@ -311,8 +353,6 @@ export const EARTHQUAKE_DEPTH_SCALE = 1;
  * zero" and "not measured" may not share a sign.
  */
 export const EARTHQUAKE_DEPTH_FLOOR_M = 1000;
-/** Depths printed in the legend's depth ruler, in km. */
-export const EARTHQUAKE_DEPTH_TICKS_KM = Object.freeze([10, 70, 300, 700]);
 /** Deepest earthquake ever located, in km — the ruler's reference top. */
 export const EARTHQUAKE_DEPTH_MAX_KM = 700;
 
@@ -404,38 +444,6 @@ export function ageBandFor(timeMs, nowMs) {
 // Legend (D1)
 // ---------------------------------------------------------------------------
 
-const _b64 = (text) => (typeof btoa === 'function'
-  ? btoa(text)
-  : Buffer.from(text, 'utf8').toString('base64'));
-
-const GLYPH_VIEW_BOX = 16;
-/** @type {Map<number, string>} magnitude → data URI. */
-const _discGlyphCache = new Map();
-
-/**
- * A legend swatch shaped like the DISC the map draws for that magnitude.
- *
- * The swatch has to be the datum, so the ruler rows hand over a circle whose
- * diameter is the very pixel size the mark uses, rescaled into the 16 px
- * viewBox against the domain top. The mask keeps only the shape, so the fill
- * here is irrelevant and the caller's colour is what shows.
- * @param {number} magnitude Magnitude the tick stands for.
- * @returns {string} `data:image/svg+xml;base64,…`
- */
-export function magnitudeDiscGlyph(magnitude) {
-  const px = magnitudePixelSize(magnitude) ?? EARTHQUAKE_MAG_BASE_PX;
-  const cached = _discGlyphCache.get(px);
-  if (cached) return cached;
-  const maxPx = magnitudePixelSize(EARTHQUAKE_MAG_DOMAIN_MAX);
-  const radius = Math.max(1, (px / maxPx) * (GLYPH_VIEW_BOX / 2 - 1));
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${GLYPH_VIEW_BOX} ${GLYPH_VIEW_BOX}">`
-    + `<circle cx="8" cy="8" r="${radius.toFixed(2)}" fill="#000"/>`
-    + '</svg>';
-  const uri = `data:image/svg+xml;base64,${_b64(svg)}`;
-  _discGlyphCache.set(px, uri);
-  return uri;
-}
-
 /** French thousands separator, flattened so the legend wraps identically everywhere. */
 function fr(value) {
   // ICU groups with U+202F or U+00A0 depending on its version; both are
@@ -463,14 +471,21 @@ export function emptyEarthquakeTally() {
   };
 }
 
+/** Provenance and clock, printed once above the classes (E1). */
+export const EARTHQUAKE_LEGEND_NOTE = 'USGS, flux « all_day » M2,5+ · relevé toutes '
+  + 'les 60 s. Cliquer un point ouvre sa fiche.';
+
 /**
- * The key, in reading order: the size ruler, then the depth ruler, then the
- * age ramp, then what is not published and what is not labelled.
+ * The key: the two shape channels reduced to their DOMAIN, then the colour.
  *
- * D1 in full — two channels carry values here, so the key has to state BOTH,
- * and a size or a length without numbered ticks means nothing at all. Entry
- * shape is the repo's `{label, color, count?, blurb?, glyph?}`; `color: null`
- * renders an aligned empty swatch for the rows that head a section rather than
+ * Reading order is « what is the biggest thing this mark can say » first, then
+ * the ramp, then the one fallback a shape gets wrong on its own. The full
+ * argument for the split lives in the header under D1; the short version is
+ * that this block sits over the map and a caveat only lands next to the number
+ * it qualifies, which is on the card ({@link buildEarthquakeCard}).
+ *
+ * Entry shape is the repo's `{label, color, count?, blurb?}`; `color: null`
+ * renders an aligned empty swatch for the rows that state a domain rather than
  * key a colour.
  *
  * @param {object} tally From {@link emptyEarthquakeTally}, filled by a poll.
@@ -480,62 +495,34 @@ export function buildEarthquakeLegend(tally) {
   const t = tally || emptyEarthquakeTally();
   const entries = [];
 
+  // Two rows, no ticks. Four discs of one ink differing only in diameter, and
+  // four bars of one ink differing only in height, are the mark reprinted
+  // eight times; what a reader cannot get from the mark is where the scale
+  // STOPS, and that is a bound, not a row. Same move as #141 on the buoys and
+  // #166 on the road ladder.
   entries.push({
-    label: 'Taille du point — magnitude',
+    label: `Point — magnitude, M${fr(EARTHQUAKE_MAG_FLOOR)} à M${fr(EARTHQUAKE_MAG_DOMAIN_MAX)}`,
     color: null,
-    blurb: `Diamètre en PIXELS CONSTANTS, identique de près comme de loin : `
-      + `${EARTHQUAKE_MAG_BASE_PX} px à M${fr(EARTHQUAKE_MAG_FLOOR)}, puis `
-      + `+${EARTHQUAKE_MAG_PX_PER_UNIT} px par unité de magnitude, domaine gelé `
-      + `M${fr(EARTHQUAKE_MAG_FLOOR)}–M${fr(EARTHQUAKE_MAG_DOMAIN_MAX)}. `
-      + `Le point mesure la MAGNITUDE, pas l’énergie : un M7 fait 3,25 fois le `
-      + `diamètre d’un M2,5 alors qu’il libère environ 5,6 millions de fois plus `
-      + `d’énergie. Et il ne mesure aucune emprise — ni surface de rupture, ni `
-      + `rayon ressenti, ni isoséiste.`,
+    blurb: `${EARTHQUAKE_MAG_BASE_PX} px au plancher, +${EARTHQUAKE_MAG_PX_PER_UNIT} px `
+      + `par unité, à toute distance. Ni énergie, ni emprise.`,
   });
-  for (const tick of EARTHQUAKE_MAG_TICKS) {
-    entries.push({
-      label: `M${fr(tick)}`,
-      color: PRISM_HEIGHT_SWATCH_COLOR,
-      glyph: magnitudeDiscGlyph(tick),
-      blurb: `${fr(magnitudePixelSize(tick))} px de diamètre à l’écran.`,
-    });
-  }
-
   entries.push({
-    label: 'Tige verticale — profondeur du foyer',
+    label: `Tige — profondeur du foyer, 0 à ${fr(EARTHQUAKE_DEPTH_MAX_KM)} km`,
     color: null,
-    blurb: 'ÉCHELLE DE LECTURE, PAS LA POSITION DU FOYER : la tige monte, le foyer '
-      + 'descend. Sa LONGUEUR est la profondeur publiée par l’USGS, à l’échelle 1:1 — '
-      + '100 km de tige valent 100 km sous le niveau de la mer. Elle est dessinée '
-      + 'au-dessus de la surface parce que le globe est opaque : sous la surface, elle '
-      + 'ne serait visible qu’en traversant la Terre, donc visible depuis l’autre '
-      + 'hémisphère. Son pied est posé sur l’ellipsoïde (h = 0), le repère même de la '
-      + 'mesure ; sur un relief marqué, ses premiers kilomètres sont donc dans la '
-      + 'montagne et la partie visible sous-estime la profondeur d’autant.',
+    // The label already binds length to depth; what no shape says is the SCALE
+    // and the DIRECTION, so those are what the line is spent on.
+    blurb: 'À l’échelle 1:1, et vers le haut : la tige monte, le foyer descend.',
   });
-  for (const tick of EARTHQUAKE_DEPTH_TICKS_KM) {
-    entries.push({
-      label: `${fr(tick)} km`,
-      color: PRISM_HEIGHT_SWATCH_COLOR,
-      glyph: prismHeightGlyph(tick / EARTHQUAKE_DEPTH_MAX_KM),
-      blurb: `${fr(tick)} km de tige.`,
-    });
-  }
 
   entries.push({
     label: 'Couleur — âge dans la fenêtre de 24 h',
     color: null,
-    blurb: 'La profondeur étant passée dans la géométrie, la couleur est libre et porte '
-      + 'l’ancienneté de la secousse. Une seule teinte, quatre clartés décroissantes : '
-      + 'l’ordre survit au niveau de gris. Les bornes sont des heures gelées, jamais '
-      + 'recalculées sur le relevé en cours.',
   });
   for (const band of EARTHQUAKE_AGE_BANDS) {
     entries.push({
       label: band.label,
       color: band.color,
       count: t.byAge?.[band.id] ?? 0,
-      blurb: band.blurb,
     });
   }
   if (t.byAge?.[EARTHQUAKE_AGE_UNKNOWN.id]) {
@@ -543,44 +530,48 @@ export function buildEarthquakeLegend(tally) {
       label: EARTHQUAKE_AGE_UNKNOWN.label,
       color: EARTHQUAKE_AGE_UNKNOWN.color,
       count: t.byAge[EARTHQUAKE_AGE_UNKNOWN.id],
-      blurb: EARTHQUAKE_AGE_UNKNOWN.blurb,
+      blurb: 'Hors rampe : ce gris n’est pas une cinquième ancienneté.',
     });
   }
 
+  // The one A1 fallback that stays: a hollow ring is not merely undecoded, it
+  // is decoded WRONG — as a small event — so the shape earns its row.
   if (t.noDepth) {
     entries.push({
       label: 'profondeur non publiée — point creux, aucune tige',
       color: null,
       count: t.noDepth,
-      blurb: 'Le flux ne donne pas de profondeur pour cet événement. Aucune tige n’est '
-        + 'dessinée, et le point est vidé (anneau seul) : une tige absente seule se '
-        + 'confondrait avec une secousse superficielle.',
-    });
-  }
-  if (t.depthFloor) {
-    entries.push({
-      label: 'foyer à moins d’1 km — tige plancher',
-      color: null,
-      count: t.depthFloor,
-      blurb: 'L’USGS publie 0,0 km, et des profondeurs négatives pour les foyers situés '
-        + 'au-dessus du niveau de la mer. C’est une mesure, pas une absence : sous 1 km '
-        + 'la tige est dessinée à sa longueur plancher d’1 km plutôt que supprimée. C’est '
-        + 'le seul endroit où l’échelle 1:1 est rompue, et il est compté ici.',
-    });
-  }
-
-  if (t.drawn > t.labelled) {
-    entries.push({
-      label: `étiquettes de magnitude — ${fr(t.labelled)} sur ${fr(t.drawn)}`,
-      color: null,
-      blurb: `Toutes les secousses M${fr(EARTHQUAKE_MAG_FLOOR)}+ du flux sont DESSINÉES ; `
-        + `seules les ${fr(EARTHQUAKE_OVERLAY_COHORT_LIMIT)} plus fortes magnitudes portent `
-        + `une étiquette flottante, l’identifiant USGS départageant les ex æquo. `
-        + `Ce plafond est celui de l’étiquette, jamais celui de la carte.`,
+      blurb: 'Une tige absente seule se confondrait avec une secousse superficielle.',
     });
   }
 
   return entries;
+}
+
+/**
+ * The A5 slot: what the layer had to leave out, under the classes it qualifies.
+ *
+ * Two disclosures, and neither is a mark a reader can point at — which is
+ * exactly why they belong here rather than in the key. The floor rupture is
+ * the only place the 1:1 is broken in the whole layer, and the label cap is
+ * the only place the map shows less than the feed carries.
+ *
+ * @param {object} tally From {@link emptyEarthquakeTally}, filled by a poll.
+ * @returns {string} One sentence per live disclosure, or '' when neither bites.
+ */
+export function buildEarthquakeNote(tally) {
+  const t = tally || emptyEarthquakeTally();
+  const parts = [];
+  if (t.depthFloor) {
+    parts.push(`${fr(t.depthFloor)} foyer${t.depthFloor > 1 ? 's' : ''} à moins d’1 km : `
+      + `tige dessinée au plancher d’1 km, seule rupture du 1:1 — « mesuré à zéro » `
+      + `n’est pas « non mesuré ».`);
+  }
+  if (t.drawn > t.labelled) {
+    parts.push(`Les ${fr(t.drawn)} secousses sont dessinées ; seules les `
+      + `${fr(t.labelled)} plus fortes magnitudes portent une étiquette.`);
+  }
+  return parts.join(' ');
 }
 
 /**
@@ -605,7 +596,11 @@ export function createEarthquakeOverlayEntry({ id, position, magnitude, accent }
     priority: Math.round(mag * 1000),
     collisionGroup: 'ambient-label',
     paintLane: 'ambient-label',
-    interactive: false,
+    // The label is a CLICK SURFACE, not a caption — see `overlayLabelPick.js`.
+    // `M4.1` is several times the target area of the 6–13 px disc it names, it
+    // reads like a button, and until it published a hit rectangle every click
+    // that landed on it fell through to bare terrain.
+    interactive: true,
     edgeFade: 'keyhole',
     horizonCull: true,
     terrainOcclusion: false,
@@ -628,6 +623,175 @@ export function selectEarthquakeOverlayCohort(
   return entries.slice().sort((a, b) => (
     b.priority - a.priority || String(a.id).localeCompare(String(b.id))
   )).slice(0, cap);
+}
+
+// ---------------------------------------------------------------------------
+// The card — one event, on click
+// ---------------------------------------------------------------------------
+
+export const EARTHQUAKE_SELECTED_OVERLAY_SOURCE_ID = 'earthquakes-selected';
+export const EARTHQUAKE_SELECTED_OVERLAY_SOURCE_OPTIONS = Object.freeze({
+  cohortLimit: 1,
+  collisionCapacity: 1,
+  moving: false,
+});
+/**
+ * Accent for the card and for the ring the click puts under it.
+ *
+ * Off the age ramp on purpose, and off it by hue rather than by value: the
+ * ramp is one warm hue ordered by lightness, so a cool cyan can never be read
+ * as a fifth age — the same argument the « âge non publié » slate is chosen on.
+ */
+export const EARTHQUAKE_SELECTED_COLOR = '#7ee8fa';
+/** Reading measure for the card, under the host's 420 px ceiling. */
+export const EARTHQUAKE_CARD_MAX_WIDTH_PX = 300;
+/** Pixels the selection ring clears the mark by, so the disc stays readable. */
+const SELECTION_RING_MARGIN_PX = 9;
+/** How deep to look for one of our marks under a click. */
+const DRILL_PICK_LIMIT = 8;
+
+/** One decimal, French comma, for a magnitude or a depth. */
+function decimal(value) {
+  return Number(value).toFixed(1).replace('.', ',');
+}
+
+/** Two-digit clock field. */
+function pad2(value) {
+  return String(value).padStart(2, '0');
+}
+
+/**
+ * The instant the event happened, in UTC.
+ *
+ * UTC and not a local clock: the feed is worldwide, two readers of one share
+ * link must read the same card (D2), and the HUD above already stamps its own
+ * clock with a Z. Assembled from the UTC getters rather than through
+ * `toLocaleString`, because `hour: '2-digit'` renders midnight as `24` on some
+ * ICU builds — the trap `fraicheurFeed.js` documents.
+ * @param {number} timeMs Epoch ms.
+ * @returns {string} `2026-09-10 20:14 UTC`.
+ */
+export function formatEarthquakeInstant(timeMs) {
+  const d = new Date(timeMs);
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())} `
+    + `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())} UTC`;
+}
+
+/**
+ * How long ago.
+ *
+ * Minutes are kept past the hour rather than rounded away: the narrowest age
+ * band is one hour, so « il y a 2 h » for a 90-minute-old event would put the
+ * card on the far side of a band boundary from the colour beside it.
+ * @param {number} ageMs Milliseconds since the event.
+ * @returns {string}
+ */
+function formatAgo(ageMs) {
+  const minutes = Math.max(0, Math.floor(ageMs / 60_000));
+  if (minutes < 1) return 'à l’instant';
+  if (minutes < 60) return `il y a ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `il y a ${hours} h ${pad2(rest)}` : `il y a ${hours} h`;
+}
+
+/**
+ * The explanatory card for one clicked event.
+ *
+ * Every line pairs a MEASUREMENT with the caveat that belongs to that
+ * measurement and to nothing else, which is the whole reason this exists
+ * rather than four paragraphs in the key (header, D1). The order is the order
+ * of the questions a reader actually asks: how big, where, when, how deep.
+ *
+ * Kept as a newline-joined string, like every sibling card in the repo, so the
+ * overlay host owns the wrapping and the first line is the title.
+ *
+ * @param {object} record `{id, magnitude, depthKm, place, timeMs}`.
+ * @param {number} nowMs Reference instant for the age line.
+ * @returns {string} Title on the first line, details below.
+ */
+export function buildEarthquakeCard(record, nowMs) {
+  const mag = Number(record?.magnitude);
+  // One sentence per line, never pre-wrapped: the overlay host measures and
+  // breaks against `maxWidthPx`, and a hand-broken continuation line would be
+  // re-broken on top of its own indent at any other width.
+  const lines = [`M${decimal(mag)}`];
+
+  // The disc, and the gap between what it says and what the ground released.
+  // One magnitude unit is ×31.6 of seismic moment against +3 px of diameter;
+  // that ratio is the single most misread thing about this mark, and it is
+  // only sayable next to a number.
+  lines.push(`◈ ${fr(magnitudePixelSize(mag))} px : la magnitude, pas l’énergie — `
+    + `+1 sur l’échelle vaut ×${decimal(EARTHQUAKE_ENERGY_RATIO_PER_UNIT)} d’énergie. `
+    + `Le point ne dessine aucune emprise.`);
+
+  const place = String(record?.place ?? '').trim();
+  if (place) lines.push(`📍 ${place}`);
+
+  const timeMs = record?.timeMs;
+  if (typeof timeMs === 'number' && Number.isFinite(timeMs)) {
+    // E1 — the instant REPRESENTED, then the distance to now. Both, because
+    // one alone is either unreadable at a glance or unanchored in the day.
+    lines.push(`🕐 ${formatEarthquakeInstant(timeMs)} · ${formatAgo(nowMs - timeMs)}`);
+  } else {
+    lines.push('🕐 horodatage non publié — la couleur est hors rampe');
+  }
+
+  const depthKm = record?.depthKm;
+  if (typeof depthKm !== 'number' || !Number.isFinite(depthKm)) {
+    lines.push('↧ profondeur non publiée — aucune tige, et le point est creux');
+  } else {
+    // USGS publishes negative depths for foci above sea level, so the datum is
+    // named with the sign rather than assumed: « −1,2 km sous le niveau de la
+    // mer » would be a double negative describing a hillside.
+    const datum = depthKm < 0 ? 'au-dessus du niveau de la mer' : 'sous le niveau de la mer';
+    lines.push(`↧ foyer à ${decimal(Math.abs(depthKm))} km ${datum} — la tige porte `
+      + `cette longueur VERS LE HAUT.`);
+    if (depthKm * 1000 <= EARTHQUAKE_DEPTH_FLOOR_M) {
+      lines.push(`   tige au plancher d’1 km : le 1:1 s’arrête là`);
+    }
+  }
+
+  const usgsId = String(record?.id ?? '').trim();
+  if (usgsId) lines.push(`⌗ ${usgsId} · USGS`);
+  return lines.join('\n');
+}
+
+/**
+ * The protected card entry for the selected event.
+ * @param {object} record `{id, magnitude, depthKm, place, timeMs}`.
+ * @param {Cesium.Cartesian3} position Ground anchor shared with the mark.
+ * @param {number} nowMs Reference instant for the age line.
+ * @returns {object|null}
+ */
+export function createEarthquakeSelectedOverlayEntry(record, position, nowMs) {
+  if (!record || !position) return null;
+  const [title, ...details] = buildEarthquakeCard(record, nowMs).split('\n');
+  return {
+    id: `earthquake-card:${record.id}`,
+    position,
+    variant: 'selected',
+    selected: true,
+    protected: true,
+    paintLane: 'selected',
+    collisionGroup: 'ambient-card',
+    priority: Number.MAX_SAFE_INTEGER,
+    title,
+    details,
+    accent: EARTHQUAKE_SELECTED_COLOR,
+    // Narrower than the 420 px host ceiling: these lines are prose, and a
+    // 420 px measure at this size runs past the comfortable reading width
+    // while covering a band of globe the reader is looking at.
+    maxWidthPx: EARTHQUAKE_CARD_MAX_WIDTH_PX,
+    interactive: false,
+    anchorRadiusPx: 9,
+    minAnchorGapPx: 11,
+    verticalOnly: true,
+    placement: 'above',
+    edgeFade: 'keyhole',
+    horizonCull: true,
+    terrainOcclusion: false,
+  };
 }
 
 /**
@@ -664,13 +828,153 @@ const DEPTH_RULER_WIDTH_PX = 2;
 /** Ruler alpha. Constant, so the line never competes with the age ramp. */
 const DEPTH_RULER_ALPHA = 0.85;
 
-export function createEarthquakesLayer({ overlayHost = DEFAULT_OVERLAY_HOST } = {}) {
+/** Id prefix for the marks, and the prefix the click handler claims. */
+const MARK_ID_PREFIX = 'earthquake:';
+/** Id of the single ring entity the click leaves under the selected mark. */
+const SELECTION_RING_ID = 'earthquake-selection-ring';
+
+export function createEarthquakesLayer({
+  overlayHost = DEFAULT_OVERLAY_HOST,
+  // Cesium registers DOM listeners in the ScreenSpaceEventHandler constructor,
+  // and this layer's lifecycle is exercised headless. The factory is the seam
+  // that keeps the click ORDER — mark, then floating label, then empty space —
+  // under test off-browser; the Escape listener still needs a real `document`.
+  screenSpaceEventHandlerFactory = (viewer) => (
+    new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
+  ),
+  now = () => Date.now(),
+} = {}) {
   let _dataSource = null;
   let _count = 0;
   let _lastUpdate = null;
   let _lastError = null;
   let _enabled = false;
   let _tally = emptyEarthquakeTally();
+  let _viewer = null;
+  let _clickHandler = null;
+  /** @type {Map<string, {record: object, position: Cesium.Cartesian3, pixelSize: number}>} */
+  const _drawn = new Map();
+  let _selectedId = null;
+
+  /** Republish the selected card — on click, and after a poll rebuilt the marks. */
+  function publishSelected() {
+    const drawn = _selectedId ? _drawn.get(_selectedId) : null;
+    if (!drawn) return;
+    const entry = createEarthquakeSelectedOverlayEntry(drawn.record, drawn.position, now());
+    if (!entry) return;
+    overlayHost.setEntries(
+      EARTHQUAKE_SELECTED_OVERLAY_SOURCE_ID,
+      [entry],
+      EARTHQUAKE_SELECTED_OVERLAY_SOURCE_OPTIONS,
+    );
+  }
+
+  /**
+   * The click acknowledgement, as a SEPARATE entity rather than a repaint.
+   *
+   * Every channel the mark owns is a datum: its diameter is the magnitude, its
+   * fill is the age, and its outline is the age too when the depth is missing
+   * (the hollow A1 mark). There is nothing left to borrow for "you clicked
+   * this", so the selection is a second object — a cursor sitting around the
+   * mark, one ring, removed on deselect. It keeps the depth test like
+   * everything else in this layer (F1, regime (a)).
+   */
+  function syncSelectionRing() {
+    if (!_dataSource) return;
+    const existing = _dataSource.entities.getById(SELECTION_RING_ID);
+    if (existing) _dataSource.entities.remove(existing);
+    const drawn = _selectedId ? _drawn.get(_selectedId) : null;
+    if (!drawn) return;
+    _dataSource.entities.add({
+      id: SELECTION_RING_ID,
+      position: drawn.position,
+      point: {
+        pixelSize: drawn.pixelSize + SELECTION_RING_MARGIN_PX,
+        color: Cesium.Color.TRANSPARENT,
+        outlineColor: Cesium.Color.fromCssColorString(EARTHQUAKE_SELECTED_COLOR),
+        outlineWidth: 2,
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+      },
+    });
+  }
+
+  function clearSelection() {
+    if (!_selectedId) return false;
+    _selectedId = null;
+    overlayHost.clearSource(EARTHQUAKE_SELECTED_OVERLAY_SOURCE_ID);
+    syncSelectionRing();
+    return true;
+  }
+
+  function selectEvent(id) {
+    if (!_drawn.has(id)) return false;
+    _selectedId = id;
+    syncSelectionRing();
+    publishSelected();
+    governorRequestRender('earthquakes-select');
+    return true;
+  }
+
+  function onKeyDown(event) {
+    if (event.key === 'Escape' && clearSelection()) {
+      governorRequestRender('earthquakes-deselect');
+    }
+  }
+
+  /**
+   * Install the click-to-open handler.
+   *
+   * `drillPick`, not `pick`: an epicentre disc is 6 to 27 px of a shared
+   * `PointPrimitiveCollection` and it sits under whatever else the reader has
+   * switched on — a charging point, a gauge, a photorealistic roof. A plain
+   * pick returns the top-most primitive, so on a busy view the layer would
+   * simply look dead.
+   *
+   * Then the label plane, which the depth buffer knows nothing about, and only
+   * then empty space. `isWorldPick` rather than `!picked` for that last test:
+   * over the photoreal tileset every pick is non-null (`pickRegistry`).
+   */
+  function installClickHandler(viewer) {
+    if (_clickHandler || !viewer?.scene?.canvas) return;
+    _clickHandler = screenSpaceEventHandlerFactory(viewer);
+    _clickHandler.setInputAction((click) => {
+      if (!_enabled) return;
+      const drilled = viewer.scene.drillPick(click.position, DRILL_PICK_LIMIT) || [];
+      let sawSibling = false;
+      for (const hit of drilled) {
+        const id = typeof hit?.id === 'string' ? hit.id : hit?.id?.id;
+        if (typeof id !== 'string') continue;
+        if (_drawn.has(id)) {
+          selectEvent(id);
+          return;
+        }
+        if (isOwnedByOtherLayer(layer.id, id)) sawSibling = true;
+      }
+      const labelled = pickOverlayLabelId(click.position, {
+        sourceId: EARTHQUAKE_OVERLAY_SOURCE_ID,
+        has: (renderId) => _drawn.has(`${MARK_ID_PREFIX}${renderId}`),
+        hitTest: overlayHost.hitTest,
+      });
+      if (labelled) {
+        selectEvent(`${MARK_ID_PREFIX}${labelled}`);
+        return;
+      }
+      // A click that landed on a sibling's marker is that sibling's click, not
+      // a dismissal: closing this card would make selecting a neighbouring
+      // layer silently destroy the reading next to it.
+      if (sawSibling) return;
+      if (clearSelection()) governorRequestRender('earthquakes-deselect');
+    }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+    if (typeof document !== 'undefined') document.addEventListener('keydown', onKeyDown);
+  }
+
+  function removeClickHandler() {
+    if (_clickHandler) {
+      _clickHandler.destroy();
+      _clickHandler = null;
+    }
+    if (typeof document !== 'undefined') document.removeEventListener('keydown', onKeyDown);
+  }
 
   const layer = {
   id: 'earthquakes',
@@ -680,6 +984,7 @@ export function createEarthquakesLayer({ overlayHost = DEFAULT_OVERLAY_HOST } = 
   updateInterval: 60000,
 
   init(viewer) {
+    _viewer = viewer;
     _dataSource = new Cesium.CustomDataSource('earthquakes');
     _dataSource.show = false;
     viewer.dataSources.add(_dataSource);
@@ -688,23 +993,36 @@ export function createEarthquakesLayer({ overlayHost = DEFAULT_OVERLAY_HOST } = 
     _lastError = null;
     _enabled = false;
     _tally = emptyEarthquakeTally();
+    _drawn.clear();
+    _selectedId = null;
     overlayHost.setVisible(EARTHQUAKE_OVERLAY_SOURCE_ID, false);
+    overlayHost.setVisible(EARTHQUAKE_SELECTED_OVERLAY_SOURCE_ID, false);
     console.log('[Data:Earthquakes] Initialized');
   },
 
   enable(viewer) {
     _enabled = true;
+    _viewer = viewer || _viewer;
     // No continuous-render hold: point and ruler are static geometry, so the
-    // layer has no per-frame animator to keep the render loop alive for.
+    // layer has no per-frame animator to keep the render loop alive for. The
+    // click path requests a frame on select and on deselect instead.
     if (_dataSource) _dataSource.show = true;
     overlayHost.setVisible(EARTHQUAKE_OVERLAY_SOURCE_ID, true);
+    overlayHost.setVisible(EARTHQUAKE_SELECTED_OVERLAY_SOURCE_ID, true);
+    registerPickOwner(layer.id, (pickedId) => _drawn.has(String(pickedId)));
+    installClickHandler(_viewer);
   },
 
   disable(viewer) {
     _enabled = false;
+    clearSelection();
+    removeClickHandler();
+    unregisterPickOwner(layer.id);
     if (_dataSource) _dataSource.show = false;
     overlayHost.clearSource(EARTHQUAKE_OVERLAY_SOURCE_ID);
     overlayHost.setVisible(EARTHQUAKE_OVERLAY_SOURCE_ID, false);
+    overlayHost.clearSource(EARTHQUAKE_SELECTED_OVERLAY_SOURCE_ID);
+    overlayHost.setVisible(EARTHQUAKE_SELECTED_OVERLAY_SOURCE_ID, false);
   },
 
   async update(viewer) {
@@ -723,12 +1041,13 @@ export function createEarthquakesLayer({ overlayHost = DEFAULT_OVERLAY_HOST } = 
       }
 
       _dataSource.entities.removeAll();
+      _drawn.clear();
       let count = 0;
       const overlayEntries = [];
       const tally = emptyEarthquakeTally();
       // ONE reference instant for the whole poll, so two events of identical
       // time can never land in two bands because the loop took a millisecond.
-      const nowMs = Date.now();
+      const nowMs = now();
 
       for (const feature of geojson.features) {
         const [lon, lat, depthKm] = feature.geometry.coordinates;
@@ -758,8 +1077,24 @@ export function createEarthquakesLayer({ overlayHost = DEFAULT_OVERLAY_HOST } = 
 
         const position = Cesium.Cartesian3.fromDegrees(lon, lat);
         const stableId = feature.id || `event-${count}`;
+        const markId = `${MARK_ID_PREFIX}${stableId}`;
+        // The card's material, resolved on the poll rather than off the entity
+        // on click: `properties.foo.getValue(now)` is a Cesium round-trip per
+        // field, and the whole point of a card is that it is already assembled
+        // when the click lands.
+        _drawn.set(markId, {
+          record: {
+            id: feature.id ?? stableId,
+            magnitude: mag,
+            depthKm: hasDepth ? depthKm : null,
+            place,
+            timeMs: typeof time === 'number' && Number.isFinite(time) ? time : null,
+          },
+          position,
+          pixelSize,
+        });
         _dataSource.entities.add({
-          id: `earthquake:${stableId}`,
+          id: markId,
           position,
           point: {
             // Constant screen pixels. No scaleByDistance, ever — see B2 in the
@@ -821,9 +1156,19 @@ export function createEarthquakesLayer({ overlayHost = DEFAULT_OVERLAY_HOST } = 
         );
       }
 
+      // The poll rebuilt every mark, so the open card lost both its ring and
+      // its anchor. Re-seat it when the event is still in the window and drop
+      // it when the feed has aged it out — a card left standing over an event
+      // the layer no longer draws is a reading with nothing under it.
+      if (_selectedId && !_drawn.has(_selectedId)) clearSelection();
+      else if (_selectedId) {
+        syncSelectionRing();
+        publishSelected();
+      }
+
       _tally = tally;
       _count = count;
-      _lastUpdate = Date.now();
+      _lastUpdate = now();
       _lastError = null;
       console.log(`[Data:Earthquakes] Updated: ${_count} events (M2.5+)`);
       return true;
@@ -837,12 +1182,19 @@ export function createEarthquakesLayer({ overlayHost = DEFAULT_OVERLAY_HOST } = 
 
   destroy(viewer) {
     _enabled = false;
+    removeClickHandler();
+    unregisterPickOwner(layer.id);
     overlayHost.clearSource(EARTHQUAKE_OVERLAY_SOURCE_ID);
     overlayHost.setVisible(EARTHQUAKE_OVERLAY_SOURCE_ID, false);
+    overlayHost.clearSource(EARTHQUAKE_SELECTED_OVERLAY_SOURCE_ID);
+    overlayHost.setVisible(EARTHQUAKE_SELECTED_OVERLAY_SOURCE_ID, false);
     if (_dataSource) {
       viewer.dataSources.remove(_dataSource, true);
       _dataSource = null;
     }
+    _viewer = null;
+    _drawn.clear();
+    _selectedId = null;
     _count = 0;
     _lastUpdate = null;
     _lastError = null;
@@ -862,19 +1214,23 @@ export function createEarthquakesLayer({ overlayHost = DEFAULT_OVERLAY_HOST } = 
     const entities = _dataSource.entities.values;
     if (!entities.length) return [];
     const limit = Number.isFinite(maxCount) ? Math.max(1, Math.floor(maxCount)) : 2000;
-    const now = Cesium.JulianDate.now();
+    const at = Cesium.JulianDate.now();
     const result = [];
     for (const entity of entities) {
       if (result.length >= limit) break;
-      const cartesian = entity.position ? entity.position.getValue(now) : null;
+      // The selection ring shares the collection and carries no properties;
+      // without this guard the analyst would be handed one all-null record per
+      // open card, and « combien de séismes » would answer one too many.
+      if (entity.id === SELECTION_RING_ID) continue;
+      const cartesian = entity.position ? entity.position.getValue(at) : null;
       const carto = cartesian ? Cesium.Cartographic.fromCartesian(cartesian) : null;
       const p = entity.properties;
       result.push(mapAnalystRecord({
-        id: p?.usgsId?.getValue(now) ?? null,
-        mag: p?.mag?.getValue(now),
-        place: p?.place?.getValue(now),
-        time: p?.time?.getValue(now),
-        depth: p?.depth?.getValue(now),
+        id: p?.usgsId?.getValue(at) ?? null,
+        mag: p?.mag?.getValue(at),
+        place: p?.place?.getValue(at),
+        time: p?.time?.getValue(at),
+        depth: p?.depth?.getValue(at),
         lat: carto ? Cesium.Math.toDegrees(carto.latitude) : null,
         lon: carto ? Cesium.Math.toDegrees(carto.longitude) : null,
       }, result.length));
@@ -883,18 +1239,24 @@ export function createEarthquakesLayer({ overlayHost = DEFAULT_OVERLAY_HOST } = 
   },
 
   /**
-   * The on-map key (D1). Both channels that carry a value are stated here —
-   * pixel size for magnitude, ruler length for depth — plus the age ramp the
-   * colour now carries, and the counts of every fallback.
+   * The on-map key (D1): the colour ramp, and the DOMAIN of the two channels
+   * that are shapes. What each mark means for one event is on its card, and
+   * what the layer had to leave out is in `note` — see the header under D1.
    *
    * Read from the tally the LAST POLL left behind rather than recomputed from
    * the entity collection: the panel asks for this on every refresh, and
    * walking N entities to rebuild four counters that only change once a minute
    * would put layer work on the interaction path.
-   * @returns {{chips: Array<object>, legend: Array<object>}}
+   * @returns {{chips: Array<object>, legend: Array<object>, note: string,
+   *   legendNote: string}}
    */
   getRowControls() {
-    return { chips: [], legend: buildEarthquakeLegend(_tally) };
+    return {
+      chips: [],
+      legend: buildEarthquakeLegend(_tally),
+      note: buildEarthquakeNote(_tally),
+      legendNote: EARTHQUAKE_LEGEND_NOTE,
+    };
   },
 
   getStats() {

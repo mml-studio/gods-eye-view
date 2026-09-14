@@ -80,6 +80,45 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   invisibles). Paris, le cas le plus chargé — six exploitants, trois formes, six
   bandes — : **292 px, rien de coupé**. Aucune licence n'apparaît dans ce
   panneau, ni avant ni après.
+- **Les trois quarts de la clé des séismes étaient hors de vue de la carte
+  qu'elle légendait — et un point de séisme ne s'ouvrait pas.** Mesuré dans
+  Chrome à 1440×900 sur le flux vivant du 2026-09-10 (29 événements, cette
+  couche seule) : **827 px de contenu dans une fenêtre de 216**, soit 31 lignes
+  et 375 mots dont l'essentiel ne se lisait qu'en faisant défiler.
+
+  **UNE RÈGLE GRADUÉE N'EST PAS UNE CLÉ.** Quatre disques d'une seule encre ne
+  différant que par leur diamètre, et quatre barres d'une seule encre ne
+  différant que par leur hauteur, c'est la marque réimprimée huit fois — le
+  même constat que la clé des bouées (#141) et l'échelle des cinq bandes du
+  trafic routier (#166). Ce qu'aucune forme ne dit, c'est où l'échelle
+  **s'arrête** : chaque canal tient désormais en une ligne qui publie son
+  domaine gelé, « Point — magnitude, M2,5 à M9,5 » et « Tige — profondeur du
+  foyer, 0 à 700 km ». La rampe de COULEUR garde toutes ses classes et leurs
+  effectifs : c'est le seul canal qu'aucune forme ne décode (CARTOGRAPHIE D1).
+  **215 px, 11 lignes, 93 mots** — sur ce flux, la clé tient sans défiler.
+
+  **LES MISES EN GARDE PARTENT SUR LA FICHE DE L'ÉVÉNEMENT.** Cliquer un point
+  de séisme — ou son étiquette flottante `M4.1`, qui était jusqu'ici une
+  légende non cliquable cinq fois plus large que le disque qu'elle nomme —
+  ouvre une petite fenêtre portant la magnitude, le lieu, **l'instant en UTC**
+  et l'âge (E1), la profondeur du foyer et l'identifiant USGS. Chaque mise en
+  garde y est collée au nombre qu'elle qualifie, et nulle part ailleurs : « la
+  magnitude, pas l'énergie — +1 sur l'échelle vaut ×31,6 » à côté du diamètre,
+  « la tige porte cette longueur VERS LE HAUT » à côté de la profondeur. Une
+  phrase lue à côté de son chiffre porte ; la même phrase dans un bloc
+  permanent est du mobilier.
+
+  Le clic laisse un **anneau cyan distinct** plutôt que de repeindre la marque :
+  son diamètre est la magnitude, son remplissage l'âge, et son contour l'âge
+  aussi quand la profondeur manque — il ne restait aucun canal à emprunter.
+  Échap, un clic sur le monde, un relevé qui fait sortir l'événement de la
+  fenêtre de 24 h et l'extinction de la couche referment tous la fiche.
+
+  Deux divulgations quittent la clé pour l'aparté A5 qui leur revient : la tige
+  plancher d'1 km (seule rupture du 1:1) et le plafond des étiquettes, avec
+  leurs effectifs. Reste en clé la seule forme qu'un lecteur décode **faux**
+  sans aide : le point creux d'une profondeur non publiée, qu'on lirait sinon
+  comme une petite secousse.
 
 ### Fixed
 - **Une vue de la France entière offrait 51 étiquettes, 28 disaient le même
