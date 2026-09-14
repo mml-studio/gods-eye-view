@@ -463,7 +463,7 @@ export function createDatasetLayer(manifest, {
         ...(_loading && _progress ? { progress: _progress, progressLine: datasetProgressLine(_progress) } : {}),
         ...(_gated ? {
           status: 'zoom-in',
-          loadingLabel: `rapprochez-vous : la source se charge pour une vue de moins de ${manifest.source.maxSpanDeg}°`,
+          loadingLabel: `Zoome : la source se charge pour une vue de moins de ${manifest.source.maxSpanDeg}°`,
         } : {}),
       };
     },

@@ -147,7 +147,7 @@ test('a viewport-scoped layer is gated wide, fetches on a close view, and skips 
     assert.equal(h.calls.length, 0, 'a 10° view is above the 2° gate: nothing asked');
     const gated = layer.getStats();
     assert.equal(gated.status, 'zoom-in');
-    assert.match(gated.loadingLabel, /rapprochez-vous/);
+    assert.match(gated.loadingLabel, /^Zoome /);
     assert.match(gated.coverage, /rien n'est demandé/);
 
     view = { west: 2.2, south: 48.7, east: 2.5, north: 48.95 };

@@ -1281,7 +1281,7 @@ export function buildSitadelPermitCard(permit, parcels = []) {
 export function sitadelLoadingLabel({
   status, commune, summary, millesime,
 } = {}) {
-  if (status === 'too-high') return 'Sitadel interroge une commune à la fois — descends sous 12 000 m';
+  if (status === 'too-high') return 'Sitadel interroge une commune à la fois — zoome sous 12 km';
   if (status === 'off-coverage') return 'Hors de France — Sitadel ne couvre que les communes françaises';
   if (status === 'loading') return commune ? `Permis de ${commune}…` : 'Recherche de la commune…';
   if (status === 'no-commune') return 'Aucune commune française sous le centre de l’écran';

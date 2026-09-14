@@ -619,7 +619,7 @@ export function zoningGapSentence(answer) {
     return {
       title: 'Zonage non dessiné',
       detail: `${grouped(answer.zoningRefused.found)} zones dans ce cadre, au-delà des `
-        + `${grouped(answer.zoningRefused.limit)} que le service renvoie — rapprochez-vous`,
+        + `${grouped(answer.zoningRefused.limit)} que le service renvoie — zoome`,
     };
   }
   if (answer?.insideBox === false) {

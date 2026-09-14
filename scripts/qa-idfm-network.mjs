@@ -449,7 +449,7 @@ async function main() {
     check('with nothing rendered', gated.billboards === 0 && gated.discs === 0,
       `${gated.billboards} pictograms, ${gated.discs} discs`);
     check('and the row says how to get the map back',
-      /rapprochez-vous/i.test(gated.stats.loadingLabel || ''), gated.stats.loadingLabel);
+      /zoome/i.test(gated.stats.loadingLabel || ''), gated.stats.loadingLabel);
     await shoot(page, '01-dormant.png');
 
     // ── iii. one toggle, ONE mark per stop ─────────────────────────────────

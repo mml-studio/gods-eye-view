@@ -1185,7 +1185,7 @@ const veloPulseLayer = {
     if (_error) result.error = _error;
     else if (_loading) result.loadingLabel = 'Semaine type…';
     else if (!_inReadableBand) {
-      result.loadingLabel = `Descendez sous ${Math.round(BLOB_READABLE_CEILING_M / 1000)} km — `
+      result.loadingLabel = `Zoome sous ${Math.round(BLOB_READABLE_CEILING_M / 1000)} km — `
         + 'au-dessus, une tache fait moins d’un pixel';
     } else result.loadingLabel = `${slotLabel(_slot)} — semaine type de juin 2026`;
     result.readable = _inReadableBand;

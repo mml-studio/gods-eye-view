@@ -1357,7 +1357,7 @@ export function fraicheurLoadingLabel({
   if (summary.spacesExpired > 0) parts.push(`${fr(summary.spacesExpired)} horaires expirés`);
   if (Number.isFinite(drawn)) parts.push(`${fr(drawn)} objets tracés`);
   if (treeStatus === 'off') parts.push('arbres masqués');
-  else if (treeStatus === 'too-high') parts.push('arbres : descends pour les charger');
+  else if (treeStatus === 'too-high') parts.push('arbres : zoome pour les charger');
   else if (treeStatus === 'too-dense' && Number.isFinite(treeTotal)) {
     parts.push(`${fr(treeTotal)} arbres ici — zoome`);
   } else if (Number.isFinite(trees) && trees > 0) parts.push(`${fr(trees)} arbres`);

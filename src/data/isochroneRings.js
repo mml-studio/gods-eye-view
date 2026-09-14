@@ -993,7 +993,7 @@ const isochroneRingsLayer = {
       result.status = 'ok';
       // Both ways out, because there are now two and the second one is the
       // answer for a driving catchment too wide to fit under any ceiling.
-      result.loadingLabel = `Descends sous ${Math.round(ceilingM / 1000)} km, `
+      result.loadingLabel = `Zoome sous ${Math.round(ceilingM / 1000)} km, `
         + 'ou clique un point pour l’y fixer';
     } else if (stats.ringsMissing) {
       result.degraded = true;

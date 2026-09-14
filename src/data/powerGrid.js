@@ -1419,7 +1419,7 @@ function collectDetectableObjects(options = {}) {
 function buildLoadingLabel() {
   if (_loading) return 'loading the mapped grid for this view...';
   if (_status === 'zoom-in') {
-    return `descend below ${Math.round(POWER_GRID_MAX_ALTITUDE_M / 1000)} km to load the mapped grid`;
+    return `Zoome sous ${Math.round(POWER_GRID_MAX_ALTITUDE_M / 1000)} km pour charger le réseau cartographié`;
   }
   if (_status === 'error') return _error || 'unavailable';
   if (_status === 'empty') return 'nothing high-voltage mapped in this view';

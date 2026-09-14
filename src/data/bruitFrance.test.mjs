@@ -795,7 +795,7 @@ test('nothing in an overview card mentions a marker, and the scale it names is i
   assert.equal(card.includes('~11 m'), false, 'never the point probe’s resolution');
   assert.ok(card.includes('avions seulement'), 'the road-and-rail caveat is on every card');
   // And the sentence that sends a reader who needs a verdict back down.
-  assert.ok(card.includes('descendez sous 12 km'), card);
+  assert.ok(card.includes('zoome sous 12 km'), card);
   assert.equal(bruitAerodromeTitle({ oaci: null, name: null }), 'Aérodrome sans code');
 });
 

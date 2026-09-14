@@ -1505,7 +1505,7 @@ function collectDetectableVehicles(options = {}) {
 
 /** Short provenance line for the control-panel row. */
 function buildLoadingLabel() {
-  if (_status === 'zoom-in') return 'zoom in to load live transit';
+  if (_status === 'zoom-in') return 'Zoome pour charger les transports en direct';
   if (_loading) return _records.size ? 'refreshing networks...' : 'resolving networks...';
   if (_status === 'empty') {
     // Two different empties. Feeds matched and reported nothing: the network

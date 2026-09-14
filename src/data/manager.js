@@ -2,6 +2,8 @@ import { governorRequestRender } from '../renderGovernor.js';
 import { markDetectionSourcesChanged } from './detection.js';
 import { SURFACE_FILL_DRAPE_NOTE, surfaceFillDrapesBuildings } from './surfaceFillNotice.js';
 import { fusionMemberChipFor, fusionPrimaryChipFor } from './layerFusions.js';
+import { exclusiveSurfaceActive } from '../firstRunExperience.js';
+import { renderZoomPrompt, zoomPromptModel, zoomPromptVisible } from '../zoomPrompt.js';
 import {
   coverageNoticeFor,
   coverageSignature,
@@ -281,6 +283,15 @@ export class DataLayerManager {
     // territorial layer is switched on. Absent — every unit test, every headless
     // harness — the chip simply toggles, which is what it did before.
     this._coverageBriefingHandler = null;
+    // The SITUATION the reader closed the zoom card on — the set of layers that
+    // were waiting, not a boolean. Closing it while the grid waits keeps it
+    // closed for that; a different set waiting later is different news.
+    // See `src/zoomPrompt.js`.
+    this._zoomPromptDismissedSignature = '';
+    // Finished flights. Only used to re-key the card so a FAILED one releases
+    // its own button — a flight that changed nothing else would otherwise leave
+    // "Zoom en cours…" disabled on screen. See `zoomPromptModel`.
+    this._zoomPromptFlightEpoch = 0;
   }
 
   /**
@@ -3274,6 +3285,9 @@ export class DataLayerManager {
       );
     }
     this._refreshMapLegend(mapLegend);
+    // Same pass, same `getAll()`: the card and the rows must never disagree
+    // about which layers are waiting for a closer camera.
+    this._refreshZoomPrompt(layers);
 
     // Group tallies read live enabled state, so they have to be recomputed on
     // the same tick as the rows — a header still reading "0/6 ON" under six
@@ -3287,6 +3301,103 @@ export class DataLayerManager {
       }
     }
     return true;
+  }
+
+  /**
+   * Can this layer carry the camera inside its own gate?
+   *
+   * Three modules answer yes today (`powerGrid`, `bdtopoBuildings`,
+   * `cadastreParcels`); the rest are gated and cannot fly themselves. Asked as a
+   * capability rather than held as a list, so the card grows a button the moment
+   * a layer grows the method.
+   * @param {string} layerId Registered layer id.
+   * @returns {boolean}
+   */
+  canLayerFlyToGate(layerId) {
+    const entry = this.layers.get(layerId);
+    return Boolean(entry?.initialized) && typeof entry.module?.ensureViewGate === 'function';
+  }
+
+  /**
+   * Take the camera inside a layer's gate, using the layer's own solver.
+   *
+   * NO CESIUM ENTERS THIS MODULE. `ensureViewGate()` lives on the layer, which
+   * already imports Cesium and already knows the predicate that will decide its
+   * next load; all this does is hand it the viewer it was constructed with.
+   *
+   * The layer reloads on its own after the flight — every gated layer re-reads
+   * its viewport on `moveEnd`, and a flight ends in one. The repaint here is for
+   * the CARD, which has to stop saying "zoom" the moment the camera obeyed.
+   *
+   * @param {string} layerId Registered layer id.
+   * @returns {Promise<boolean>} Whether the camera ended inside the gate.
+   */
+  async ensureLayerViewGate(layerId) {
+    if (!this.canLayerFlyToGate(layerId)) return false;
+    const entry = this.layers.get(layerId);
+    try {
+      const settled = await entry.module.ensureViewGate(this.viewer);
+      return settled !== false;
+    } catch (error) {
+      console.warn(`[Data] ${layerId} view gate error:`, error);
+      return false;
+    } finally {
+      this._zoomPromptFlightEpoch += 1;
+      // The panel pass repaints the card too, so this is one call and not two —
+      // the second would re-run every layer's `getStats()` for nothing. It does
+      // decline while the document is hidden, and the card must not be left
+      // holding a disabled button because of that.
+      if (!this._refreshTogglePanel()) this._refreshZoomPrompt();
+    }
+  }
+
+  /**
+   * Repaint the zoom card alone, without the panel around it.
+   *
+   * The public door for the shell's camera watch: a layer's verdict about the
+   * camera lands some hundreds of milliseconds AFTER `moveEnd` (it has its own
+   * debounce), and the panel's own repaint on that event reads the verdict the
+   * layer is about to leave. Cheap enough to run again a moment later — it reads
+   * stats and touches one element.
+   * @returns {boolean} Whether a card is on screen.
+   */
+  refreshZoomPrompt() {
+    return this._refreshZoomPrompt();
+  }
+
+  /**
+   * @param {Array<object>} [layers] `getAll()` rows, when a caller already has
+   *   them — the panel refresh does, and asking twice would run every layer's
+   *   `getStats()` a second time.
+   * @returns {boolean} Whether a card is on screen.
+   */
+  _refreshZoomPrompt(layers = null) {
+    if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return false;
+    const host = document.getElementById('zoom-prompt');
+    if (!host) return false;
+    const model = zoomPromptModel(layers || this.getAll(), {
+      canFly: (layerId) => this.canLayerFlyToGate(layerId),
+      epoch: this._zoomPromptFlightEpoch,
+    });
+    // The dismissal is released as soon as the situation it was aimed at is
+    // over, so the reader who closed a card and then flew somewhere else does
+    // not carry the silence with them.
+    if (this._zoomPromptDismissedSignature
+      && model?.signature !== this._zoomPromptDismissedSignature) {
+      this._zoomPromptDismissedSignature = '';
+    }
+    const visible = zoomPromptVisible(
+      model,
+      this._zoomPromptDismissedSignature,
+      exclusiveSurfaceActive(document),
+    );
+    return renderZoomPrompt(host, visible ? model : null, {
+      onFly: (layerId) => { void this.ensureLayerViewGate(layerId); },
+      onDismiss: (signature) => {
+        this._zoomPromptDismissedSignature = signature;
+        this._refreshZoomPrompt();
+      },
+    });
   }
 
   /**

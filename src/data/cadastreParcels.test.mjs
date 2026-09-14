@@ -950,7 +950,7 @@ test('a camera aimed off France reports off-coverage, however high it is', () =>
     cadastreViewportBox(viewerWithView(overFrance, { altitude: 900000 })).reason,
     'too-high',
   );
-  assert.match(flat(cadastreLoadingLabel({ status: 'too-high' })), /Descends sous 1 500 m/);
+  assert.match(flat(cadastreLoadingLabel({ status: 'too-high' })), /Zoome sous 1 500 m/);
 });
 
 test('the gate names each refusal separately', () => {
@@ -1058,7 +1058,7 @@ test('a refused box reads as guidance, not as a broken feed', () => {
   // UNAVAILABLE. A refusal to draw is normal operation, so it has to present as
   // one of the guidance states with its reason in the label.
   for (const [status, pattern] of [
-    ['too-high', /Descends sous 1 500 m/],
+    ['too-high', /Zoome sous 1 500 m/],
     ['too-dense', /15 977 parcelles ici/],
   ]) {
     _setCadastreStateForTest({

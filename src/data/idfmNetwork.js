@@ -1124,7 +1124,7 @@ export function buildLoadingLabel({
   dormant = _dormant,
   stops = _count,
 } = {}) {
-  if (dormant) return 'rapprochez-vous : le réseau IDFM se dessine sous 20 km d’altitude';
+  if (dormant) return 'Zoome : le réseau IDFM se dessine sous 20 km d’altitude';
   if (loading) return 'lecture de l’offre horaire IDFM…';
 
   const parts = [`${fr(stops)} arrêts`];
@@ -1143,7 +1143,7 @@ export function buildLoadingLabel({
     // the pages it just refused.
     return parts.concat(
       `${pack.stopsAtLeast ? 'au moins ' : ''}${fr(pack.stopsInBox ?? 0)} arrêts dans `
-      + `cette vue, plus que les ${fr(IDFM_FREQ_MAX_STOPS)} chiffrés — rapprochez-vous`,
+      + `cette vue, plus que les ${fr(IDFM_FREQ_MAX_STOPS)} chiffrés — zoome`,
     ).join(' · ');
   }
   if (!records.size) return parts.concat('aucune fréquence publiée dans cette vue').join(' · ');

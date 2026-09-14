@@ -2361,6 +2361,9 @@ export class StyleManager {
     // layer before it starts. See `_installCoverageWatch`.
     this._coverageWatchRemover = null;
     this._coverageBriefing = null;
+    // Deferred re-reads of the zoom card after a camera stop. See
+    // `_scheduleZoomPromptRecheck`.
+    this._zoomPromptTimers = [];
     this._cctvUnsubscribe = null;
     this._radioUnsubscribe = null;
     this._radioState = null;
@@ -4821,7 +4824,37 @@ export class StyleManager {
     this._coverageWatchRemover = camera.moveEnd.addEventListener(() => {
       if (this._disposed) return;
       this._dataManager?.setCoverageView?.(cameraViewBox(this.viewer));
+      this._scheduleZoomPromptRecheck();
     });
+  }
+
+  /**
+   * Read the zoom card again, shortly after the camera stopped.
+   *
+   * `setCoverageView` repaints the panel on `moveEnd` — but a gated layer's
+   * verdict about that camera does not exist yet at that instant: the layers
+   * debounce their own viewport read (450 ms is the common value), and until
+   * they conclude, the card would either still name a layer that has just
+   * loaded or stay silent about one that has just refused. The panel itself is
+   * repainted by each layer's own update loop and catches up on its own clock;
+   * a card in the middle of the screen cannot wait that long.
+   *
+   * Two passes rather than one, because the debounce is not the only delay — a
+   * layer that has to ASK before it can refuse only knows once the request has
+   * come back. Both are cancelled by the next camera stop, so a reader dragging
+   * the globe never accumulates them.
+   * @returns {void}
+   */
+  _scheduleZoomPromptRecheck() {
+    for (const timer of this._zoomPromptTimers) clearTimeout(timer);
+    this._zoomPromptTimers = [];
+    if (typeof this._dataManager?.refreshZoomPrompt !== 'function') return;
+    for (const delay of [600, 1600]) {
+      this._zoomPromptTimers.push(setTimeout(() => {
+        if (this._disposed) return;
+        this._dataManager?.refreshZoomPrompt?.();
+      }, delay));
+    }
   }
 
   /**
@@ -10654,6 +10687,8 @@ export class StyleManager {
     // listener. `destroy()` settles the first and removes the second.
     this._coverageWatchRemover?.();
     this._coverageWatchRemover = null;
+    for (const timer of this._zoomPromptTimers) clearTimeout(timer);
+    this._zoomPromptTimers = [];
     this._layerDrawWatchRemover?.();
     this._layerDrawWatchRemover = null;
     this._coverageBriefing?.destroy();
