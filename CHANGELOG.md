@@ -610,6 +610,41 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   pas à la taille carte. Rendus à l'échelle, seules les marques qui sont DÉJÀ une
 
 ### Fixed
+- **Un permis de 45 logements dessinait un bloc opaque de 404 000 m³ au-dessus
+  d'un village.** La puce « Sur parcelle » des Autorisations d'urbanisme
+  extrudait LA PARCELLE d'un mètre par logement autorisé. Un prisme est base ×
+  hauteur : la masse lue à l'écran valait donc le compte de logements
+  **multiplié par la taille du terrain**, que le registre ne mesure pas. Mesuré
+  sur les parcelles réellement extrudées : base médiane 403 m² et maximum
+  40 400 m² à Paris, 395 m² et 153 173 m² à Nantes — **388 fois la médiane** —,
+  637 m² et 24 955 m² à Ustaritz. Deux permis d'un logement dessinaient des
+  masses dans un rapport de 388, et la plus grosse marque de Nantes pesait
+  25 426 754 m³ pour un seul dossier. Le cas signalé : `06454721B0037`, 45
+  logements sur trois parcelles jointives (8 984 m²), un bloc de 404 000 m³
+  au-dessus d'Ustaritz et de ses maisons de 8 m, pour un dossier dont la
+  surface de plancher créée est de 3 308 m². La hauteur était en outre dessinée
+  **une fois par parcelle**, donc un dossier à trois parcelles réclamait ses
+  logements trois fois : 932 logements de prisme pour 499 autorisés à Ustaritz
+  (×1,87), ×1,73 à Nantes, ×1,30 à Paris. Le canal hauteur passe sur une
+  **colonne de 12 m de côté, une par dossier**, plantée sur l'ancre du permis —
+  là où se tient déjà sa pastille, donc un sol pour les deux marques. La
+  parcelle redevient ce qu'elle était : un aplat classé au sol, sa teinte est
+  son état, sa bordure et sa fiche ne bougent pas. Le volume est de nouveau
+  proportionnel au seul compte (volume total dessiné divisé par 20 à 28 selon
+  la commune, plus grosse marque 28 800 m³), et la sélection cyan retourne au
+  sol au lieu de devoir grimper sur le toit d'un bloc opaque.
+- **Chaque fiche de parcelle en France créditait Bordeaux Métropole.** La
+  phrase « emprise publiée par Bordeaux Métropole » était écrite en dur, du
+  temps où le portail bordelais était la seule source d'un contour dans cette
+  couche. La résolution cadastrale a ensuite donné une emprise à tout le pays —
+  un dossier Sitadel nomme jusqu'à trois parcelles, et Etalab publie le
+  cadastre — sans que le crédit ne bouge : une parcelle d'Ustaritz dessinée
+  depuis le cadastre créditait une métropole à 200 km. La provenance est
+  désormais lue sur les dossiers posés sur l'emprise : le portail est nommé là
+  où il a livré la géométrie, « emprise cadastrale — la parcelle nommée par le
+  dossier » là où cette couche l'a jointe, les deux quand un même contour sert
+  les deux registres. La fiche du dossier, elle, se tait sur le cadastre : elle
+  nomme déjà la parcelle au-dessus et la déduction en-dessous.
 - **Un registre d'aléas muet ressemblait à une adresse sans risque.** Mesuré en
   direct le 2026-09-14 : `resultats_rapport_risque` a refusé toute connexion
   pendant une session entière pendant que `installations_classees` et `radon`

@@ -34,9 +34,11 @@ import adsUrbanismeLayer, {
   adsPermitTarget,
   adsRowControls,
   adsWindowChips,
+  adsEmpriseLine,
   clearAdsBuildingTheme,
   drawAdsEmprises,
   empriseCard,
+  empriseProvenanceLine,
   empriseStyle,
   syncAdsBuildingTheme,
 } from './adsUrbanisme.js';
@@ -92,12 +94,13 @@ test('a shared plot wears the loudest state on it, not the last one read', () =>
 });
 
 test('the plot card is about the land, which is what the crane cannot say', () => {
+  const portal = 'Bordeaux Métropole — Dossiers d’autorisation d’occupation du sol';
   const card = empriseCard(
     { parcels: ['281BN1091', '281BN1092', '281BN1100'], areaM2: 623 },
     [
-      { kindLabel: 'Déclaration préalable', depositedOn: '2024-09-27' },
-      { kindLabel: 'Déclaration préalable', depositedOn: '2026-04-19' },
-      { kindLabel: 'Permis de construire', depositedOn: '2026-06-02' },
+      { kindLabel: 'Déclaration préalable', depositedOn: '2024-09-27', precision: 'published', sourceLabel: portal },
+      { kindLabel: 'Déclaration préalable', depositedOn: '2026-04-19', precision: 'published', sourceLabel: portal },
+      { kindLabel: 'Permis de construire', depositedOn: '2026-06-02', precision: 'published', sourceLabel: portal },
     ],
   );
   assert.equal(card.name, 'Parcelles 281BN1091, 281BN1092, 281BN1100');
@@ -107,8 +110,10 @@ test('the plot card is about the land, which is what the crane cannot say', () =
   assert.match(card.description, /623 m² au sol/);
   assert.match(card.description, /2 × Déclaration préalable/);
   assert.match(card.description, /dernier dépôt le 02\/06\/2026/);
-  // Said out loud because it is the exception, not the rule, in this layer.
+  // The authority, taken from the portal these dossiers actually came from —
+  // and the head of its label, not the whole dataset title.
   assert.match(card.description, /emprise publiée par Bordeaux Métropole/);
+  assert.doesNotMatch(card.description, /Dossiers d’autorisation/);
 
   // A single-dossier plot does not announce a count of one.
   const lone = empriseCard({ parcels: ['550AH697'], areaM2: 251 }, [
@@ -120,6 +125,58 @@ test('the plot card is about the land, which is what the crane cannot say', () =
   // Long parcel lists are summarised rather than run off the card.
   const many = empriseCard({ parcels: ['a', 'b', 'c', 'd', 'e'], areaM2: 10 }, []);
   assert.equal(many.name, 'Parcelles a, b, c +2');
+});
+
+test('a plot drawn from the cadastre does not credit a métropole 200 km away', () => {
+  // THE DEFECT: every plot card in France ended « emprise publiée par Bordeaux
+  // Métropole », including the Ustaritz parcels this layer draws from the
+  // Etalab cadastre because the dossier names them.
+  const sitadel = empriseCard({ parcels: ['64547AN0081'], areaM2: 4880 }, [
+    {
+      kindLabel: 'Permis de construire',
+      depositedOn: '2022-03-14',
+      precision: 'parcelle',
+      sourceLabel: 'Sitadel — SDES',
+    },
+  ]);
+  assert.match(sitadel.description, /emprise cadastrale/);
+  assert.doesNotMatch(sitadel.description, /Bordeaux/);
+  assert.doesNotMatch(sitadel.description, /publiée par/);
+
+  // A plot divided since keeps the same provenance — the SHAPE is still the
+  // cadastre's. The deduction is the dossier's caveat and stays on its own
+  // card, where `adsPrecisionLine` prints it.
+  const parent = empriseCard({ parcels: ['64547AN0221'], areaM2: 1372 }, [
+    { kindLabel: 'Permis de construire', precision: 'mere', sourceLabel: 'Sitadel — SDES' },
+  ]);
+  assert.match(parent.description, /emprise cadastrale/);
+
+  // One geometry serving both registers names both, portal first.
+  const both = empriseProvenanceLine([
+    { precision: 'published', sourceLabel: 'Bordeaux Métropole — Dossiers d’autorisation' },
+    { precision: 'parcelle', sourceLabel: 'Sitadel — SDES' },
+  ]);
+  assert.match(both, /^emprise publiée par Bordeaux Métropole · emprise cadastrale/);
+
+  // A dossier the geocoder placed has no outline at all and claims none.
+  assert.equal(empriseProvenanceLine([{ precision: 'housenumber' }]), null);
+  assert.equal(empriseProvenanceLine([]), null);
+});
+
+test('the dossier card says who published its outline, and nothing when nobody did', () => {
+  assert.equal(
+    adsEmpriseLine({
+      empriseId: 3,
+      precision: 'published',
+      sourceLabel: 'Bordeaux Métropole — Dossiers d’autorisation d’occupation du sol + Sitadel',
+    }),
+    'emprise publiée par Bordeaux Métropole',
+  );
+  // Drawn on its cadastral parcel: the card already names the parcel above and
+  // the precision line below, so this one stays quiet rather than saying
+  // "published" about a shape nobody published with the file.
+  assert.equal(adsEmpriseLine({ empriseId: 3, precision: 'parcelle' }), null);
+  assert.equal(adsEmpriseLine({ empriseId: null, precision: 'published' }), null);
 });
 
 test('one plot is drawn once, however many dossiers stand on it', () => {
