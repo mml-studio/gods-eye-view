@@ -21,13 +21,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { groupMutations, parseDvfCsv } from './dvfFeed.js';
 import { projectAvisValeur } from './avisValeurFeed.js';
-import {
+import avisValeurLayer, {
   AVIS_BAND_CLASSES,
   AVIS_SUBJECT_COLOR,
   AVIS_SUBJECT_WITHHELD_COLOR,
   avisBandClass,
   avisChips,
   avisLegendEntries,
+  avisLegendDisclosure,
+  avisLegendMethod,
   avisRefusalText,
   avisSubjectCard,
   avisVoiceSummary,
@@ -74,12 +76,26 @@ test('the euro band is never described as prices anyone paid', () => {
   for (const line of details) {
     if (/moitié des ventes/.test(line)) assert.ok(line.includes('€/m²'), line);
   }
+  // The key states the band ONCE, and the label carries the €/m² — which is
+  // the only unit the « half the sales » claim is true of, because the
+  // comparables do not all have the subject's surface. The euro total is in
+  // the sentence under it, inseparable from the caveat that goes with it.
   const legend = avisLegendEntries(ANSWERED);
-  const eurosRow = legend.find((row) => /^soit /.test(row.label));
-  assert.ok(eurosRow.blurb.includes('Ce ne sont PAS les prix'), eurosRow.blurb);
+  const bandRows = legend.filter((row) => /^fourchette |^soit /.test(row.label));
+  assert.equal(bandRows.length, 1, 'one row for one fact');
+  const bandRow = bandRows[0];
+  assert.ok(bandRow.label.includes('€/m²'), bandRow.label);
+  assert.ok(/moitié des ventes comparables/.test(bandRow.blurb), bandRow.blurb);
+  assert.ok(/ce ne sont PAS les prix des ventes comparables/.test(bandRow.blurb), bandRow.blurb);
   // And the band is not sold as a bound on the subject either.
-  const bandRow = legend.find((row) => /^fourchette /.test(row.label));
   assert.ok(/ne le borne pas/.test(bandRow.blurb), bandRow.blurb);
+  // The claim may never attach to a euro TOTAL, in a label or in a blurb.
+  for (const row of legend) {
+    const text = `${row.label} ${row.blurb || ''}`;
+    if (!/moitié des ventes/.test(text)) continue;
+    const claim = text.slice(0, text.indexOf('moitié des ventes') + 60);
+    assert.ok(!/\d[\d\u202f\u00a0 ]*€(?!\/m²)/.test(claim), claim);
+  }
 });
 
 test('an asymmetric interval is printed as two numbers, a symmetric one as one', () => {
@@ -107,7 +123,7 @@ test('the interval never claims more than an independent draw would buy', () => 
   const line = avisSubjectCard(ANSWERED).details.find((entry) => /^milieu connu/.test(entry));
   assert.ok(/tirage indépendant du marché local/.test(line), line);
   const row = avisLegendEntries(ANSWERED).find((entry) => /^milieu connu/.test(entry.label));
-  assert.ok(/lève une hypothèse sur la forme/.test(row.blurb), row.blurb);
+  assert.ok(/tirage INDÉPENDANT du marché local/.test(row.blurb), row.blurb);
   assert.ok(/ne peut\s+que baisser la couverture réelle/.test(row.blurb.replace(/\s+/g, ' ')),
     row.blurb);
 });
@@ -180,38 +196,95 @@ test('the drift row reports the counts instead of asserting something about them
       ],
     },
   };
-  const row = avisLegendEntries(oneSolidYear).find((entry) => /dérive/.test(entry.label));
-  assert.equal(row.count, 1, 'one edition qualifies, and the row says so');
-  assert.ok(/2024 40 vente/.test(row.blurb), row.blurb);
-  assert.ok(/2025 4 vente/.test(row.blurb), row.blurb);
-  assert.ok(!/Aucun millésime/.test(row.blurb), row.blurb);
+  // Not a row of the key: nothing is painted in it. It is the A5 line, where
+  // it still reports the counts rather than asserting a cause.
+  assert.equal(avisLegendEntries(oneSolidYear).some((entry) => /dérive/.test(entry.label)), false);
+  const line = avisLegendDisclosure(oneSolidYear);
+  assert.match(line, /dérive du marché non mesurable/);
+  assert.match(line, /cette commune en a 1\b/, 'one edition qualifies, and the line says so');
+  assert.ok(/2024 40 vente/.test(line), line);
+  assert.ok(/2025 4 vente/.test(line), line);
+  assert.ok(!/aucun millésime/.test(line), line);
+
+  // A drift that IS measurable stays a visible row: « est-ce que ça monte »
+  // is one of the four things a reader opens this layer to find out.
+  const measured = {
+    ...ANSWERED,
+    drift: { basis: 'commune-year', pct: 12.4, fromYear: 2021, toYear: 2025, perYear: [] },
+  };
+  const shown = avisLegendEntries(measured).find((entry) => /dérive|médian communal/.test(entry.label));
+  assert.match(shown.label, /\+12,4 %/);
+  assert.match(shown.blurb, /jamais appliqué/);
+  assert.doesNotMatch(avisLegendDisclosure(measured), /dérive du marché non mesurable/);
 });
 
 test('an edition that failed to download is not an edition with no sales', () => {
   const partial = { ...ANSWERED, unavailableYears: [2024] };
-  const row = avisLegendEntries(partial).find((entry) => /non téléchargé/.test(entry.label));
-  assert.equal(row.count, 1);
-  assert.ok(/EXISTENT et ne sont pas arrivées/.test(row.blurb), row.blurb);
+  const line = avisLegendDisclosure(partial);
+  assert.match(line, /millésime\(s\) 2024 non téléchargé/);
+  assert.ok(/EXISTENT et ne sont pas arrivées/.test(line), line);
   assert.ok(avisSubjectCard(partial).details
-    .some((line) => /indisponible\(s\) au moment/.test(line)));
+    .some((line2) => /indisponible\(s\) au moment/.test(line2)));
   // Nothing of the sort is claimed when every edition arrived.
-  assert.equal(avisLegendEntries(ANSWERED).some((entry) => /non téléchargé/.test(entry.label)),
-    false);
+  assert.doesNotMatch(avisLegendDisclosure(ANSWERED), /non téléchargé/);
 });
 
 test('a pinned subject says that its point does not travel in a share link', () => {
-  const pinnedRow = avisLegendEntries(ANSWERED, { pinned: true })
-    .find((entry) => /point choisi/.test(entry.label));
-  assert.ok(pinnedRow, 'the disclosure exists');
-  assert.ok(/rouvrira la couche sous la CAMÉRA/.test(pinnedRow.blurb), pinnedRow.blurb);
-  assert.equal(avisLegendEntries(ANSWERED).some((entry) => /point choisi/.test(entry.label)),
-    false, 'and it is absent while the scan follows the camera');
+  const line = avisLegendDisclosure(ANSWERED, { pinned: true });
+  assert.ok(/point choisi/.test(line), line);
+  assert.ok(/rouvre sous la caméra/.test(line), line);
+  assert.doesNotMatch(avisLegendDisclosure(ANSWERED), /point choisi/,
+    'and it is absent while the scan follows the camera');
+});
+
+/**
+ * D1's test is « sans ouvrir aucun panneau, l'utilisateur peut-il traduire une
+ * couleur en valeur ». A key that answers it only after a minute of reading
+ * fails it as surely as one that is hidden — measured in Bayonne on
+ * 2026-09-14, where the two blocks of this row filled the whole right rail and
+ * ran off the bottom of the screen.
+ */
+test('the key holds the answer and the classes, and nothing that is not one', () => {
+  const busy = {
+    ...ANSWERED,
+    truncated: true,
+    served: 40,
+    unavailableYears: [2023],
+    excluded: { vefa: 12, zeroPrice: 3, unplaced: 2, otherType: 88, notPriceable: 41 },
+  };
+  const entries = avisLegendEntries(busy, { pinned: true });
+  // Four text lines at most — the value, the band, the interval, the drift —
+  // plus the three painted classes. Nine exclusions used to be nine rows.
+  assert.ok(entries.length <= 7, `${entries.length} entries: ${entries.map((e) => e.label)}`);
+  assert.equal(entries.filter((entry) => entry.color).length, 3, 'three painted classes');
+  // The three classes sit side by side under one caption, or they push the
+  // layer's own colours below the fold.
+  const captions = new Set(entries.filter((entry) => entry.color).map((entry) => entry.channel));
+  assert.equal(captions.size, 1, 'one caption for the three');
+  assert.ok([...captions][0], 'and it is named — three swatches under a euro headline read as '
+    + 'classes of the ESTIMATE otherwise');
+  // Nothing was dropped: every exclusion is still counted, on the A5 line.
+  const line = avisLegendDisclosure(busy, { pinned: true });
+  for (const count of ['12', '3', '2', '88', '41']) assert.ok(line.includes(count), line);
+  assert.match(line, /40 comparables dessinées/);
 });
 
 test('the chips exist before any scan, and offer the release only once pinned', () => {
   const cold = avisChips({ type: 'Appartement', surface: '60' }, null);
-  assert.ok(cold.length >= 6, `${cold.length} chips`);
-  assert.equal(cold.filter((chip) => chip.id.startsWith('type:')).length, 2);
+  assert.ok(cold.length >= 4, `${cold.length} chips`);
+  // THE TYPE IS NOT ONE OF THEM. It filters the map, so it lives on the row's
+  // primary and reaches this layer through the manager's fan-out; a second
+  // copy here is the control strip that made a reader read 257 flats as
+  // houses. The runtime parameter itself is untouched.
+  assert.equal(cold.filter((chip) => chip.id.startsWith('type:')).length, 0);
+  assert.equal(avisValeurLayer.getParams().type, 'Appartement');
+  assert.equal(avisValeurLayer.setParams({ type: 'Maison' }), true);
+  assert.equal(avisValeurLayer.getParams().type, 'Maison');
+  assert.equal(avisValeurLayer.setParams({ type: 'Appartement' }), true);
+  // And the layer still DECLINES what is not its vocabulary, which is what
+  // keeps « Toutes » a map-only instruction rather than a silent reset.
+  assert.equal(avisValeurLayer.acceptsParams({ type: 'Maison' }), true);
+  assert.equal(avisValeurLayer.acceptsParams({ type: 'tous' }), false);
   assert.equal(cold.some((chip) => chip.id === 'centre:camera'), false);
   assert.equal(cold.find((chip) => chip.id === 'surface:60').active, true);
   // A surface chip changes the COMPARABLE BAND, and its title has to say so.

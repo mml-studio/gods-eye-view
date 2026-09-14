@@ -36,6 +36,7 @@ import {
   unknownBuildingCss,
 } from './buildingTheme.js';
 import { BDTOPO_USAGE_TIERS } from './bdtopoBuildingsFeed.js';
+import * as Cesium from 'cesium';
 import dvfSalesLayer, {
   COLOR_NO_BASIS,
   COLOR_NO_RATIO,
@@ -46,9 +47,15 @@ import dvfSalesLayer, {
   _dvfSetThemePayloadForTest,
   _dvfWithdrawIfDormantForTest,
   dvfLegendEntries,
+  dvfLegendNote,
+  dvfLegendDisclosure,
   dvfSaleRecord,
   dvfVoiceSummary,
+  DVF_TYPE_FILTERS,
+  drawDvfParcels,
   dvfMostRecentSale,
+  dvfSaleCard,
+  filterSalesByType,
   dvfReference,
   dvfYearsLabel,
   saleColorCss,
@@ -244,36 +251,58 @@ test('adjacent classes of the ramp stay separable (B3)', () => {
 
 /* ── D1: the legend names the denominator ────────────────────────────────── */
 
-test('the legend prints the denominator, its territory and how many sales made it', () => {
+test('the denominator is a sentence above the classes, never a class', () => {
   const payload = payloadFor(AVENUE_DE_FRANCE, 300);
   const reference = dvfReference(payload);
+  // The block's own line: the territory, the number, the editions, and the
+  // rule that froze the breaks. Nothing on the map is painted in it, so it is
+  // not an entry of the key — it is what the key is divided by.
+  const note = dvfLegendNote(reference);
+  assert.match(note, /Paris 13e Arrondissement/);
+  assert.match(note, /8\D?956/, 'the number itself, not only the word "médian"');
+  assert.match(note, /éditions?/);
+  assert.match(note, /±5 %|±25 %/, 'the frozen rule, or the €/m² below read as quantiles');
+
   const entries = dvfLegendEntries(reference, new Map([['at-median', 2], ['low', 1]]));
-  const head = entries[0];
-  assert.match(head.label, /Paris 13e Arrondissement/);
-  assert.match(head.label, /8\D?956/, 'the number itself, not only the word "médian"');
-  assert.equal(head.count, 6, 'the median was computed from six comparable mutations');
-  assert.match(head.blurb, /C1/);
-  // Every ramp class restates its bounds in €/m², so the key can be compared to
-  // a listing and not only to itself.
+  // NOT in the key. A row with an empty swatch and a six-line paragraph is
+  // what pushed the colours off the bottom of the rail.
+  assert.ok(entries.every((entry) => entry.color), 'every entry of the key is painted');
+  assert.ok(!entries.some((entry) => /médian de/i.test(entry.label)));
+  // Every ramp class states its bounds in €/m², which is the only form of the
+  // bound a reader can compare to a listing (D2).
   const atMedian = entries.find((entry) => entry.color === '#ffe066');
   assert.match(atMedian.label, /8\D?508/);
   assert.match(atMedian.label, /9\D?404/);
   assert.equal(atMedian.count, 2);
+  // The ratio that DEFINES the class is not lost, it is in the tooltip.
+  assert.match(atMedian.blurb, /−5 à \+5 %/);
   // Every entry carries a count: the panel prints one whether or not it is
   // supplied, and an absent one renders "undefined".
   for (const entry of entries) assert.equal(typeof entry.count, 'number');
 });
 
-test('the legend hands the counts to the theme rather than inventing them', () => {
+test('the legend hands every count to the theme rather than inventing them', () => {
   const reference = dvfReference(payloadFor(AVENUE_DE_FRANCE, 300));
   const forTheme = dvfLegendEntries(reference);
-  // Ramp swatches carry no count so `resolveBuildingThemePaint` can fill them
-  // with VOLUMES; the reference line carries its own because it counts
-  // mutations, which no colour match could recover.
-  assert.equal(forTheme[0].count, 6);
-  for (const entry of forTheme.slice(1)) {
+  // Swatches carry no count so `resolveBuildingThemePaint` can fill them with
+  // VOLUMES. Every entry is a swatch now, so every entry is countable that
+  // way — which is exactly why the reference line had to stop being one.
+  for (const entry of forTheme) {
     assert.equal(entry.count, undefined, `${entry.label} must be counted by the theme`);
   }
+});
+
+test('the theme carries the denominator with the swatches it lends out', () => {
+  clearAllBuildingThemes();
+  const payload = payloadFor(AVENUE_DE_FRANCE, 300);
+  assert.equal(_dvfSetThemePayloadForTest(payload), true);
+  const theme = getActiveBuildingTheme();
+  // Bâti 3D prints these swatches on ITS row and cannot reconstruct what they
+  // are divided by. A ramp of ratios with no reference territory beside it is
+  // unreadable there in exactly the way it would be here.
+  assert.match(theme.legendNote, /Paris 13e Arrondissement/);
+  assert.match(theme.legendNote, /8\D?956/);
+  clearAllBuildingThemes();
 });
 
 test('an absent reference block says so instead of borrowing the local median', () => {
@@ -297,7 +326,12 @@ test('the editions the denominator covers are named', () => {
 test('the row declares the clipped count and the mutations with no coordinate', () => {
   const payload = payloadFor(AVENUE_DE_FRANCE, 1000);
   const controls = dvfSalesLayer.getRowControls?.call(null);
-  assert.equal(controls, null, 'nothing published while the layer has never scanned');
+  // The FILTER is published before the first scan — a control a reader cannot
+  // find until the layer has answered is a control they will not find. The KEY
+  // is not: a key to a wash that is not on screen describes nothing.
+  assert.deepEqual(controls?.legend, undefined, 'no key while the layer has never scanned');
+  assert.equal(controls.chips.length, 3);
+  assert.ok(controls.chips.find((chip) => chip.id === 'type:tous').active);
 
   // The fixture holds exactly one mutation the register publishes without a
   // coordinate — it has a price (10 464 €/m²) and cannot be drawn.
@@ -305,7 +339,114 @@ test('the row declares the clipped count and the mutations with no coordinate', 
   assert.equal(reference.unplacedCount, 1);
   const entries = dvfLegendEntries(reference, new Map());
   assert.equal(entries.some((entry) => /sans coordonnée/.test(entry.label)), false,
-    'the unplaced line is added by the layer row, not by the ramp builder');
+    'the unplaced line is not a class of the ramp');
+
+  // It is one sentence under the classes — the A5 slot — and it holds all
+  // three admissions at once: the reach of the scan, what was clipped, and
+  // what the register publishes with no position at all.
+  const disclosure = dvfLegendDisclosure(reference, payload.summary, payload.sales.length);
+  assert.match(disclosure, /300 m/, 'the reach of the scan, which is not a fact about the market');
+  assert.match(disclosure, /sans coordonnée/);
+  assert.match(disclosure, /\b1\b/, 'the count itself');
+  // One line, not three paragraphs: this is what replaced a key that ran off
+  // the bottom of the rail before its first colour.
+  assert.ok(disclosure.length < 260, `disclosure is ${disclosure.length} characters`);
+
+  // A clipped answer says so, with both numbers.
+  const clipped = dvfLegendDisclosure(reference, { truncated: true, count: 412 }, 400);
+  assert.match(clipped, /écrêté à 400 sur 412/);
+  assert.doesNotMatch(dvfLegendDisclosure(reference, { truncated: false, count: 40 }, 40), /écrêté/);
+});
+
+/* ── the filter, and the plots under the markers ─────────────────────────── */
+
+test('the type chips filter the map, which is what a reader thought they did', () => {
+  const sales = [
+    { id: 'a', types: ['Appartement'], parcelle: 'P1', date: '2024-01-01' },
+    { id: 'b', types: ['Appartement', 'Dépendance'], parcelle: 'P1', date: '2025-01-01' },
+    { id: 'c', types: ['Maison'], parcelle: 'P2', date: '2023-01-01' },
+    { id: 'd', types: ['Local industriel. commercial ou assimilé'], parcelle: 'P3', date: '2022-01-01' },
+    { id: 'e', types: [], parcelle: 'P4', date: '2021-01-01' },
+  ];
+  assert.equal(filterSalesByType(sales, 'tous').length, 5);
+  // A flat sold with its cellar is a flat; a commercial local is not, and
+  // neither is a mutation the register published with no `type_local`.
+  assert.deepEqual(filterSalesByType(sales, 'Appartement').map((sale) => sale.id), ['a', 'b']);
+  assert.deepEqual(filterSalesByType(sales, 'Maison').map((sale) => sale.id), ['c']);
+  // An unknown value shows everything rather than emptying the map: a stale
+  // share link must not look like a street where nothing ever sold.
+  assert.equal(filterSalesByType(sales, 'bureau').length, 5);
+  assert.equal(filterSalesByType(null, 'Maison').length, 0);
+
+  // THE VOCABULARY IS THE ESTIMATE'S. That is what lets one chip steer both
+  // members of the fused row through the manager's fan-out; two spellings of
+  // `Maison` would silently split the row back into two populations.
+  assert.deepEqual(
+    DVF_TYPE_FILTERS.map((entry) => entry.id).filter((id) => id !== 'tous'),
+    ['Appartement', 'Maison'],
+  );
+  // And it is a DRAW-ONLY parameter: the proxy is never asked a different
+  // question, so the query string must not carry it.
+  assert.equal(dvfSalesLayer.acceptsParams({ type: 'Maison' }), true);
+  assert.equal(dvfSalesLayer.acceptsParams({ type: 'appartement' }), false);
+});
+
+test('a sale says what it bought, on its own card', () => {
+  // 257 flats read as houses because no card, marker or key ever named a type.
+  const payload = payloadFor(AVENUE_DE_FRANCE, 300);
+  const reference = dvfReference(payload);
+  assert.ok(payload.sales.length > 0);
+  for (const sale of payload.sales) {
+    const card = dvfSaleCard(sale, reference);
+    assert.ok(/Appartement|Maison|Dépendance|Local|Terrain|type non publié/.test(card), card);
+  }
+  // The register's own wording, joined rather than folded: a flat sold with a
+  // shop is why that sale has no €/m², and the card has to let a reader see it.
+  const mixed = dvfSaleCard(
+    { types: ['Appartement', 'Local industriel. commercial ou assimilé'], valeur: 300000 },
+    reference,
+  );
+  assert.match(mixed, /Appartement \+ Local/);
+  assert.match(mixed, /pas de €\/m² comparable/);
+  assert.match(dvfSaleCard({ types: [], valeur: 1 }, reference), /type non publié/);
+});
+
+test('the plot a sale bought is washed under it, in the price it sold at', () => {
+  const reference = dvfReference(payloadFor(AVENUE_DE_FRANCE, 300));
+  const parcels = [
+    { id: 'P1', parts: [[[[2.37, 48.82], [2.371, 48.82], [2.371, 48.821], [2.37, 48.821], [2.37, 48.82]]]] },
+    // A plot whose only sale is filtered out, and one the register never named.
+    { id: 'P2', parts: [[[[2.38, 48.82], [2.381, 48.82], [2.381, 48.821], [2.38, 48.821], [2.38, 48.82]]]] },
+  ];
+  const sales = [
+    { id: 'old', parcelle: 'P1', date: '2021-06-01', prixM2: 12406, valeur: 500000 },
+    { id: 'new', parcelle: 'P1', date: '2024-06-01', prixM2: 6797, valeur: 300000 },
+  ];
+  const entities = [];
+  const drawn = drawDvfParcels(
+    { entities: { add: (entity) => entities.push(entity) } },
+    parcels, sales, reference, 2,
+  );
+  assert.equal(drawn, 1, 'a plot with nothing left to click is not washed');
+  const fill = entities.find((entity) => entity.polygon);
+  assert.ok(fill, 'the plot is a classified polygon');
+  assert.equal(fill.polygon.classificationType, 2, 'clamped onto whatever the globe is drawing');
+  assert.equal(fill.polygon.outline, false, 'a classified polygon cannot stroke itself');
+  assert.ok(entities.some((entity) => entity.polyline?.clampToGround === true),
+    'so the boundary is a separate clamped polyline');
+  // THE MOST RECENT MUTATION, never a blend: 2024 at 6 797 €/m² is green
+  // against this reference, 2021 at 12 406 is red, and a plot that showed the
+  // older one would be publishing a price that is no longer the comparable.
+  const expected = Cesium.Color.fromCssColorString(saleColorCss(6797, reference.medianPrixM2));
+  assert.equal(fill.polygon.material.red.toFixed(3), expected.red.toFixed(3));
+  assert.equal(fill.polygon.material.green.toFixed(3), expected.green.toFixed(3));
+  assert.match(fill.description, /parcelle P1/);
+  assert.match(fill.description, /2024-06-01/);
+
+  // An answer that carries no plots draws none, and says why on the A5 line.
+  assert.equal(drawDvfParcels({ entities: { add: () => {} } }, [], sales, reference, 2), 0);
+  assert.match(dvfLegendDisclosure(reference, {}, 12, { parcels: [] }), /Parcelles indisponibles/);
+  assert.doesNotMatch(dvfLegendDisclosure(reference, {}, 12, {}), /Parcelles indisponibles/);
 });
 
 /* ── the building theme ──────────────────────────────────────────────────── */
@@ -429,7 +570,7 @@ test('the wrapper keeps the shell contract the manager relies on', () => {
   // `manager.js` reads `enable()`/`disable()` as "anything but false means it
   // worked", and reads id/name/updateInterval off the module.
   assert.equal(dvfSalesLayer.id, DVF_LAYER_ID);
-  assert.equal(dvfSalesLayer.name, 'Ventes immobilières (DVF)');
+  assert.equal(dvfSalesLayer.name, 'Prix de l’immobilier (DVF)');
   assert.equal(typeof dvfSalesLayer.updateInterval, 'number');
   for (const method of ['init', 'enable', 'disable', 'destroy', 'update', 'getStats', 'getRowControls']) {
     assert.equal(typeof dvfSalesLayer[method], 'function', method);

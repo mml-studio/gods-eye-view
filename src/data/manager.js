@@ -2778,7 +2778,38 @@ export class DataLayerManager {
           return;
         }
         if (chip.params) {
-          this.setLayerParams(chip.targetLayerId || layer.id, chip.params, { origin: 'user' });
+          const owner = chip.targetLayerId || layer.id;
+          this.setLayerParams(owner, chip.params, { origin: 'user' });
+          // ONE CONTROL FOR ONE READER INTENTION, ACROSS A FUSED ROW.
+          //
+          // A fusion says these layers are one subject. When two of them take
+          // the SAME parameter about it — DVF filters the mutations by
+          // dwelling type, the estimate chooses the type it is valuing — two
+          // chip strips on one row is not redundancy, it is a trap: the reader
+          // presses one `Maison`, the other stays on `Appartement`, and the
+          // map and the headline above it describe different populations.
+          // Measured on exactly that row in Bayonne, 2026-09-14.
+          //
+          // So a chip may declare `fanOut` and the params are OFFERED to every
+          // other enabled member of the row. Offered, not imposed: `setParams`
+          // is a closed enum per layer and returns false on anything outside
+          // it, so a member that does not take the key — or does not take that
+          // value, which is how `tous` stays a map-only instruction — keeps
+          // the question it was already asking. That refusal is the mechanism,
+          // not a failure, so it is not logged as one.
+          if (chip.fanOut) {
+            for (const member of this._fusionGroupIds(layer.id)) {
+              if (member === owner || !this.isEnabled(member)) continue;
+              const module = this.layers.get(member)?.module;
+              // ASKED, NOT ATTEMPTED. `setParams` returning false is a
+              // refusal the manager logs and notifies as `params-failed`,
+              // which is right for a caller that meant it — and wrong here,
+              // where declining is the normal outcome and the mechanism.
+              if (typeof module?.acceptsParams !== 'function') continue;
+              if (!module.acceptsParams(chip.params)) continue;
+              this.setLayerParams(member, chip.params, { origin: 'user' });
+            }
+          }
         }
       });
       row.appendChild(controls);
@@ -2843,6 +2874,19 @@ export class DataLayerManager {
     const companions = this._registrationTaxonomy?.get(layerId)?.companions;
     if (!Array.isArray(companions)) return [];
     return companions.filter((entry) => entry?.id && this.layers.has(entry.id));
+  }
+
+  /**
+   * Every layer a fused row carries, the primary first.
+   *
+   * The fan-out's address book. `_fusionCompanions` answers "what hangs off
+   * this row"; a chip that steers the whole subject needs the row itself in
+   * the list, because the chip's owner is not always the primary.
+   * @param {string} layerId Primary layer id of the row.
+   * @returns {string[]}
+   */
+  _fusionGroupIds(layerId) {
+    return [layerId, ...this._fusionCompanions(layerId).map((entry) => entry.id)];
   }
 
   /**

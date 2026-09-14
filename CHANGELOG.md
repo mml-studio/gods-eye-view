@@ -6,6 +6,56 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-14
 
 ### Changed
+- **La couche des prix s'appelait « Immobilier (DVF) », ses deux puces de type
+  ne filtraient rien, et son symbole € disparaissait dans les toits.** Trois
+  défauts d'un même écran, relevés rue des Basques à Bayonne le 14/09/2026.
+
+  **Le nom.** « Immobilier (DVF) » renseignait qui savait déjà ce qu'est le DVF
+  et personne d'autre. La ligne s'appelle **« Prix de l'immobilier »**, et
+  l'acronyme est resté là où va une source : sur la ligne juste en dessous, et
+  dans la méthode de la clé. Les deux puces de la ligne sont devenues des
+  verbes — **« Estimer un bien »**, **« Mes comparables »**.
+
+  **Les puces mentaient.** « Appart. » et « Maison » appartenaient à
+  l'ESTIMATION voisine : elles choisissaient le sujet d'un calcul et ne
+  touchaient aucun point de la carte. Avec « Maison » allumée sur un
+  centre-ville qui n'en compte aucune, le lecteur lisait **257 appartements
+  comme des maisons** — le registre en compte zéro dans les 300 m. Le type est
+  désormais un **vrai filtre** porté par la ligne (`Toutes · Appart. ·
+  Maisons`), il retire les points de la carte, des volumes et du décompte, et
+  le même clic règle l'estimation d'à côté : une intention, un contrôle, deux
+  couches. Mesuré : **397 ventes → 1** sur « Maisons », et le médian de
+  référence ne bouge pas d'un euro (règle C1). Le filtre ne coûte aucune
+  requête — il porte sur les lignes déjà servies — et il voyage dans le lien de
+  partage. Chaque fiche nomme enfin **ce que la vente a acheté**
+  (`Appartement + Dépendance`, `Local industriel…`), ce qu'aucune ne faisait.
+
+  **La clé faisait trois écrans.** Dix entrées, un paragraphe sous chacune :
+  **828 px de contenu** avec l'estimation allumée, dans un rail qui n'en
+  montrait que 216. La clé ne garde que ce qui est peint — les cinq classes et
+  le gris « sans prix au m² », en **une barre de distribution** plutôt qu'en six
+  lignes empilées — et les bornes sont en €/m², la seule unité comparable à une
+  annonce. Ce qui n'était pas une classe a rejoint les deux emplacements qui
+  existent pour ça : le dénominateur et la règle gelée au-dessus, l'écrêtage et
+  les mutations sans coordonnée en une phrase en dessous, le reste en infobulle
+  et sur la fiche. **Rien n'est supprimé, tout est compté. 828 px → 475 px.**
+
+  **Le symbole € se fondait dans les toits.** Un € en trait blanc à 19 px pose
+  environ **7 % de sa boîte en encre** ; 7 % d'ambre sur un champ de tuiles en
+  photoréaliste, c'est rien. Le marqueur est devenu une **pastille pleine** :
+  le disque prend la couleur de la classe — le canal gagne ~40× de surface — et
+  le € est frappé dedans en sombre, avec un cerne qui le détache de n'importe
+  quel toit.
+
+  **Et le sol de la vente est teinté.** `id_parcelle` est publié sur chaque
+  mutation et c'est la clé du cadastre ouvert d'Etalab : **400 jointures sur
+  400** dans les 300 m à Bayonne. La parcelle vendue est donc lavée au sol,
+  plaquée sur ce que le globe dessine vraiment (terrain ou tuiles 3D), à la
+  couleur de sa mutation la plus récente. Un € qui flotte ne désigne aucun
+  bâtiment ; une parcelle teintée, si.
+
+  Garde-fou : `npm run qa:dvf-row` — 15 vérifications sur l'application vivante,
+  du décompte des marqueurs à la hauteur de la clé.
 - **La clé des bornes de recharge tenait 13 lignes et 301 mots, et le lecteur
   n'en voyait que la moitié.** Mesuré dans Chrome sur une vue de ville :
   **717 px de contenu dans une fenêtre de 355 px**, donc coupé, et sa dernière

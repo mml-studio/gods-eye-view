@@ -35,13 +35,29 @@
  * the universal drawing — so these carry no third-party licence obligation.
  *
  * TINT-SAFE BY CONSTRUCTION, the same discipline as its two sibling icon
- * packs. Every glyph is white line-art over a wide dark halo and carries no
- * hue of its own. Cesium multiplies `billboard.color` into the texture, so
- * white takes the layer's value colour exactly — the DVF price ramp, the
- * official DPE scale, the Géorisques severity — while black survives the
- * multiply (0 × c = 0) and keeps the glyph readable over a pale orthophoto.
- * A hue baked into the artwork would fight the tint and destroy the channel
- * each layer spends its colour on.
+ * packs. No glyph carries a hue of its own: everything is white or black at
+ * some alpha. Cesium multiplies `billboard.color` into the texture, so white
+ * takes the layer's value colour exactly — the DVF price ramp, the official
+ * DPE scale, the Géorisques severity — while black survives the multiply
+ * (0 × c = 0). A hue baked into the artwork would fight the tint and destroy
+ * the channel each layer spends its colour on.
+ *
+ * TWO WAYS TO SPEND THAT WHITE, AND THE CHOICE IS A MEASUREMENT.
+ *
+ *   - **Line-art over a dark halo** — the default, and right over a road map.
+ *     The silhouette is the read and the halo is what keeps it off a pale
+ *     roof.
+ *   - **A filled pastille with the sign in dark ink** — `disc: true`. The
+ *     disc is the tintable surface, so the colour channel gains ~40× the
+ *     area, and the sign is punched through it in black.
+ *
+ * The second exists because the first was measured and lost where it had to
+ * win: over Google's photoreal tileset, a 19 px euro puts roughly 7 % of its
+ * box in ink, and 7 % of amber over a field of terracotta roofs is nothing.
+ * Only `euro` carries it today — it is the pack's one glyph that is routinely
+ * drawn four hundred at a time over a city seen obliquely. Adding it to
+ * another kind is a decision to be made the same way: by looking at that
+ * layer over photoreal, not by symmetry with this one.
  */
 
 /** Glyph coordinate space; every body is drawn to this 96×96 box. */
@@ -58,6 +74,24 @@ export const ADDRESS_GLYPH_RASTER_PX = 88;
 
 /** Halo pass: wide, dark, drawn under everything. */
 const HALO_STROKE_PX = 12;
+
+/**
+ * The pastille, in box units — see the `euro` entry of {@link BODIES}.
+ *
+ * `DISC_RIM_PX` is a stroke, so half of it falls outside the radius: the
+ * drawn edge reaches 44 + 4 = 48, which is exactly the box. Wider and the
+ * rim would be clipped square by the raster, which reads as a notch.
+ */
+const DISC_RADIUS_PX = 44;
+const DISC_RIM_PX = 8;
+/**
+ * Ink of a glyph drawn ON a pastille.
+ *
+ * Not pure black: at 15 px a hard black € on a saturated disc reads as a
+ * hole punched in the marker rather than as a sign. 0.78 keeps the counter
+ * of the arc legible while letting a little of the class colour through.
+ */
+const DISC_GLYPH_INK = 'rgba(0,0,0,0.78)';
 /** Glyph pass: the visible white line weight. */
 const LINE_STROKE_PX = 7;
 /** Frame around a DPE letter — thinner, so the letter keeps the ink. */
@@ -144,12 +178,36 @@ const DPE_LETTER_HALO_PX = 5;
  * and merely fattened in the halo pass.
  */
 const BODIES = Object.freeze({
-  // ── DVF: the euro sign, and nothing else. A coin outline was tried first
-  //    and the ring closed up into a filled blob at 16 px — the bars of the €
-  //    are the read, and a circle around them is ink competing with them.
-  //    The arc is the long way round (large-arc), which is what makes it a €
-  //    rather than a C: the two bars need somewhere to cross.
+  // ── DVF: the euro sign, on a filled pastille.
+  //
+  //    THE BARE SILHOUETTE WAS MEASURED AND IT LOST. White line-art over a
+  //    dark halo is the right default over a road map; over Google's
+  //    photoreal tileset it is not, and Bayonne is the case that proved it —
+  //    an amber € at 19 px puts roughly 7 % of its box in ink, and 7 % of
+  //    amber over a field of terracotta roofs is nothing. The operator's own
+  //    words: « le symbole euro se fond complètement avec l'image satellite ».
+  //
+  //    So the marker is inverted, and only for the layers that draw over the
+  //    world rather than over a basemap: a FILLED disc takes the tint, and the
+  //    € is punched through it in black. Three things survive the change and
+  //    they are the three that matter — the colour channel is untouched and in
+  //    fact gains two orders of magnitude of area, the SHAPE channel still
+  //    says DVF because the € is still the thing you read, and the tint still
+  //    lands exactly, because Cesium multiplies `billboard.color` into the
+  //    texture and white is the multiplicative identity.
+  //
+  //    THE GLYPH HAS TO BE DARK, not white: the disc under it now carries the
+  //    class colour, and white-on-`#ffe066` is the one combination of this
+  //    ramp that disappears. Black survives the multiply (0 × c = 0) for the
+  //    same reason the halo always has.
+  //
+  //    The disc radius is 44 of the 96-unit box and that is not a round
+  //    number by accident: the furthest point of the € path sits 37.5 units
+  //    from the centre, plus half a 7-unit stroke, so 44 is the smallest disc
+  //    that does not clip the sign — and it leaves 4 units for the dark rim
+  //    that separates the pastille from whatever is under it.
   euro: {
+    disc: true,
     strokes: 'M71,23 A30,30 0 1 0 71,73 M20,40 L60,40 M20,56 L60,56',
     fills: '',
   },
@@ -327,6 +385,7 @@ export function addressMarkerGlyph(kind, { px = ADDRESS_GLYPH_RASTER_PX } = {}) 
   let fills = '';
   let letterHalo = '';
   let letterFill = '';
+  let disc = false;
   if (key.startsWith('dpe:')) {
     // The frame is what makes a bare letter read as a LABEL rather than as a
     // stray character over a roof, and it is drawn as a THIN stroke while the
@@ -337,25 +396,45 @@ export function addressMarkerGlyph(kind, { px = ADDRESS_GLYPH_RASTER_PX } = {}) 
     const body = BODIES[key] || BODIES.plan;
     strokes = body.strokes;
     fills = body.fills;
+    disc = body.disc === true;
   }
   const strokePath = strokes ? `<path d="${strokes}"/>` : '';
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="0 0 ${VIEW} ${VIEW}">`
-    // Halo first: every part of the glyph at once, fattened and dark.
-    // Multiplying a tint into black leaves black, so this survives
-    // `billboard.color` and keeps white line-art off a white roof.
-    + `<g fill="none" stroke="rgba(0,0,0,0.62)" stroke-width="${HALO_STROKE_PX}"`
-    + ` stroke-linecap="round" stroke-linejoin="round">${frame}${strokePath}${fills}</g>`
-    + letterHalo
-    + (frame
-      ? `<g fill="none" stroke="#ffffff" stroke-width="${FRAME_STROKE_PX}"`
-        + ` stroke-linejoin="round">${frame}</g>`
-      : '')
-    + `<g fill="none" stroke="#ffffff" stroke-width="${LINE_STROKE_PX}"`
-    + ` stroke-linecap="round" stroke-linejoin="round">${strokePath}</g>`
-    + `<g fill="#ffffff" stroke="none">${fills}</g>`
-    + letterFill
-    + '</svg>';
+  // THE PASTILLE INVERTS THE TWO PASSES rather than adding a third. The disc
+  // is the white (tintable) surface and the glyph is the dark ink on it, which
+  // is the opposite of every other kind in this pack — so it takes its own
+  // branch instead of a flag threaded through the shared one, where the
+  // `fill="#ffffff"` of the glyph pass would have repainted the sign in the
+  // very colour of the disc under it.
+  const svg = disc
+    ? `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="0 0 ${VIEW} ${VIEW}">`
+      // The rim, drawn as a stroke on the same circle: dark, so it survives
+      // the tint and holds the pastille off a roof of any brightness.
+      + `<circle cx="48" cy="48" r="${DISC_RADIUS_PX}" fill="rgba(0,0,0,0.62)"`
+      + ` stroke="rgba(0,0,0,0.62)" stroke-width="${DISC_RIM_PX}"/>`
+      // The surface. White is the multiplicative identity, so this IS the
+      // layer's colour channel — with ~40× the area the line-art gave it.
+      + `<circle cx="48" cy="48" r="${DISC_RADIUS_PX}" fill="#ffffff"/>`
+      + `<g fill="none" stroke="${DISC_GLYPH_INK}" stroke-width="${LINE_STROKE_PX}"`
+      + ` stroke-linecap="round" stroke-linejoin="round">${strokePath}</g>`
+      + `<g fill="${DISC_GLYPH_INK}" stroke="none">${fills}</g>`
+      + '</svg>'
+    : `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="0 0 ${VIEW} ${VIEW}">`
+      // Halo first: every part of the glyph at once, fattened and dark.
+      // Multiplying a tint into black leaves black, so this survives
+      // `billboard.color` and keeps white line-art off a white roof.
+      + `<g fill="none" stroke="rgba(0,0,0,0.62)" stroke-width="${HALO_STROKE_PX}"`
+      + ` stroke-linecap="round" stroke-linejoin="round">${frame}${strokePath}${fills}</g>`
+      + letterHalo
+      + (frame
+        ? `<g fill="none" stroke="#ffffff" stroke-width="${FRAME_STROKE_PX}"`
+          + ` stroke-linejoin="round">${frame}</g>`
+        : '')
+      + `<g fill="none" stroke="#ffffff" stroke-width="${LINE_STROKE_PX}"`
+      + ` stroke-linecap="round" stroke-linejoin="round">${strokePath}</g>`
+      + `<g fill="#ffffff" stroke="none">${fills}</g>`
+      + letterFill
+      + '</svg>';
 
   const uri = `data:image/svg+xml;base64,${_b64(svg)}`;
   _cache.set(cacheKey, uri);

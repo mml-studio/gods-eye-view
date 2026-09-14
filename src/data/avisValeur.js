@@ -284,22 +284,34 @@ export function avisSubjectCard(payload) {
  * title says what changing it changes. The chips build from the runtime alone
  * and so exist before the first scan; the counts arrive with the summary.
  *
+ * ── THE TYPE CHIPS ARE NOT HERE ANY MORE, AND THAT IS THE POINT ────────────
+ *
+ * `Appart.` and `Maison` used to be this layer's first two chips, and on the
+ * fused row they sat beside the map's own dots looking exactly like a filter
+ * over them. They were not: they chose the subject of an ESTIMATE and left
+ * every mutation on screen untouched. The reported symptom, Bayonne
+ * 2026-09-14, with `Maison` lit over a centre that holds no house at all:
+ * « beaucoup de ventes de maisons apparaissent […] soit le tri ne fonctionne
+ * pas, soit y a quelque chose que je ne comprends pas ».
+ *
+ * The type now lives on the row's PRIMARY (`DVF_TYPE_FILTERS` in
+ * `dvfSales.js`), where it filters the map, and the manager offers it to this
+ * layer through the fan-out — same vocabulary, same click, so the dots and
+ * the headline above them can no longer describe different populations. The
+ * runtime param is untouched: a share link, the voice surface and
+ * `setParams` all still steer the subject exactly as before. What went away
+ * is a second control for one decision.
+ *
+ * The SURFACE chips stay, because they are this layer's alone: nothing on the
+ * map is filtered by the size of a hypothetical flat.
+ *
  * @param {Record<string, string>} runtime
  * @param {?object} summary
  * @returns {Array<object>}
  */
 export function avisChips(runtime, summary = null) {
-  const type = String(runtime?.type ?? AVIS_DEFAULT_TYPE);
   const surface = String(runtime?.surface ?? AVIS_DEFAULT_SURFACE);
-  const chips = AVIS_TYPES.map((value) => ({
-    id: `type:${value}`,
-    label: value === 'Maison' ? 'Maison' : 'Appart.',
-    active: value === type,
-    params: { type: value },
-    title: value === 'Maison'
-      ? 'Comparer aux maisons vendues — leur prix porte le terrain, qui n’est pas neutralisé'
-      : 'Comparer aux appartements vendus',
-  }));
+  const chips = [];
   for (const value of AVIS_SUBJECT_SURFACES) {
     const active = String(value) === surface;
     let title = `Sujet de ${value} m² — choisit la bande de surface des comparables, `
@@ -350,57 +362,95 @@ export function avisLegendEntries(payload, { pinned = false } = {}) {
   const prix = estimate.prixM2;
   const entries = [];
 
+  // ONE CHANNEL FOR THE ANSWER, and it is what makes the block fit.
+  //
+  // `_refreshMapLegend` prints a STACKED entry's `blurb` as body text and an
+  // entry that shares a channel's as a tooltip. These four rows carry the
+  // honest caveats — a dispersion is not an error bar, a euro total is not a
+  // price anyone paid, an interval on the median says nothing about where one
+  // flat sits — and as body text they measured **828 px in a 216 px rail**
+  // with the price ramp above them: three and a half screens of prose for a
+  // key whose whole job is to be readable without being opened.
+  //
+  // Nothing is dropped. The pointer still reaches every sentence, `avisCard`
+  // prints all of them in full for the reader who clicks the estimate, and
+  // the LABELS keep the arithmetic that must never be mis-stated — which is
+  // why the band's is in €/m² and not in euros.
+  const ANSWER = 'Ce qu’il vaut';
   if (estimate.basis === 'comparables') {
     entries.push({
       label: `${subjectLabel(payload.subject)} — ${euros(estimate.valeur?.median)}`,
       color: null,
+      channel: ANSWER,
       count: estimate.count,
-      blurb: `Médiane de ${estimate.count} ventes comparables, ${eurosPerM2(prix.median)}, `
-        + `retenues sur ${estimate.rung?.label}. Le compte est le nombre de ventes derrière `
-        + 'le chiffre, pas le nombre de logements du quartier.',
+      blurb: `Médiane de ${estimate.count} ventes comparables à ${eurosPerM2(prix.median)}, `
+        + `retenues sur ${estimate.rung?.label}`
+        + `${avisYearsLabel(payload.years) ? `, ${avisYearsLabel(payload.years)}` : ''}. `
+        + 'Le compte est le nombre de ventes derrière le chiffre, pas le nombre de logements '
+        + 'du quartier.',
     });
   } else {
     entries.push({
       label: `${subjectLabel(payload.subject)} — pas de valeur publiée`,
       color: null,
+      // NOT in the channel: a refusal is the one line of this block a reader
+      // must be able to read without a pointer, because it is the answer.
       count: estimate.count || 0,
       blurb: avisRefusalText(payload) || '',
     });
   }
 
   if (prix && Number.isFinite(prix.p25) && Number.isFinite(prix.p75)) {
+    // TWO ROWS BECAME ONE, AND THE LABEL KEPT THE €/m². The band in €/m² and
+    // the same band multiplied by the subject's surface were two full entries
+    // with a paragraph each; they are one fact in two units. Which unit goes
+    // in the LABEL is not a layout choice, it is A1: the claim « half the
+    // comparable sales landed in this band » is only ever true of the price
+    // per square metre, because the comparables do not all have the subject's
+    // surface. So the €/m² carries the claim, and the euro total — the number
+    // the reader actually came for — sits in the sentence under it, with the
+    // caveat that belongs to it and cannot be separated from it.
     entries.push({
       label: `fourchette ${eurosPerM2(prix.p25)} à ${eurosPerM2(prix.p75)}`,
       color: null,
-      blurb: 'La moitié des ventes comparables ont changé de main dans cette bande de prix au m². '
-        + 'Elle ne rétrécit pas quand les données s’accumulent : ce n’est pas une barre d’erreur, '
-        + 'c’est la dispersion du marché. Où se situe CE bien-là dedans — étage, état, vue, '
-        + 'exposition — le registre ne le dit pas, et la fourchette ne le borne pas non plus : '
-        + 'elle décrit les ventes comparables, pas ce logement.',
-    });
-    entries.push({
-      label: `soit ${euros(estimate.valeur?.p25)} à ${euros(estimate.valeur?.p75)} pour `
-        + `${payload.subject?.surfaceM2} m²`,
-      color: null,
-      blurb: 'La bande au m² multipliée par la surface du sujet. Ce ne sont PAS les prix des '
-        + 'ventes comparables : elles n’ont pas toutes la surface du sujet, et leurs totaux à '
-        + 'elles sont ailleurs. C’est ce que vaudrait, aux prix du m² observés, un bien de '
-        + 'cette taille.',
+      channel: ANSWER,
+      blurb: 'La moitié des ventes comparables ont changé de main dans cette bande de prix au '
+        + `m². Aux mêmes prix, ${subjectLabel(payload.subject).toLowerCase()} vaudrait `
+        + `${euros(estimate.valeur?.p25)} à ${euros(estimate.valeur?.p75)} — ce ne sont PAS les `
+        + 'prix des ventes comparables, qui n’ont pas toutes cette surface. Et ce n’est pas une '
+        + 'barre d’erreur qui rétrécit quand les données s’accumulent : c’est la dispersion du '
+        + 'marché. Où se situe CE bien-là dedans — étage, état, vue, exposition — le registre '
+        + 'ne le dit pas, et la fourchette ne le borne pas non plus.',
     });
   }
   if (prix?.ci90 && prix.ciDeviationPct) {
     entries.push({
       label: `milieu connu à ${deviationText(prix.ciDeviationPct)}`,
       color: null,
+      channel: ANSWER,
       blurb: `Intervalle sur la médiane, ${eurosPerM2(prix.ci90.lo)} à `
         + `${eurosPerM2(prix.ci90.hi)}, couverture ${Math.round(prix.ci90.coverage * 100)} %. `
         + 'Il dit à quel point le MILIEU de la fourchette est fermement placé, pas où le bien '
-        + 'se situe dedans — ce sont deux incertitudes différentes et elles ne se mélangent pas. '
-        + 'Il est exact pour un tirage INDÉPENDANT du marché local : « sans hypothèse de loi » '
-        + 'lève une hypothèse sur la forme de la distribution, pas sur la façon dont les ventes '
-        + 'sont arrivées. Et l’échelon retenu a été choisi sur ces mêmes prix, ce qui ne peut '
-        + 'que baisser la couverture réelle — mesuré à 91,9–92,8 % sur les lois de prix de '
+        + 'se situe dedans : deux incertitudes différentes, qui ne se mélangent pas. Exact pour '
+        + 'un tirage INDÉPENDANT du marché local ; et l’échelon retenu ayant été choisi sur ces '
+        + 'mêmes prix, cela ne peut que baisser la couverture réelle — mesuré à 91,9–92,8 % sur '
         + 'quatre communes réelles.',
+    });
+  }
+
+  // THE MARKET'S OWN DIRECTION, KEPT VISIBLE. It is one of the four things a
+  // reader opens this layer to find out, and it is measured over the same
+  // editions as everything above it. Measured, never applied: the detail of
+  // why is on the card, not in the key.
+  const drift = payload.drift;
+  if (drift?.basis === 'commune-year' && Number.isFinite(drift.pct)) {
+    entries.push({
+      label: `médian communal ${pct(drift.pct)} (${drift.fromYear} → ${drift.toYear})`,
+      color: null,
+      channel: ANSWER,
+      blurb: 'Mesuré et affiché, jamais appliqué : aucune vente n’est ramenée à l’argent d’une '
+        + 'autre année.'
+        + (drift.loud ? ' Au-delà de 10 %, une comparable de deux ans se lit avec ça en tête.' : ''),
     });
   }
 
@@ -415,102 +465,100 @@ export function avisLegendEntries(payload, { pinned = false } = {}) {
       color: klass.color,
       count: counts.get(klass.id) || 0,
       blurb: klass.blurb,
+      // ONE CHANNEL, SO THEY SIT SIDE BY SIDE. These three are the only
+      // painted classes this layer has, and stacking them under three
+      // paragraphs put the layer's own colours below the fold of the rail.
+      // The caption is what says which population they divide — without it,
+      // three swatches under a €444 000 headline read as classes of the
+      // ESTIMATE rather than of the sales it was built from.
+      channel: 'Les ventes qui le disent',
     });
   }
 
-  const excluded = payload.excluded || {};
-  const exclusions = [
-    ['vefa', 'ventes en l’état futur d’achèvement écartées',
-      'Un logement qui n’existe pas encore : délai de livraison, garantie constructeur et '
-      + 'droits de mutation réduits. Mesuré sur Paris 13e, éditions 2021 à 2025, les VEFA '
-      + 'valorisées se paient 13 077 €/m² contre 9 150 dans l’ancien, soit +43 %.'],
-    ['zeroPrice', 'ventes à un euro écartées',
-      'Le registre publie des logements déclarés à 1 € ; arrondi au m² cela fait 0, qui est un '
-      + 'nombre et franchit tous les garde-fous. 7 à Paris 13e, 6 à Bordeaux, 6 à Lille et 1 à '
-      + 'Aurillac sur les éditions 2023 à 2025.'],
-    ['unplaced', 'ventes comparables sans coordonnée',
-      'Elles ont un prix et pas de position : le registre les publie sans longitude ni '
-      + 'latitude. Aucun rayon ne peut les tester, donc elles ne comptent pas — un vide de la '
-      + 'carte qui n’est pas un vide du marché.'],
-    ['otherType', 'ventes de l’autre type de logement',
-      'Une maison et un appartement ne partagent pas de prix au m². Changer la puce de type '
-      + 'change de population, pas de barème.'],
-    ['notPriceable', 'mutations sans €/m² exploitable',
-      'Vente d’immeuble entier, appartement vendu avec un commerce, échange, adjudication : le '
-      + 'registre ne dit pas comment le prix se répartit. Écartées par `dvfFeed.js` avant '
-      + 'd’arriver ici.'],
-  ];
-  for (const [key, label, blurb] of exclusions) {
-    if (excluded[key] > 0) entries.push({ label, color: null, count: excluded[key], blurb });
-  }
-
-  if (pinned) {
-    entries.push({
-      label: 'point choisi — non transporté par le lien de partage',
-      color: null,
-      blurb: 'L’estimation porte sur un point que vous avez désigné. Le codec du lien de '
-        + 'partage ne prend que des énumérations, et une coordonnée n’en est pas une : un lien '
-        + 'copié maintenant rouvrira la couche sous la CAMÉRA du destinataire, donc sur un autre '
-        + 'bien. Le type et la surface, eux, voyagent.',
-    });
-  }
-
-  if (payload.unavailableYears?.length) {
-    entries.push({
-      label: `millésime(s) ${payload.unavailableYears.join(', ')} non téléchargé(s)`,
-      color: null,
-      count: payload.unavailableYears.length,
-      blurb: 'Ces éditions EXISTENT et ne sont pas arrivées — coupure, 5xx, réponse hors '
-        + 'gabarit. Ce n’est pas « la commune n’a rien publié cette année-là », qui est un 404 '
-        + 'et compte pour zéro vente en toute connaissance de cause. L’échantillon derrière le '
-        + 'chiffre est donc plus mince que la fenêtre annoncée ; la prochaine analyse réessaiera.',
-    });
-  }
-
-  if (payload.truncated) {
-    entries.push({
-      label: `écrêté à ${payload.served} comparables dessinées`,
-      color: null,
-      count: Math.max(0, (estimate.count || 0) - (payload.served || 0)),
-      blurb: 'Les statistiques sont calculées sur TOUTES les comparables retenues ; seules les '
-        + 'plus proches sont dessinées et envoyées. Ce qui manque à l’écran est le bord du '
-        + 'rayon, jamais les moins chères.',
-    });
-  }
-
-  const drift = payload.drift;
-  if (drift?.basis === 'commune-year' && Number.isFinite(drift.pct)) {
-    entries.push({
-      label: `médian communal ${pct(drift.pct)} (${drift.fromYear} → ${drift.toYear})`,
-      color: null,
-      blurb: `Par millésime : ${(drift.perYear || []).map((year) => `${year.year} `
-        + `${year.medianPrixM2 === null ? '—' : eurosPerM2(year.medianPrixM2)} sur `
-        + `${year.comparableCount} vente(s)`).join(', ')}. `
-        + 'Mesuré et affiché, jamais appliqué. Ramener chaque vente dans l’argent du dernier '
-        + 'millésime supposerait un indice communal annuel dont le bruit propre (±7 à ±11 % à '
-        + '30 ventes dans l’année) dépasse la dérive à corriger (2 à 5 % de biais résiduel sur '
-        + 'trois millésimes). On corrigerait plus d’erreur qu’on n’en enlève.'
-        + (drift.loud ? ' Ici la dérive dépasse 10 % : une comparable de deux ans se lit avec ça '
-          + 'en tête.' : ''),
-    });
-  } else if (drift) {
-    // The counts, not a claim about them. `basis: 'none'` has TWO causes — no
-    // edition reaches the floor, or only one does and a trend needs two — and
-    // the row used to assert the first one in both cases.
-    const solid = (drift.perYear || []).filter((year) => year.medianPrixM2 !== null).length;
-    entries.push({
-      label: 'dérive du marché non mesurable ici',
-      color: null,
-      count: solid,
-      blurb: `Il faut deux millésimes d’au moins 30 ventes comparables pour lire une dérive ; `
-        + `cette commune en a ${solid}. Par millésime : `
-        + ((drift.perYear || []).map((year) => `${year.year} ${year.comparableCount} vente(s)`
-          + `${year.medianPrixM2 === null ? '' : ` (${eurosPerM2(year.medianPrixM2)})`}`)
-          .join(', ') || 'aucun')
-        + '. Une médiane annuelle sous ce seuil serait une rumeur, donc elle n’est pas publiée.',
-    });
-  }
   return entries;
+}
+
+/**
+ * The block's own provenance line, above the classes it frames.
+ *
+ * WHAT WAS MEASURED, WHERE, AND OVER WHAT. Those three moved out of the
+ * headline entry's paragraph, where they were competing with the number the
+ * reader came for. Up here they frame every row under them at once, which is
+ * what this slot is for — and they are the difference between a figure from
+ * the block next door and the same figure from the whole commune.
+ *
+ * @param {?object} payload
+ * @returns {string}
+ */
+export function avisLegendMethod(payload) {
+  const estimate = payload?.estimate || {};
+  return [
+    'Estimation GEV sur comparables DVF',
+    estimate.rung?.label || null,
+    avisYearsLabel(payload?.years),
+  ].filter(Boolean).join(' · ');
+}
+
+/**
+ * The A5 line: what the estimate refused, dropped or could not carry.
+ *
+ * NINE STACKED ENTRIES BECAME ONE SENTENCE. Every exclusion the projection
+ * counts used to be a legend row with a paragraph — the VEFA premium, the
+ * €1 sales, the comparables with no coordinate, the other dwelling type, the
+ * unpriceable mutations, a clipped draw, a missing edition, a chosen point
+ * that no share link carries. All true, all still counted, and together they
+ * were three times the height of the answer they qualify.
+ *
+ * They belong on one line for the same reason `dvfLegendDisclosure` does:
+ * A5 asks that clipping be DECLARED, and a declaration a reader scrolls past
+ * to reach the colours is not read. What each one MEANS stays where a reader
+ * asks for it — on the card, which is `avisCard`'s job.
+ *
+ * @param {?object} payload
+ * @param {{pinned?: boolean}} [options]
+ * @returns {string}
+ */
+export function avisLegendDisclosure(payload, { pinned = false } = {}) {
+  if (!payload) return '';
+  const estimate = payload.estimate || {};
+  const excluded = payload.excluded || {};
+  const parts = [];
+
+  const dropped = [
+    ['vefa', 'en VEFA'],
+    ['zeroPrice', 'à un euro'],
+    ['unplaced', 'sans coordonnée'],
+    ['otherType', 'de l’autre type de logement'],
+    ['notPriceable', 'sans €/m² exploitable'],
+  ].filter(([key]) => excluded[key] > 0);
+  if (dropped.length) {
+    parts.push(`Écartées : ${dropped.map(([key, label]) => `${excluded[key]} ${label}`).join(', ')}`);
+  }
+  if (payload.truncated) {
+    parts.push(`${payload.served} comparables dessinées sur ${estimate.count} retenues — `
+      + 'les statistiques portent sur toutes');
+  }
+  if (payload.unavailableYears?.length) {
+    parts.push(`millésime(s) ${payload.unavailableYears.join(', ')} non téléchargé(s) — ces `
+      + 'éditions EXISTENT et ne sont pas arrivées : l’échantillon est plus mince que la '
+      + 'fenêtre annoncée');
+  }
+  // A4: this silence has a cause, and the cause is the sample, not the market.
+  // It reports the COUNTS rather than asserting something about them — there
+  // are two ways to fail the threshold and the row used to claim the first one
+  // in both cases.
+  const drift = payload.drift;
+  if (drift && drift.basis !== 'commune-year') {
+    const solid = (drift.perYear || []).filter((year) => year.medianPrixM2 !== null).length;
+    parts.push(`dérive du marché non mesurable ici — il faut deux millésimes d’au moins `
+      + `30 ventes comparables, cette commune en a ${solid} `
+      + `(${(drift.perYear || []).map((year) => `${year.year} ${year.comparableCount} vente(s)`)
+        .join(', ') || 'aucun millésime'})`);
+  }
+  if (pinned) {
+    parts.push('le point choisi ne voyage PAS dans le lien de partage, qui rouvre sous la caméra');
+  }
+  return parts.length ? `${parts.join(' · ')}.` : '';
 }
 
 /* ── the layer ────────────────────────────────────────────────────────────── */
@@ -578,6 +626,8 @@ const base = createAddressScanLayer({
     return {
       chips: avisChips(runtime, summary),
       legend: payload ? avisLegendEntries(payload) : [],
+      legendNote: payload ? avisLegendMethod(payload) : undefined,
+      note: payload ? avisLegendDisclosure(payload) : undefined,
     };
   },
 
@@ -879,6 +929,12 @@ const avisValeurLayer = {
       legend: controls.legend?.length
         ? avisLegendEntries(_lastPayload, { pinned })
         : controls.legend,
+      // The pin is one of the things the disclosure has to say — a chosen
+      // point is NOT carried by a share link — so it is rebuilt here too,
+      // where the pin can be read.
+      note: controls.legend?.length
+        ? avisLegendDisclosure(_lastPayload, { pinned })
+        : controls.note,
     };
   },
 

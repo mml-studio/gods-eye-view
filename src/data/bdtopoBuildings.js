@@ -1392,7 +1392,14 @@ const bdtopoBuildingsLayer = {
       // colour that is on the map, and the identity join and the geometric one
       // paint the same colours. It goes on the status line and into
       // `getStats()` instead.
-      return { chips: [], legend };
+      //
+      // The theme's OWN sentence is forwarded, though, and it is not optional
+      // for a ramp that is a ratio: DVF's swatches say `5 164 €/m² et plus`,
+      // and without the line that names what they are divided by — the commune
+      // median, over which editions, by which frozen rule — the volumes are
+      // painted in a scale the reader cannot resolve. The borrowing row cannot
+      // reconstruct it, so the owner ships it with the swatches.
+      return { chips: [], legend, legendNote: _themePaint.legendNote || undefined };
     }
     for (const tier of _payload?.tiers || BDTOPO_USAGE_TIERS.map((t) => ({ ...t, count: 0 }))) {
       legend.push({

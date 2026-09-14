@@ -180,11 +180,11 @@ export const LAYER_MANIFEST = Object.freeze([
   }),
   Object.freeze({
     id: 'dvf-sales',
-    name: 'Ventes immobilières (DVF)',
+    name: 'Prix de l’immobilier (DVF)',
     icon: '€',
     source: 'DVF — Etalab / DGFiP',
     capabilities: Object.freeze(['destroy', 'getStats', 'setParams', 'getParams']),
-    defaultParams: Object.freeze({  }),
+    defaultParams: Object.freeze({ type: 'tous' }),
     load: () => import('./dvfSales.js').then((module) => module.default),
   }),
   Object.freeze({

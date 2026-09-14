@@ -727,10 +727,17 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   // layer refetches per viewport because no bundle could hold 47 million of
   // them. The cadence facet describes how the app ACQUIRES the data, not how
   // fast the subject changes.
+  // NAMED FOR THE QUESTION, NOT FOR THE FILE. `Immobilier (DVF)` told a reader
+  // who already knew what DVF was that the row was about DVF, and told
+  // everybody else nothing at all — the operator's verdict on 2026-09-14:
+  // « le nom est peu parlant pour un utilisateur qui arrive sur GEV, il va pas
+  // comprendre ». The acronym has not gone anywhere: it is on the line
+  // immediately under the label, where a source belongs, and it is in the
+  // legend's own method line. What the row says is what the row answers.
   Object.freeze({
     id: 'dvf-sales',
     category: 'built-environment',
-    label: 'Immobilier (DVF)',
+    label: 'Prix de l’immobilier',
     kind: 'dataset',
     coverage: 'fr',
     auth: 'none',
@@ -744,7 +751,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   Object.freeze({
     id: 'avis-valeur',
     category: 'built-environment',
-    label: 'Avis de valeur (DVF)',
+    label: 'Estimation d’un bien',
     kind: 'dataset',
     coverage: 'fr',
     auth: 'none',

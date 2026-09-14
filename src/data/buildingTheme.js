@@ -389,6 +389,12 @@ function notify(reason) {
  * @param {(points: Array<object>) => *} theme.reduce N points on one building → one value.
  * @param {(value: *) => ?string} theme.colorFor Value → CSS colour, or null to leave unpainted.
  * @param {Array<object>} [theme.legend] `[{label, color, count?, blurb?}]` (D1).
+ * @param {string} [theme.legendNote] The sentence the swatches cannot carry —
+ *   what they are divided by, over what period, by what rule. A theme whose
+ *   colours are a RATIO owes one: a ratio whose denominator is not written
+ *   down is not a measurement, and the row that borrows the swatches has no
+ *   way to reconstruct it. Forwarded by the geometry owner to its own
+ *   `legendNote` slot.
  * @param {string} [theme.unknownLabel] French, for the "no data" legend row and
  *   the row count — 'sans diagnostic', 'sans mutation depuis 2019'. Default
  *   'sans donnée'.
@@ -430,6 +436,9 @@ export function registerBuildingTheme(theme) {
     reduce: theme.reduce,
     colorFor: theme.colorFor,
     legend,
+    legendNote: typeof theme.legendNote === 'string' && theme.legendNote.trim()
+      ? theme.legendNote.trim()
+      : '',
     legendFor: typeof theme.legendFor === 'function' ? theme.legendFor : null,
     unknownLabel: typeof theme.unknownLabel === 'string' && theme.unknownLabel
       ? theme.unknownLabel
@@ -852,6 +861,7 @@ export function resolveBuildingThemePaint(footprints, theme, options = {}) {
   return {
     themeId: theme.id,
     label: theme.label,
+    legendNote: theme.legendNote || '',
     unknownLabel: theme.unknownLabel || 'sans donnée',
     colorById,
     valueById,

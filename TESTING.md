@@ -110,6 +110,20 @@ settled and not applicable because no Google 3D tileset is active.
   that `get_entity_context` carries the medians the PROXY computed rather than
   an average of the markers on screen. Both endpoints are held still with
   payloads recorded from the live proxy over Place des Grands Hommes.
+- **The « Prix de l'immobilier » row, in the running app:** `npm run qa:dvf-row
+  -- --url http://localhost:5199` flies to rue des Basques in Bayonne — the
+  address the 2026-09-14 rework was reported from — switches the row on and
+  asserts fifteen things a unit test cannot see: that the markers are drawn and
+  the sold PLOTS are washed under them, that the classes read as one
+  distribution bar with the denominator above and the A5 line below, that
+  pressing « Maisons » actually takes the flats off the map (397 → 1) without
+  moving the commune median, and that the key's content stays inside its
+  budget — **828 px was the fault, 475 px is the ceiling.**
+
+  It reads the MODEL, never the pixels: no Cesium entity ever paints in
+  headless Chrome here, so counting entities is the only honest assertion, and
+  `--shots` captures the legend rail alone rather than a viewport that would
+  outlast the protocol timeout under software GL.
 
 ---
 

@@ -247,6 +247,15 @@ const OPTION_GROUPS = Object.freeze({
   // pinned coordinate is not, and a link that carried one would also have to
   // carry the promise that the pin still means the same thing — so a shared
   // link reopens following the camera, on the view its sender was looking at.
+  // WHICH MUTATIONS ARE ON THE MAP. It travels for the same reason the
+  // estimate's subject does: « les appartements autour d'ici » and « tout ce
+  // qui s'est vendu autour d'ici » are two different maps of one doorway, and
+  // a link that dropped the token would reopen the right street showing a
+  // population its sender never looked at. One letter each, frozen from the
+  // first link copied.
+  'dvf-sales': Object.freeze([
+    enumOption('type', 't', 'tous', ['tous', 'Appartement', 'Maison'], { tous: 't', Appartement: 'a', Maison: 'm' }),
+  ]),
   'avis-valeur': Object.freeze([
     enumOption('type', 't', 'Appartement', ['Appartement', 'Maison'], { Appartement: 'a', Maison: 'm' }),
     enumOption('surface', 's', '60', ['30', '60', '100', '150'], { 30: 's', 60: 'm', 100: 'l', 150: 'x' }),

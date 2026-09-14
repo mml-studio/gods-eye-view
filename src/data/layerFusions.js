@@ -146,21 +146,28 @@ export const LAYER_FUSIONS = Object.freeze([
     ]),
   }),
 
-  // ── 2. Immobilier (DVF) ──────────────────────────────────────────────────
+  // ── 2. Prix de l'immobilier ──────────────────────────────────────────────
   // Three rows for one question: "combien vaut ce sol". They read the same
   // register — `avis-valeur` already reuses the DVF silhouette — and the
   // comparables dossier is a tool applied to that same selection.
+  //
+  // THE CHIPS ARE VERBS. `Avis de valeur` is the trade's word for the document
+  // and it named the LAYER rather than what pressing the chip does; beside a
+  // row called « Prix de l'immobilier » a reader had no way to tell that one
+  // of them was about a specific door. The row answers "what does it cost
+  // around here"; the chips say what else you can ask.
   Object.freeze({
     primary: 'dvf-sales',
     companions: Object.freeze([
       Object.freeze({
         id: 'avis-valeur',
-        chip: 'Avis de valeur',
-        title: 'Estimation au point cliqué, calculée sur les mêmes mutations',
+        chip: 'Estimer un bien',
+        title: 'Estimer un logement au point cliqué, sur les mêmes ventes — le type suit la '
+          + 'puce de la ligne, la surface se choisit ici',
       }),
       Object.freeze({
         id: 'comparables-fr',
-        chip: 'Comparables',
+        chip: 'Mes comparables',
         // Opt-in: the dossier is the reader's OWN selection, and an empty
         // dossier switched on by a row toggle draws nothing while costing a
         // lifecycle. It is a tool, and a tool is picked up.
