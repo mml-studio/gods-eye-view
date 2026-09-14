@@ -6,6 +6,51 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-14
 
 ### Changed
+- **Les pastilles des autorisations d'urbanisme flottaient au milieu de nulle
+  part, et elles glissaient sur les toits dès qu'on faisait pivoter la carte.**
+  Mesuré au-dessus de Paris, caméra à 500 m : **les 4 753 pastilles de la couche
+  étaient à 1,0 m d'altitude ellipsoïdale**, c'est-à-dire 76 à 97 m sous le sol
+  que la carte dessinait à cet endroit — et elles n'avaient pas bougé d'un
+  centimètre quinze secondes plus tard.
+
+  Une pastille enterrée est peinte quand même : cette couche désactive le test
+  de profondeur pour qu'un marqueur ne soit pas avalé par le trottoir sur lequel
+  il se tient. Sa position à l'écran devient alors une fonction de la POSE DE LA
+  CAMÉRA. C'est ce que le lecteur voyait : des points rattachés à aucune
+  parcelle, qui se déplacent quand la carte tourne.
+
+  La couche lisait le modèle de terrain, qui répond sur le réseau. Elle posait
+  ses pastilles avant la réponse, prenait `0` pour l'absence de réponse — soit
+  l'ellipsoïde, 44 à 55 m sous la France métropolitaine — et ne réécrivait
+  jamais ces positions. Elle avait pourtant une relance à trois secondes : elle
+  ne reconstruisait que les volumes extrudés.
+
+  Les quatre marques d'une autorisation — la pastille, le volume, la fiche et
+  l'étiquette de repérage — lisent maintenant le même sol : le modèle de terrain
+  quand il a répondu, une sonde du maillage réellement dessiné en attendant,
+  jamais `0`. Et une passe à délai doublant replace ce qui est déjà à l'écran
+  quand un meilleur sol arrive. Au-dessus de Lyon après correctif : **0 pastille
+  sur 1 779 à l'ellipsoïde**, 197 à 438 m, le relief lyonnais.
+
+  Le harnais qui le prouve refuse le proxy d'altitude, parce qu'un harnais qui
+  le laisse répondre passe sur le code cassé — vérifié, mêmes chiffres au
+  dixième sur les deux versions. Sans lui : 9 pastilles sur 9 à 1,0 m, 71,9 m
+  d'écart médian au sol et jusqu'à 166 px de glissement ; avec le correctif,
+  1,3 m et 21 px (`npm run qa:sitadel-floor`).
+
+  **Et un sol mesuré n'est pas forcément un sol.** Toujours au-dessus de
+  Nantes, le maillage se déclarant chargé : **81 sondes sur une grille d'1,3 km
+  ont toutes répondu entre −424,9 m et −360,2 m**, en une rampe régulière à
+  5 % — une tuile à l'échelle de la planète qui répond pour une ville. Ces
+  valeurs passent la bande de plausibilité mondiale (−500 m, le rivage de la
+  mer Morte), donc elles étaient retenues, et le rayon d'emprunt en prêtait une
+  à toute la commune : 9 pastilles sur 9 à 200–430 m **sous** l'ellipsoïde,
+  soit pire que le bug corrigé ci-dessus. Une couche qui ne répond que pour des
+  communes françaises sait que son sol tient entre **−100 m et 5 000 m** (le
+  rivage antillais sous un géoïde à −42 m, le mont Blanc sous un géoïde à
+  +52 m). Hors de cette bande, la lecture est refusée, enregistrée comme telle,
+  et **redemandée à chaque passe** au lieu d'être gravée : une surface qui a
+  menti n'a pas le droit de le faire une fois pour toutes.
 - **L'icône d'une installation classée mesurait 16 pixels, et la commune
   n'était qu'un trait.** Signalé sur la couche Risques (Géorisques) au-dessus
   de Bassussarry, à 5 859 m : « elle est beaucoup trop petite, quasiment

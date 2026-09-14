@@ -159,12 +159,21 @@
  *
  * A `GroundPrimitive` is clamped by the renderer; an extruded polygon is not —
  * it is placed at absolute ellipsoidal heights and it has to be told where the
- * ground is. That comes from `cachedGroundFloor`, the same coarse (~111 m) grid
- * the dots already stand on, read at the parcel's own anchor. When the cell is
- * still cold the parcel is left FLAT rather than extruded from the ellipsoid,
- * which in metropolitan France is 44–55 m underground and would draw a
- * 27-dwelling permit as a hole. One retry three seconds later, once per
+ * ground is. That comes from `sitadelFloorM`, read at the parcel's own anchor.
+ * When no source can answer the parcel is left FLAT rather than extruded from
+ * the ellipsoid, which in metropolitan France is 44–55 m underground and would
+ * draw a 27-dwelling permit as a hole. One retry three seconds later, once per
  * commune, in the shape `bdtopoBuildings.js` already uses for the same problem.
+ *
+ * THE DOTS NEEDED THE SAME DISCIPLINE AND DID NOT HAVE IT (2026-09-14). The
+ * paragraph above used to say the dots "already stand on" that grid. They did
+ * not: they took `0` for a cold cell — the ellipsoid — and, unlike a prism,
+ * nothing ever moved them afterwards. Measured over Paris, all 4 753 of them
+ * sat at ellipsoidal height 1.0 m for a whole session while the drawn mesh
+ * under them read 76.7–96.9 m, and because they paint through depth they slid
+ * across the rooftops with every camera move. `sitadelFloorM` is the floor all
+ * four marks now read — dot, prism, card, DETECT callout — and `reanchorPoints`
+ * is the pass that moves a dot already on screen once its floor lands.
  *
  * ── What changes under the photorealistic stack ─────────────────────────────
  *
@@ -262,6 +271,11 @@ import {
   unregisterSpriteCollection,
 } from './spriteOrder.js';
 import { cachedGroundFloor, warmGroundFloor } from './groundFloor.js';
+import {
+  provisionalFloor,
+  provisionalFloorRetryDelayMs,
+  sampleProvisionalFloors,
+} from './provisionalFloor.js';
 import { cameraViewBox } from './viewGate.js';
 import {
   clearOverlaySource,
@@ -420,8 +434,54 @@ const CAMERA_DEBOUNCE_MS = 450;
 
 /** Card anchor lift above the ground floor, in metres. */
 const CARD_LIFT_M = 4;
+/** Dot lift above the ground floor, in metres. */
+const POINT_LIFT_M = 1;
 /** Ground-floor warm-up budget. Paris draws 4 753 dots; the floor grid is coarse. */
 const FLOOR_WARM_LIMIT = 600;
+/**
+ * How far a cell the probe budget did not reach may borrow a sampled floor
+ * from, in km.
+ *
+ * One commune, and the largest this layer answers with is 17.85 km across
+ * (Paris, measured from its own Etalab parcel file). A borrowed floor inside
+ * that radius is a reading from the same city basin; `provisionalFloor.js`'s
+ * own 25 km default would reach into the next one. It is always a stand-in:
+ * the cell is re-probed as soon as its tiles drain, and the DEM overrides it
+ * outright when it lands.
+ */
+const FLOOR_FILL_KM = 18;
+/**
+ * Metres a floor has to move before a dot is rewritten.
+ *
+ * A quarter of a metre — `renderedSurface.js`'s own seating epsilon. Below it
+ * the write is invisible at any camera this layer draws at, and the comparison
+ * runs over every dot in the commune on every deferred pass.
+ */
+const FLOOR_EPSILON_M = 0.25;
+/**
+ * Ellipsoidal band a floor has to fall in to be believed, because this layer
+ * only ever answers for FRENCH ground.
+ *
+ * −100 m to 5 000 m. The low bound clears every French sea-level shore
+ * including the Antilles, where the geoid runs about −42 m, and the Dunkerque
+ * polders at −4 m under a +47 m geoid; the high bound clears Mont Blanc
+ * (4 809 m under a ~+52 m geoid).
+ *
+ * It exists because the WORLD band `provisionalFloor.js` guards with (−500 m,
+ * the Dead Sea shore) is too wide to catch the failure that actually happens.
+ * Measured over Nantes on 2026-09-14, with the tileset reporting
+ * `tilesLoaded: true`: 81 probes on a 1,3 km grid ALL answered between
+ * −424.9 m and −360.2 m in a smooth 5 % ramp — a planet-scale root tile
+ * answering for a city. Every reading passed the world band, every one was
+ * latched, one of them was lent to the whole commune by the fill radius, and
+ * the layer drew 9 dots on 9 at 200–430 m UNDER the ellipsoid. That is worse
+ * than the bug this file set out to fix.
+ *
+ * A reading outside this band is a malfunction, not a measurement: it is
+ * refused, recorded as a refusal, and re-probed on every later pass.
+ */
+export const SITADEL_FLOOR_MIN_M = -100;
+export const SITADEL_FLOOR_MAX_M = 5_000;
 
 const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
@@ -451,6 +511,9 @@ let _prisms = null;
 let _prismTally = null;
 let _coldFloorTimer = null;
 let _coldFloorKey = null;
+/** Bounded ladder that re-seats the dots as the surface under them arrives. */
+let _floorRetryTimer = null;
+let _floorRetries = 0;
 /** @type {?Cesium.GroundPolylinePrimitive} */
 let _edges = null;
 /** @type {?Cesium.GroundPolylinePrimitive} */
@@ -657,8 +720,53 @@ export function sitadelPrismClipped(permit) {
 }
 
 /**
- * The ellipsoidal floor a parcel's prism stands on, or null when the shared
- * grid has not resolved that cell yet.
+ * The ellipsoidal floor under one coordinate: the shared DEM cell when it is
+ * warm, the PROVISIONAL rendered-surface read when it is not, null when neither
+ * has an answer.
+ *
+ * WHY THE SECOND SOURCE EXISTS — measured in this app, Paris, 2026-09-14,
+ * nadir-ish camera at 500 m. The DEM answers over the NETWORK: `drawPack`
+ * places its dots synchronously, `warmGroundFloor` posts the miss, and the
+ * answer lands a second later — after every dot has already been built. The
+ * dots were never moved again, so all **4 753 of them sat at ellipsoidal
+ * height 1.0 m for the whole session**, while `scene.sampleHeight` read the
+ * drawn Paris mesh under those same coordinates at **76.7 to 96.9 m**.
+ *
+ * A dot 80 m under the city is still PAINTED, because these draw with
+ * `disableDepthTestDistance: Infinity` so a marker is not swallowed by the kerb
+ * it stands on. Its screen position is then a function of the CAMERA POSE:
+ * rotate or pan and the whole layer slides across the rooftops, landing
+ * anywhere but on its own parcel. That is the reported "the points are in the
+ * middle of nowhere and they move when I turn the map", and it is the same
+ * defect `sharedMobilityFrance.js` and `provisionalFloor.js` already carry the
+ * argument for.
+ *
+ * Precedence is DEM first because it is the measured survey and the provisional
+ * store steps aside for it by design (`collectProvisionalCells` drops a cell
+ * the moment its DEM floor lands).
+ *
+ * @param {number} lat
+ * @param {number} lon
+ * @returns {?number} Ellipsoidal floor in metres, or null.
+ */
+export function sitadelFloorM(lat, lon) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const floor = cachedGroundFloor(lat, lon);
+  if (frenchFloor(floor) !== null) return floor;
+  return frenchFloor(provisionalFloor(lat, lon));
+}
+
+/** A floor, or null when it is not a height French ground can have. Applied to
+ *  BOTH sources: a DEM answer outside the band is as broken as a mesh one. */
+function frenchFloor(value) {
+  if (!Number.isFinite(value)) return null;
+  if (value < SITADEL_FLOOR_MIN_M || value > SITADEL_FLOOR_MAX_M) return null;
+  return value;
+}
+
+/**
+ * The ellipsoidal floor a parcel's prism stands on, or null when neither the
+ * shared grid nor the drawn surface has resolved that cell yet.
  *
  * Read at the parcel's OWN anchor rather than at the permit's — a permit naming
  * three plots across a slope would otherwise sink two of them. Null is a real
@@ -672,8 +780,7 @@ export function sitadelParcelFloorM(parcel) {
   if (!Array.isArray(point) || !Number.isFinite(point[0]) || !Number.isFinite(point[1])) {
     return null;
   }
-  const floor = cachedGroundFloor(point[1], point[0]);
-  return Number.isFinite(floor) ? floor : null;
+  return sitadelFloorM(point[1], point[0]);
 }
 
 /**
@@ -1036,6 +1143,147 @@ function cssColor(css) {
 }
 
 /**
+ * The floor one permit's mark stands on, remembering the last one it had.
+ *
+ * The memo is what keeps a permit's three marks — the dot, the selected card
+ * and the DETECT callout — in ONE place. They are built at different moments
+ * from the same shared stores, and those stores can stop answering for a cell
+ * between two of them: `provisionalFloor.js` evicts its oldest entries past
+ * 4 000, which a commune the size of Paris can reach on its own. Without the
+ * memo the callout for a seated dot would be rebuilt at the ellipsoid and the
+ * label would hang 80 m under its own mark.
+ * @param {object} record
+ * @returns {?number}
+ */
+function recordFloorM(record) {
+  const floor = sitadelFloorM(record.at.lat, record.at.lon);
+  if (floor !== null) {
+    record.floorM = floor;
+    return floor;
+  }
+  return Number.isFinite(record.floorM) ? record.floorM : null;
+}
+
+/**
+ * Where one permit's mark belongs: its own coordinate, on the floor under it.
+ *
+ * `?? 0` is the last resort and not a floor — nothing has answered yet and the
+ * mark has to be somewhere. `reanchorPoints` is what makes that state
+ * temporary.
+ * @param {object} record
+ * @param {number} liftM
+ * @returns {Cesium.Cartesian3}
+ */
+function recordPosition(record, liftM) {
+  return Cesium.Cartesian3.fromDegrees(
+    record.at.lon, record.at.lat, (recordFloorM(record) ?? 0) + liftM,
+  );
+}
+
+/**
+ * Move the dots already on screen onto the floor that has since arrived.
+ *
+ * The half of the fix that the sampling alone does not buy. The DEM answers
+ * over the network and the photoreal tiles stream, so the floor under a dot is
+ * routinely unknown at the instant `drawPack` builds it and known a second
+ * later — and a `PointPrimitive` built at the ellipsoid stays at the ellipsoid
+ * until something writes its `position` again. Nothing did: the layer's only
+ * deferred pass, `scheduleColdFloorRebuild`, rebuilds the PRISMS.
+ *
+ * Writes only when the floor actually moves the dot, so a settled commune
+ * costs a comparison per dot and no render at all.
+ *
+ * A dot whose floor is UNKNOWN is left exactly where it is. That is not
+ * defensive tidiness: `provisionalFloor.js` evicts its oldest cells past 4 000
+ * — a commune the size of Paris plus the layers sharing the store can reach
+ * that — and re-deriving a position from a missing answer would push a
+ * correctly seated dot back down to the ellipsoid. Nothing may overwrite a
+ * measurement with a silence.
+ * @returns {number} Dots moved.
+ */
+function reanchorPoints() {
+  if (!_points || _points.isDestroyed?.()) return 0;
+  let moved = 0;
+  for (const record of _records.values()) {
+    const point = record.point;
+    if (!point || point.isDestroyed?.() || !point.position) continue;
+    const floor = recordFloorM(record);
+    if (floor === null) continue;
+    const next = Cesium.Cartesian3.fromDegrees(
+      record.at.lon, record.at.lat, floor + POINT_LIFT_M,
+    );
+    if (Cesium.Cartesian3.equalsEpsilon(point.position, next, 0, FLOOR_EPSILON_M)) continue;
+    point.position = next;
+    moved += 1;
+  }
+  return moved;
+}
+
+/** True while any drawn permit is still standing on no floor at all. */
+function hasColdFloor() {
+  for (const record of _records.values()) {
+    if (recordFloorM(record) === null) return true;
+  }
+  return false;
+}
+
+/** One deferred floor pass: sample again, re-seat, decide whether to return. */
+function refreshFloors() {
+  if (!_enabled || !_viewer || !_records.size) return;
+  const anchors = [];
+  for (const record of _records.values()) anchors.push(record.at);
+  const { pending } = sampleProvisionalFloors(_viewer.scene, anchors, {
+    fillKm: FLOOR_FILL_KM, minM: SITADEL_FLOOR_MIN_M, maxM: SITADEL_FLOOR_MAX_M,
+  });
+  const moved = reanchorPoints();
+  if (moved) {
+    // The card reads the same floor, so a dot that moved took its card with it
+    // — republish rather than leave the two apart.
+    const entry = _selectedId && _records.has(_selectedId)
+      ? createSitadelSelectedOverlayEntry(_records.get(_selectedId), _payload)
+      : null;
+    if (entry) {
+      _overlayHost.setEntries(
+        SITADEL_FR_OVERLAY_SOURCE_ID, [entry], SITADEL_FR_OVERLAY_SOURCE_OPTIONS,
+      );
+    }
+    governorRequestRender('sitadel-fr-reanchor');
+  }
+  if (pending || hasColdFloor()) scheduleFloorReanchor();
+}
+
+/**
+ * Come back for the dots the surface could not place yet.
+ *
+ * A probe misses while the tiles under a commune are still streaming, and the
+ * DEM is a network round trip — the ordinary state for the second or two after
+ * arriving somewhere. A parked camera produces no rebuild, so without this
+ * nothing would ever ask again. Bounded on purpose: five doubling wakeups
+ * (~37 s in total, `provisionalFloor.js`), refilled whenever the commune
+ * changes, so ground with no photoreal coverage cannot undo the render
+ * governor's idle parking.
+ */
+function scheduleFloorReanchor() {
+  if (_floorRetryTimer != null) return;
+  const delay = provisionalFloorRetryDelayMs(_floorRetries);
+  if (delay == null) return; // budget spent — wait for the camera to move
+  _floorRetries += 1;
+  _floorRetryTimer = setTimeout(() => {
+    _floorRetryTimer = null;
+    refreshFloors();
+  }, delay);
+}
+
+/** Drop a pending re-anchor and refill its budget (a new commune, a new one). */
+function resetFloorRetries() {
+  if (_floorRetryTimer != null) {
+    clearTimeout(_floorRetryTimer);
+    _floorRetryTimer = null;
+  }
+  _floorRetries = 0;
+}
+
+/**
  * Rebuild every record and every primitive from the pack in hand.
  *
  * The selection is dropped rather than restored, unlike `fraicheur-fr`'s
@@ -1047,19 +1295,27 @@ function cssColor(css) {
 function drawPack(payload) {
   clearSelection();
   clearColdFloorRetry();
+  resetFloorRetries();
   _records = new Map();
   _owners = sitadelParcelOwners(payload);
   _points?.removeAll();
 
+  const records = sitadelPermitRecords(payload);
+  // Ground the cold cells against the surface actually being DRAWN before a
+  // single position below is taken. Synchronous, no network of ours, ≤40 probes
+  // and nothing at all above 25 km of camera (`provisionalFloor.js`). Without
+  // it every dot here is built on the ellipsoid and stays there — see
+  // `sitadelFloorM`.
+  sampleProvisionalFloors(_viewer?.scene, records.map((record) => record.at), {
+    fillKm: FLOOR_FILL_KM, minM: SITADEL_FLOOR_MIN_M, maxM: SITADEL_FLOOR_MAX_M,
+  });
+
   const warm = [];
-  for (const record of sitadelPermitRecords(payload)) {
+  for (const record of records) {
     if (_points) {
-      const floor = cachedGroundFloor(record.at.lat, record.at.lon);
       record.point = _points.add({
         id: record.id,
-        position: Cesium.Cartesian3.fromDegrees(
-          record.at.lon, record.at.lat, (Number.isFinite(floor) ? floor : 0) + 1,
-        ),
+        position: recordPosition(record, POINT_LIFT_M),
         color: cssColor(record.color),
         pixelSize: record.basePixelSize,
         outlineColor: POINT_OUTLINE_COLOR,
@@ -1073,6 +1329,9 @@ function drawPack(payload) {
   }
   drawSurfaces(payload);
   if (warm.length) warmGroundFloor(warm);
+  // The DEM is still in flight and the tiles under half the commune have not
+  // streamed. Come back for both.
+  scheduleFloorReanchor();
   governorRequestRender('sitadel-fr-draw');
 }
 
@@ -1177,10 +1436,7 @@ export function buildSitadelSelectionLabel(record, payload = _payload) {
 /** Protected selected-permit entry for the shared overlay host. */
 export function createSitadelSelectedOverlayEntry(record, payload = _payload) {
   if (!record?.id || !record?.at) return null;
-  const floor = cachedGroundFloor(record.at.lat, record.at.lon);
-  const position = Cesium.Cartesian3.fromDegrees(
-    record.at.lon, record.at.lat, (Number.isFinite(floor) ? floor : 0) + CARD_LIFT_M,
-  );
+  const position = recordPosition(record, CARD_LIFT_M);
   const text = buildSitadelSelectionLabel(record, payload);
   if (!text) return null;
   const [title, ...details] = text.split('\n');
@@ -1406,6 +1662,7 @@ async function load({ force = false } = {}) {
       _owners = new Map();
       _points?.removeAll();
       clearColdFloorRetry();
+      resetFloorRetries();
       clearSurfaces();
       governorRequestRender('sitadel-fr-no-commune');
       _status = 'no-commune';
@@ -1445,6 +1702,14 @@ async function load({ force = false } = {}) {
 
 function scheduleLoad() {
   clearTimeout(_debounceTimer);
+  // A camera that came to rest is the one event that can improve a floor
+  // without a new pack: different tiles have streamed, and the cells the probe
+  // budget could not reach last time are now the nearest ones. Refill the
+  // ladder so a commune that exhausted its five wakeups over blank ground gets
+  // another go the moment the reader moves. Cheap when there is nothing to do —
+  // `refreshFloors` writes nothing and requests no render.
+  resetFloorRetries();
+  scheduleFloorReanchor();
   _debounceTimer = setTimeout(() => { void load(); }, CAMERA_DEBOUNCE_MS);
 }
 
@@ -1487,11 +1752,8 @@ function collectDetectableObjects(options = {}) {
   const result = [];
   for (let i = start; i < ordered.length; i += stride) {
     const record = ordered[i];
-    const floor = cachedGroundFloor(record.at.lat, record.at.lon);
     result.push({
-      position: Cesium.Cartesian3.fromDegrees(
-        record.at.lon, record.at.lat, (Number.isFinite(floor) ? floor : 0) + CARD_LIFT_M,
-      ),
+      position: recordPosition(record, CARD_LIFT_M),
       sourceId: record.id,
       id: sitadelDetectLabel(record),
       type: sitadelDetectType(record),
@@ -1702,6 +1964,7 @@ const sitadelFranceLayer = {
     _prismTally = null;
     _coldFloorKey = null;
     clearColdFloorRetry();
+    resetFloorRetries();
     _classificationType = powerClassificationTypeForScene(viewer?.scene);
 
     _points = new Cesium.PointPrimitiveCollection({ blendOption: Cesium.BlendOption.TRANSLUCENT });
@@ -1762,6 +2025,7 @@ const sitadelFranceLayer = {
     if (_edges) _edges.show = false;
     if (_outline) _outline.show = false;
     clearColdFloorRetry();
+    resetFloorRetries();
     _overlayHost.setVisible(SITADEL_FR_OVERLAY_SOURCE_ID, false);
     if (_clickHandler) {
       _clickHandler.destroy();
@@ -1914,6 +2178,7 @@ const sitadelFranceLayer = {
       _moveEndRemover = null;
     }
     clearColdFloorRetry();
+    resetFloorRetries();
     clearSurfaces();
     if (_points) {
       unregisterSpriteCollection(SITADEL_FR_LAYER_ID, _points);
@@ -1941,10 +2206,13 @@ const sitadelFranceLayer = {
  */
 export function _setSitadelStateForTest({
   viewer, payload = null, overlayHost, enabled = true, status = 'ready',
-  loading = false, fetchImpl, focusKey = null, error = null,
+  loading = false, fetchImpl, focusKey = null, error = null, points,
 } = {}) {
   _fetchImpl = fetchImpl || null;
   _viewer = viewer || null;
+  // The dot collection is OPT-IN: most tests seed plain-object dots below and
+  // never draw. A test that hands one over is asking for the real `drawPack`.
+  _points = points || null;
   _overlayHost = overlayHost || DEFAULT_OVERLAY_HOST;
   _payload = payload;
   _owners = sitadelParcelOwners(payload);
@@ -1979,6 +2247,7 @@ export function _selectSitadelForTest(id) {
 export function _clearSitadelSelectionForTest() {
   clearSelection();
   clearColdFloorRetry();
+  resetFloorRetries();
   _prismTally = null;
   _coldFloorKey = null;
   _fetchImpl = null;
@@ -1994,6 +2263,7 @@ export function _clearSitadelSelectionForTest() {
   _focusKey = null;
   _communeName = null;
   _groundLinesSupported = null;
+  _points = null;
   _viewer = null;
 }
 
@@ -2051,6 +2321,43 @@ export function _drawSitadelSurfacesForTest(payload = _payload) {
   return {
     tally: _prismTally, prisms: _prisms, fills: _fills, edges: _edges, outline: _outline,
   };
+}
+
+/**
+ * Drive the real `drawPack` against a supplied `PointPrimitiveCollection`.
+ *
+ * The seam the FLOOR tests need: `_setSitadelStateForTest` seeds plain-object
+ * dots, which cannot answer "where is this mark in the world". This runs the
+ * production path — the provisional sampling, the anchor, the ladder — and
+ * hands back the collection that was actually written to.
+ * @param {?object} payload
+ * @returns {?Cesium.PointPrimitiveCollection}
+ */
+export function _drawSitadelPackForTest(payload = _payload) {
+  _payload = payload;
+  _owners = sitadelParcelOwners(payload);
+  drawPack(payload);
+  return _points;
+}
+
+/**
+ * Run one deferred floor pass now, without waiting out the ladder's timer.
+ *
+ * Disarms first, exactly as the timer's own callback does, so a test can read
+ * `_sitadelFloorReanchorPendingForTest` afterwards and learn whether THIS pass
+ * asked for another one rather than seeing the wakeup that scheduled it.
+ */
+export function _sitadelRefreshFloorsForTest() {
+  if (_floorRetryTimer != null) {
+    clearTimeout(_floorRetryTimer);
+    _floorRetryTimer = null;
+  }
+  refreshFloors();
+}
+
+/** Whether a re-anchor is armed, without exposing the timer. */
+export function _sitadelFloorReanchorPendingForTest() {
+  return Boolean(_floorRetryTimer);
 }
 
 /** The height bookkeeping of the last draw. */
