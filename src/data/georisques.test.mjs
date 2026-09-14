@@ -230,3 +230,32 @@ test('a hazard checked and absent lands in the tail, not in nowhere', () => {
   const tail = georisquesLegend(PAYLOAD, null).legend.at(-1);
   assert.equal(tail.label, '9 autres aléas vérifiés — hors zone');
 });
+
+test('a silent hazard register says so, instead of looking like a clear address', () => {
+  // Measured live on 2026-09-14: `resultats_rapport_risque` refused every
+  // connection for a whole session while `installations_classees` and `radon`
+  // kept answering. The layer drew a commune, 31 establishments — and nothing
+  // where the flood verdict goes. Without a line saying why, "the register is
+  // down" and "nothing reaches this address" are the same picture.
+  const outage = projectGeorisques({
+    report: null,
+    icpe: read('georisques-icpe-sample.json'),
+    radon: read('georisques-radon-sample.json'),
+    contour: CONTOUR,
+    inseeCode: '75113',
+    origin: ORIGIN,
+    radiusM: 1000,
+  });
+  assert.equal(outage.available.report, false);
+  const controls = georisquesLegend(outage, null);
+  const tail = controls.legend.at(-1);
+  assert.equal(tail.label, 'Aléas indisponibles');
+  assert.equal(tail.color, null);
+  assert.match(tail.blurb, /n’est pas la même chose qu’absents/);
+  // The establishments are still keyed: one upstream failing degrades one act.
+  assert.ok(controls.legend.some((entry) => entry.label.startsWith('Installation classée')));
+  assert.ok(controls.legend.some((entry) => entry.label.startsWith('Limite de')));
+
+  // And a scan where the register DID answer carries no such line.
+  assert.ok(!georisquesLegend(PAYLOAD, null).legend.some((entry) => entry.label === 'Aléas indisponibles'));
+});

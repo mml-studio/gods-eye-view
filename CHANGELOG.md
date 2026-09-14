@@ -159,6 +159,14 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   pas à la taille carte. Rendus à l'échelle, seules les marques qui sont DÉJÀ une
 
 ### Fixed
+- **Un registre d'aléas muet ressemblait à une adresse sans risque.** Mesuré en
+  direct le 2026-09-14 : `resultats_rapport_risque` a refusé toute connexion
+  pendant une session entière pendant que `installations_classees` et `radon`
+  répondaient normalement. La couche traçait une commune, 31 établissements, et
+  du silence là où va le verdict inondation — impossible à distinguer d'une
+  adresse que le registre aurait déclarée propre. La clé nomme désormais la
+  panne, et les établissements restent affichés : une source indisponible
+  dégrade un acte, pas la mission.
 - **Un site sur trois était peint « Seveso » sans l'être.** `statutSeveso` n'est
   pas un booléen : c'est une étiquette, et l'une de ses valeurs est la chaîne
   `"Non Seveso"`, qui est *truthy*. Mesuré sur 380 établissements et quatre

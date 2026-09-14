@@ -404,6 +404,27 @@ export function georisquesLegend(payload, summary = null) {
     });
   }
 
+  // THE REGISTER OF HAZARDS NOT ANSWERING IS NOT THE SAME AS NO HAZARDS, and
+  // without this line the two are identical on screen: a key listing the
+  // outline and three classes of installation, and no verdict anywhere. A
+  // reader would conclude the address is clear.
+  //
+  // Not hypothetical. Measured 2026-09-14: `resultats_rapport_risque` refused
+  // every connection for the length of a session while `installations_classees`
+  // and `radon` kept answering, so the layer drew a commune, 31 establishments
+  // and silence where the flood verdict goes. The module header's own rule —
+  // "a slow or unavailable source degrades one act, never the whole mission" —
+  // only holds if the degraded act says so.
+  if (payload.available && payload.available.report === false) {
+    legend.push({
+      label: 'Aléas indisponibles',
+      color: null,
+      blurb: 'Le registre des risques n’a pas répondu — inondation, argiles, '
+        + 'sismicité et radon ne sont pas connus ici, ce qui n’est pas la même '
+        + 'chose qu’absents. Les établissements ci-dessus, eux, sont à jour.',
+    });
+  }
+
   if (!legend.length) return null;
   return {
     legend,

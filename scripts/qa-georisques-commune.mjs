@@ -54,9 +54,23 @@ const chrome = [
 ].filter(Boolean).find((candidate) => { try { return fs.existsSync(candidate); } catch { return false; } });
 
 let failures = 0;
+let skipped = 0;
 const check = (ok, label, detail = '') => {
   if (!ok) failures += 1;
   console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${label}${detail ? ` — ${detail}` : ''}`);
+};
+/**
+ * A check that cannot run because an UPSTREAM is down, not because the app is.
+ *
+ * Measured 2026-09-14: `resultats_rapport_risque` refused every connection for
+ * a whole session while `installations_classees` and `radon` kept answering.
+ * A harness that reports that as six failures teaches its reader to ignore it,
+ * and the one time the failures are real they are ignored too. So the reason
+ * is named, the run still passes, and what WAS provable is still asserted.
+ */
+const skip = (label, why) => {
+  skipped += 1;
+  console.log(`  skip ${label} — ${why}`);
 };
 
 /** Draw frames by hand: the governor runs in `requestRenderMode`. */
@@ -172,7 +186,11 @@ try {
   let draw = null;
   for (let attempt = 0; attempt < 120; attempt += 1) {
     draw = await readDraw(page);
-    if (draw.stats.scanCommuneInsee === '75113' && draw.entities > 0 && draw.legend.length > 0) break;
+    // Keyed on the OUTLINE's own commune, which is fetched from the
+    // BAN-resolved code and survives the report being down — unlike
+    // `scanCommuneInsee`, which is read off the report itself.
+    const outlined = draw.legend.some((entry) => entry.label.startsWith('Limite de Paris 13e'));
+    if (outlined && draw.entities > 0) break;
     await pump(page, 2, 120);
   }
 
@@ -184,9 +202,17 @@ try {
   check(draw.kinds['commune-outline-label'] === 1,
     'the commune is named on the ground, once');
   check(draw.stats.communeOutlined === true, 'the layer reports the outline it drew');
-  check(draw.stats.scanCommuneInsee === '75113',
-    'the outline is the ARRONDISSEMENT the scan ran on, not Paris-whole',
-    `scan=${draw.stats.scanCommuneInsee} report=${draw.stats.communeInsee}`);
+  // Both codes are read off the REPORT, so this is only provable when the
+  // report answered — the outline itself is fetched from the BAN-resolved code
+  // and is drawn either way, which the previous check already proved.
+  if (draw.stats.available?.report === false) {
+    skip('the outline is the ARRONDISSEMENT the scan ran on',
+      'resultats_rapport_risque did not answer, and both codes are read off it');
+  } else {
+    check(draw.stats.scanCommuneInsee === '75113',
+      'the outline is the ARRONDISSEMENT the scan ran on, not Paris-whole',
+      `scan=${draw.stats.scanCommuneInsee} report=${draw.stats.communeInsee}`);
+  }
 
   console.log('\n— the installations —');
   check(draw.plates.length > 0, 'installations are drawn', `${draw.plates.length}`);
@@ -204,15 +230,30 @@ try {
   const labels = draw.legend.map((entry) => entry.label);
   check(labels.some((label) => label.startsWith('Limite de Paris 13e')),
     'the key names the commune the outline belongs to', labels[0]);
-  const hazardLines = draw.legend.filter((entry) => entry.label.includes('—') && !entry.label.startsWith('Limite'));
-  check(hazardLines.length >= 6, 'the hazards are keyed', `${hazardLines.length} lines`);
-  check(hazardLines.every((entry) => entry.unmapped === true),
-    'no hazard carries a colour swatch, because none of them is painted');
-  check(labels.some((label) => label.includes('diffère de la commune')),
-    'a verdict that differs between commune and address says so in the key');
-  const varying = draw.legend.find((entry) => entry.label.includes('diffère de la commune'));
-  check(/commune : .+ · à cette adresse : /.test(varying?.blurb || ''),
-    'and prints BOTH verdicts under it', varying?.blurb || '(none)');
+
+  // THE HAZARD CHECKS NEED THE HAZARD REGISTER, and it is the one upstream of
+  // the four that goes down on its own. When it does, what must still hold is
+  // the opposite assertion: that the key SAYS so rather than showing a clean
+  // address. That one is not skipped.
+  const reportAnswered = draw.stats.available?.report !== false;
+  if (!reportAnswered) {
+    check(labels.includes('Aléas indisponibles'),
+      'a silent hazard register is named, not shown as a clear address');
+    skip('the hazards are keyed', 'resultats_rapport_risque did not answer this run');
+    skip('a verdict that differs between commune and address says so', 'same outage');
+  } else {
+    const hazardLines = draw.legend.filter((entry) => entry.label.includes('—') && !entry.label.startsWith('Limite'));
+    check(hazardLines.length >= 6, 'the hazards are keyed', `${hazardLines.length} lines`);
+    check(hazardLines.every((entry) => entry.unmapped === true),
+      'no hazard carries a colour swatch, because none of them is painted');
+    check(labels.some((label) => label.includes('diffère de la commune')),
+      'a verdict that differs between commune and address says so in the key');
+    const varying = draw.legend.find((entry) => entry.label.includes('diffère de la commune'));
+    check(/commune : .+ · à cette adresse : /.test(varying?.blurb || ''),
+      'and prints BOTH verdicts under it', varying?.blurb || '(none)');
+    check(!labels.includes('Aléas indisponibles'),
+      'and no outage line, because there was no outage');
+  }
   check(/Géorisques — BRGM \/ MTE/.test(draw.legendNote),
     'the key carries its provenance', draw.legendNote);
   check(/pas de géométrie/.test(draw.legendFootnote),
@@ -236,5 +277,6 @@ try {
   await browser.close();
 }
 
-console.log(`\n${failures === 0 ? 'PASS' : `FAIL — ${failures} check(s)`}\n`);
+const tail = skipped ? ` (${skipped} skipped — an upstream was down)` : '';
+console.log(`\n${failures === 0 ? `PASS${tail}` : `FAIL — ${failures} check(s)${tail}`}\n`);
 process.exit(failures === 0 ? 0 : 1);
