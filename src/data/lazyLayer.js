@@ -58,6 +58,40 @@ export const LAZY_LAYER_CAPABILITIES = Object.freeze([
 /** The four lifecycle methods the manager calls unconditionally on every layer. */
 export const LAZY_LAYER_REQUIRED_METHODS = Object.freeze(['init', 'enable', 'disable', 'update']);
 
+/**
+ * The chunk did not arrive, so the layer has no code at all.
+ *
+ * This is a DIFFERENT failure from "the layer ran and failed", and the reader
+ * needs it told apart: staging rebuilds on every deploy, so a tab left open
+ * across one asks for hashed chunk names the origin no longer has and gets a
+ * 404 on the first toggle of any layer it had not already loaded. Nothing is
+ * wrong with the layer — the page is simply older than the build behind it.
+ *
+ * Marked on the error rather than matched by message, because the browser's own
+ * wording for it ("Failed to fetch dynamically imported module") is neither
+ * stable nor ours.
+ *
+ * @param {string} layerId The layer whose chunk failed.
+ * @param {*} cause Whatever the loader threw.
+ * @returns {Error} The marked error, carrying the original message and cause.
+ */
+function layerModuleUnavailableError(layerId, cause) {
+  const detail = cause instanceof Error ? cause.message : String(cause);
+  const error = new Error(`Layer "${layerId}" code could not be loaded: ${detail}`, { cause });
+  error.layerModuleUnavailable = true;
+  error.layerId = layerId;
+  return error;
+}
+
+/**
+ * Whether a lifecycle failure means the layer's CODE never arrived.
+ * @param {*} error Error from a layer lifecycle call.
+ * @returns {boolean} True when the chunk itself could not be fetched.
+ */
+export function isLayerModuleUnavailable(error) {
+  return Boolean(error && error.layerModuleUnavailable === true);
+}
+
 /** Stats shape the manager's own `_moduleStats()` fallback returns. */
 const EMPTY_STATS = Object.freeze({ count: 0, lastUpdate: null });
 
@@ -164,6 +198,10 @@ export function createLazyLayer(descriptor) {
     if (!loadPromise) {
       loadPromise = Promise.resolve()
         .then(() => descriptor.load())
+        // Marked HERE and not around `adopt()`: a chunk that never arrived and
+        // a chunk that answered with the wrong module are different faults, and
+        // only the first one is cured by reloading the page.
+        .catch((error) => { throw layerModuleUnavailableError(descriptor.id, error); })
         .then((module) => { adopt(module); return loadedModule; })
         .catch((error) => {
           // A chunk that 404s after a redeploy is the realistic failure here.
@@ -178,6 +216,20 @@ export function createLazyLayer(descriptor) {
 
   for (const method of LAZY_LAYER_REQUIRED_METHODS) {
     define(method, async (...args) => {
+      // Nothing that was never loaded can be drawing anything, so turning it
+      // OFF is already true — the same reasoning `destroy` follows below.
+      //
+      // This is the fix for a DEAD END, not an optimisation. The manager fails
+      // CLOSED on a disable it cannot confirm: it keeps the layer ON and marks
+      // the lifecycle UNCERTAIN, because a module that refused to stop may
+      // still be polling or rendering. When the chunk itself never arrived
+      // there is no module to distrust — and fetching it again only to call a
+      // teardown on it re-raised the very error that was being cleaned up
+      // after. A failed enable then left the row stuck on UNCERTAIN, where
+      // every further click asked for a disable that could not succeed either,
+      // and only a page reload could clear it (reported 2026-09-14 on
+      // `cctv`, off a staging redeploy).
+      if (method === 'disable' && !loadedModule) return true;
       const module = await materialize();
       return module[method](...args);
     });

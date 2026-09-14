@@ -23,6 +23,7 @@ import {
   contextSnapshotLayerIds,
   shouldCaptureContextSession,
 } from '../contextModePolicy.js';
+import { createLazyLayer, isLayerModuleUnavailable } from './lazyLayer.js';
 
 /** Build a mock layer whose init/update resolve on the next microtask, so a
  *  second toggle can land while the first is awaiting. */
@@ -4570,4 +4571,49 @@ test('a repaint the panel declined is not recorded as one', async () => {
     globalThis.document.hidden = false;
     await panel.restore();
   }
+});
+
+test('a layer whose chunk never arrives settles OFF, not stuck UNCERTAIN', async () => {
+  // Reported 2026-09-14 from the hosted build: `Caméras publiques` answered
+  // "CCTV COULD NOT STOP CLEANLY" and sat on UNCERTAIN, where every further
+  // click reproduced it, until the page was reloaded. Staging rebuilds under
+  // open tabs, so the first toggle of a layer whose chunk the tab had not
+  // already fetched asks for a hashed name the origin no longer has.
+  //
+  // The manager fails CLOSED on a disable it cannot confirm — correct for a
+  // module that ran and refused to stop, wrong for one that never existed.
+  // `createLazyLayer` now confirms the teardown of a module it never loaded,
+  // so the failed enable lands on plain OFF and the row stays clickable.
+  const manager = new DataLayerManager({});
+  let loads = 0;
+  manager.register(createLazyLayer({
+    id: 'cctv',
+    name: 'CCTV',
+    icon: '',
+    source: 'test',
+    capabilities: ['getStats'],
+    load: async () => { loads += 1; throw new Error('chunk 404'); },
+  }));
+  const events = [];
+  manager.subscribe((event) => events.push(event));
+
+  assert.equal(await manager.setEnabled('cctv', true, { origin: 'user' }), false);
+  assert.deepEqual(
+    { ...manager.getLayerLifecycleState('cctv') },
+    { enabled: false, lifecycleState: 'disabled', uncertain: false },
+  );
+  // One fetch for the enable that asked for it — the cleanup does not ask again.
+  assert.equal(loads, 1);
+
+  const failure = events.find((event) => event.type === 'visibility-failed');
+  assert.equal(failure.enabled, true, 'the failure is reported against the START');
+  assert.equal(failure.phase, 'init');
+  assert.equal(isLayerModuleUnavailable(failure.error), true);
+
+  // And the row can be clicked again: the next click asks to START, which is
+  // what the reader wants, rather than to STOP something that never ran.
+  events.length = 0;
+  assert.equal(await manager.setEnabled('cctv', true, { origin: 'user' }), false);
+  assert.equal(events.find((event) => event.type === 'visibility-failed').enabled, true);
+  assert.equal(manager.getLayerLifecycleState('cctv').uncertain, false);
 });
