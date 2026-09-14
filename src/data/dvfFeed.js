@@ -65,10 +65,13 @@
  * there is a denominator to colour it against. The test asserts that implication
  * rather than trusting it.
  *
- * Dependency-free and side-effect-free: URL construction, CSV parsing and
- * projection only. The `/api/dvf` proxy imports this; nothing in the browser
- * bundle does.
+ * Side-effect-free: URL construction, CSV parsing and projection only, over
+ * one equally side-effect-free import (`scanCells.js`, the grid arithmetic it
+ * shares with the DPE). The `/api/dvf` proxy imports this; nothing in the
+ * browser bundle does.
  */
+
+import { bucketCells, medianOf } from './scanCells.js';
 
 const FILES_ROOT = 'https://files.data.gouv.fr/geo-dvf/latest/csv';
 
@@ -562,6 +565,140 @@ export function selectNearbySales(mutations, origin, radiusM) {
         const usable = values.filter((value) => value !== null).sort((a, b) => a - b);
         return [year, { count: values.length, comparableCount: usable.length, medianPrixM2: percentile(usable, 0.5) }];
       })),
+    },
+  };
+}
+
+/**
+ * Size classes for a DVF cell, per grid step, as counts of mutations.
+ *
+ * MEASURED, not chosen: over the 877 communes of cached editions this repo has
+ * on disk — 183 603 occupied cells on the 150 m grid, 25 388 on the 850 m one,
+ * three editions each — the counts are very skewed. On the fine grid the median
+ * cell holds 2 mutations, the ninth decile 17, the ninety-ninth centile 60 and
+ * the densest 385. So the breaks are spread across the UPPER range, where the
+ * eye can actually separate two discs, and the bottom two classes deliberately
+ * carry most of the country.
+ *
+ * The consequence is the honest one, and it is `filosofiCarreaux.js`'s: a
+ * brilliantly coloured speck is two sales, and it must not be read as a
+ * neighbourhood.
+ */
+export const DVF_CELL_BREAKS = Object.freeze({
+  150: Object.freeze([2, 5, 10, 25, 60]),
+  850: Object.freeze([5, 20, 50, 130, 350]),
+});
+
+/**
+ * The breaks for a grid step, falling back to the nearest published one.
+ * @param {number} cellM @returns {ReadonlyArray<number>}
+ */
+export function dvfCellBreaks(cellM) {
+  return DVF_CELL_BREAKS[cellM]
+    || DVF_CELL_BREAKS[Number(cellM) > 400 ? 850 : 150];
+}
+
+/**
+ * Aggregate whole editions into cells over a box — the high-altitude regime.
+ *
+ * ONE REFERENCE PER COMMUNE, NEVER ONE FOR THE BOX. This is the rule
+ * {@link communeReference} already enforces by REPORTING `codeCount` instead of
+ * averaging across codes, and a box scan is the first caller that can actually
+ * straddle two: 0.02° at Lyon spans four arrondissements and a slice of
+ * Villeurbanne. So each edition set keeps its own median, every mutation is
+ * divided by the median of ITS OWN commune, and what a cell carries is the
+ * median of those RATIOS. A single blended denominator would paint Villeurbanne
+ * against Lyon 6e's prices and call the difference a market.
+ *
+ * NO MINIMUM COUNT FOR A COLOUR, and that is deliberate. A cell holding one
+ * priced sale is coloured by that sale's ratio, exactly as the point regime
+ * colours the sale itself — the claim is identical, and the disc's AREA is what
+ * says how many sales stand behind it. Adding a floor would state the count
+ * twice, once in a channel that already carries it.
+ *
+ * @param {Array<{commune: ?object, mutations: Array<object>}>} editions
+ * @param {{south: number, west: number, north: number, east: number}} box
+ * @param {number} cellM Grid step in metres.
+ * @returns {{cells: Array<object>, summary: object}}
+ */
+export function aggregateSalesIntoCells(editions, box, cellM) {
+  const rows = [];
+  const references = [];
+  for (const edition of Array.isArray(editions) ? editions : []) {
+    const mutations = Array.isArray(edition?.mutations) ? edition.mutations : [];
+    if (!mutations.length) continue;
+    const reference = communeReference(mutations);
+    references.push({
+      code: edition?.commune?.code ?? reference.code,
+      name: edition?.commune?.name ?? reference.name,
+      medianPrixM2: reference.medianPrixM2,
+      // The denominator's OWN sample size — the whole commune over the whole
+      // window — because that is what the median was computed on. It is not the
+      // number of sales on screen, and conflating the two would let a reader
+      // read a commune median as a statistic about their viewport.
+      count: reference.count,
+      comparableCount: reference.comparableCount,
+    });
+    const median = reference.medianPrixM2;
+    for (const mutation of mutations) {
+      if (mutation.lon === null || mutation.lat === null) continue;
+      if (mutation.lon === undefined || mutation.lat === undefined) continue;
+      const priced = typeof mutation.prixM2 === 'number' && Number.isFinite(mutation.prixM2)
+        && mutation.prixM2 > 0;
+      rows.push({
+        lon: mutation.lon,
+        lat: mutation.lat,
+        prixM2: priced ? mutation.prixM2 : null,
+        // Null rather than 1 when there is no denominator: a sale in a commune
+        // whose edition prices nothing is not a sale at the median.
+        ratio: priced && median ? mutation.prixM2 / median : null,
+        communeCode: mutation.communeCode ?? edition?.commune?.code ?? null,
+        year: Number(String(mutation.date || '').slice(0, 4)) || null,
+      });
+    }
+  }
+  const buckets = bucketCells(rows, box, cellM);
+  const cells = buckets.map((cell) => {
+    const prices = cell.rows.map((row) => row.prixM2).filter((value) => value !== null);
+    const ratios = cell.rows.map((row) => row.ratio).filter((value) => value !== null);
+    return {
+      key: cell.key,
+      lon: Number(cell.lon.toFixed(6)),
+      lat: Number(cell.lat.toFixed(6)),
+      west: cell.west,
+      south: cell.south,
+      east: cell.east,
+      north: cell.north,
+      count: cell.rows.length,
+      pricedCount: prices.length,
+      medianPrixM2: medianOf(prices) === null ? null : Math.round(medianOf(prices)),
+      medianRatio: medianOf(ratios),
+      communeCode: dominant(cell.rows.map((row) => row.communeCode)),
+      years: [...new Set(cell.rows.map((row) => row.year).filter(Boolean))].sort(),
+    };
+  }).sort((a, b) => b.count - a.count);
+  // COUNTED OFF THE CELLS, NOT OFF `rows`. `rows` holds every geocoded mutation
+  // of every commune the box touched — both whole arrondissements, 8 069 of
+  // them at Lyon — while the box itself held a fraction of that. Summarising
+  // the wider set would print a coverage line describing ground the reader
+  // cannot see, under a map drawn from the narrower one.
+  const inBox = buckets.flatMap((cell) => cell.rows);
+  const allPrices = inBox.map((row) => row.prixM2).filter((value) => value !== null);
+  return {
+    cells,
+    summary: {
+      basis: 'cells',
+      cellM,
+      cells: cells.length,
+      count: inBox.length,
+      pricedCount: allPrices.length,
+      // The box statistic: printed, never divided by. Same rule as
+      // `selectNearbySales`'s `medianPrixM2`, for the same reason.
+      medianPrixM2: medianOf(allPrices) === null ? null : Math.round(medianOf(allPrices)),
+      // Every commune the box touched, each with its own denominator. A reader
+      // must be able to see that the colours were read against four references
+      // and which ones.
+      references: references.sort((a, b) => (b.count || 0) - (a.count || 0)),
     },
   };
 }

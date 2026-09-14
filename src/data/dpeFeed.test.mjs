@@ -7,14 +7,20 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  DPE_AGG_MAX_CELLS,
+  DPE_CELL_BREAKS,
+  DPE_CELL_MIN_TOTAL,
   DPE_DEFAULT_RADIUS_M,
   DPE_FIELDS,
   DPE_LABELS,
   DPE_MAX_RADIUS_M,
+  DPE_POOR_SHARE_NATIONAL,
+  buildDpeCellUrl,
   buildDpeUrl,
   clampDpeRadius,
   parseGeopoint,
   projectDpe,
+  projectDpeCells,
 } from './dpeFeed.js';
 
 const SAMPLE = JSON.parse(readFileSync(
@@ -170,4 +176,108 @@ test('the coverage of the pivot is reported, not assumed', () => {
   assert.equal(projectDpe(SAMPLE, { radiusM: 300 }).rnbCoverage, 0,
     'a block where no row names a building is a real answer, not a broken one');
   assert.equal(projectDpe(null, {}).rnbCoverage, 0);
+});
+
+// ── the cell regime ────────────────────────────────────────────────────────
+// `geo_agg` is what makes a whole-view answer affordable: 5.3 KB of buckets
+// against ~10 MB of rows for the same ground. These pin the two calls that
+// produce it and the join between them.
+test('the aggregation asks for buckets and for no sample rows at all', () => {
+  const box = { south: 45.770, west: 4.845, north: 45.780, east: 4.855 };
+  const url = new URL(buildDpeCellUrl({ box }));
+  assert.ok(url.pathname.endsWith('/geo_agg'));
+  // west,south,east,north — the opposite order from `geo_distance`'s
+  // lon,lat,radius, which is exactly the kind of swap this file exists to pin.
+  assert.equal(url.searchParams.get('bbox'), '4.845,45.77,4.855,45.78');
+  assert.equal(url.searchParams.get('agg_size'), String(DPE_AGG_MAX_CELLS));
+  // Left at its default the same call answered in 10.6 MB: data-fair embeds a
+  // full 230-field row in EVERY bucket.
+  assert.equal(url.searchParams.get('size'), '0');
+  assert.equal(url.searchParams.get('qs'), null);
+});
+
+test('the numerator is the same call, filtered to F and G', () => {
+  const box = { south: 45.770, west: 4.845, north: 45.780, east: 4.855 };
+  const url = new URL(buildDpeCellUrl({ box, poorOnly: true }));
+  assert.equal(url.searchParams.get('qs'), 'etiquette_dpe:(F OR G)');
+  assert.equal(url.searchParams.get('bbox'),
+    new URL(buildDpeCellUrl({ box })).searchParams.get('bbox'));
+});
+
+test('a box that is not a box is refused rather than sent', () => {
+  assert.throws(() => buildDpeCellUrl({ box: null }));
+  assert.throws(() => buildDpeCellUrl({ box: { south: 1, west: 2, north: Number.NaN, east: 4 } }));
+});
+
+test('the two aggregations join on the geohash key', () => {
+  const totals = {
+    total: 300,
+    aggs: [
+      { value: 'u05kqk3', total: 200, centroid: { lat: 45.775, lon: 4.850 }, bbox: [4.849, 45.774, 4.851, 45.776] },
+      { value: 'u05kqk9', total: 100, centroid: { lat: 45.777, lon: 4.852 }, bbox: [4.851, 45.776, 4.853, 45.778] },
+    ],
+  };
+  const poor = { total: 20, aggs: [{ value: 'u05kqk3', total: 20 }] };
+  const { cells, total, truncated } = projectDpeCells(totals, poor);
+  assert.equal(total, 300);
+  assert.equal(truncated, false);
+  const byKey = new Map(cells.map((cell) => [cell.key, cell]));
+  assert.equal(byKey.get('u05kqk3').poorShare, 10);
+  // A bucket the filtered call never named holds no F and no G — a real zero,
+  // not a missing value.
+  assert.equal(byKey.get('u05kqk9').poor, 0);
+  assert.equal(byKey.get('u05kqk9').poorShare, 0);
+});
+
+test('a thin cell publishes no share at all, rather than a loud zero', () => {
+  const { cells } = projectDpeCells({
+    total: 3,
+    aggs: [{
+      value: 'u05kqk3',
+      total: DPE_CELL_MIN_TOTAL - 1,
+      centroid: { lat: 45.775, lon: 4.850 },
+      bbox: [4.849, 45.774, 4.851, 45.776],
+    }],
+  }, { total: 0, aggs: [] });
+  // Three flats sold with no F among them has not shown the block is sound.
+  assert.equal(cells[0].poorShare, null);
+  assert.equal(cells[0].total, DPE_CELL_MIN_TOTAL - 1);
+});
+
+test('a missing numerator degrades to zero F and G, never to a missing grid', () => {
+  const { cells } = projectDpeCells({
+    total: 50,
+    aggs: [{ value: 'k', total: 50, centroid: { lat: 45.775, lon: 4.850 }, bbox: [4.849, 45.774, 4.851, 45.776] }],
+  }, null);
+  assert.equal(cells.length, 1);
+  assert.equal(cells[0].poor, 0);
+});
+
+test('a bucket with no geometry is dropped rather than drawn at zero, zero', () => {
+  const { cells } = projectDpeCells({
+    total: 10,
+    aggs: [
+      { value: 'a', total: 10 },
+      { value: 'b', total: 10, centroid: { lat: Number.NaN, lon: 4.85 }, bbox: [4.849, 45.774, 4.851, 45.776] },
+    ],
+  }, null);
+  assert.equal(cells.length, 0);
+});
+
+test('an answer at the cap says so', () => {
+  const aggs = Array.from({ length: DPE_AGG_MAX_CELLS }, (unused, index) => ({
+    value: `cell-${index}`,
+    total: 10,
+    centroid: { lat: 45.775, lon: 4.850 },
+    bbox: [4.849, 45.774, 4.851, 45.776],
+  }));
+  assert.equal(projectDpeCells({ total: 1_000, aggs }, null).truncated, true);
+});
+
+test('the national anchor is a property of the REGISTER and is published as a number', () => {
+  assert.ok(DPE_POOR_SHARE_NATIONAL > 0 && DPE_POOR_SHARE_NATIONAL < 100);
+  for (const breaks of Object.values(DPE_CELL_BREAKS)) {
+    const ascending = [...breaks].every((edge, index) => index === 0 || edge > breaks[index - 1]);
+    assert.ok(ascending);
+  }
 });

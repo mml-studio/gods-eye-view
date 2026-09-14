@@ -8,6 +8,7 @@ import { governorRequestRender } from '../renderGovernor.js';
 import { sceneGroundPoint } from './groundPick.js';
 import { isWorldPick } from './pickRegistry.js';
 import { renderedSurfaceM, seatEntitiesOnSurface } from './renderedSurface.js';
+import { SCAN_BOUNDARY_KIND } from './scanCells.js';
 import { deriveFetchCenter, greatCircleKm } from './trafficBounds.js';
 
 /**
@@ -347,6 +348,13 @@ function polylineAnchor(entity) {
  * @returns {{id: string, title: string, details: string[], position: object}|null}
  */
 export function cardFromEntity(entity) {
+  // CHROME IS NOT A SUBJECT. The scanned edge is a polyline with no name and no
+  // description, and neither of those is enough to keep it out of the index:
+  // `polylineAnchor` gives it a position and the title then falls back to its
+  // own id, so a reader clicking the boundary would open a card headed
+  // `dvf:scan-edge`. The mark declares itself instead — see `scanBoundary.js`.
+  const kind = entity?.properties?.kind?.getValue?.(Cesium.JulianDate.now());
+  if (kind === SCAN_BOUNDARY_KIND) return null;
   const position = entity?.position?.getValue?.(Cesium.JulianDate.now())
     ?? polylineAnchor(entity);
   if (!position) return null;

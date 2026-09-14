@@ -1,9 +1,12 @@
 import * as Cesium from 'cesium';
 import { addressMarkerGlyph } from './addressMarkerIcons.js';
-import { createAddressScanLayer } from './addressScanLayer.js';
+import { ADDRESS_SCAN_MIN_SHIFT_KM, createAddressScanLayer } from './addressScanLayer.js';
 import { clearBuildingTheme, registerBuildingTheme } from './buildingTheme.js';
-import { saleKind } from './dvfFeed.js';
+import { dvfCellBreaks, saleKind } from './dvfFeed.js';
 import { publishJoin } from './layerJoins.js';
+import { drawScanBoundary } from './scanBoundary.js';
+import { cellDiscRadiusM, discRing } from './scanCells.js';
+import { SCAN_CELL_MIN_ALTITUDE_M, scanCellParams } from './scanRegime.js';
 import { gpuClassificationTypeForScene } from './urbanismeGpu.js';
 
 /**
@@ -1005,6 +1008,33 @@ export function dvfSaleRecord(sale) {
  */
 export function dvfVoiceSummary(stats) {
   if (!stats || stats.dormant) return null;
+  // THE CELL REGIME NEEDS ITS OWN SENTENCE, and this is not a nicety. Left to
+  // fall through, a box answer would have been published with
+  // `radiusM: SCAN_RADIUS_M` beside it — a caller would have said "sur les
+  // 300 m autour de vous" about ground two kilometres across. The regime is
+  // named, the reach is the box, and the per-sale list is declared ABSENT
+  // rather than empty: `getAnalystRecords` returns nothing up here, and a
+  // caller that read that as "no sales" would be inverting the answer.
+  if (stats.scanBasis === 'cells') {
+    return {
+      subject: 'ventes immobilières publiées au registre DVF',
+      basis: 'cells',
+      measuredAt: stats.scanCentre ? { ...stats.scanCentre } : null,
+      communes: stats.communes ?? null,
+      years: stats.years ?? null,
+      cellSizeM: stats.cellSizeM ?? null,
+      salesInView: stats.salesFound ?? 0,
+      pricedSales: stats.comparableCount ?? 0,
+      viewMedianPrixM2: stats.localMedianPrixM2 ?? null,
+      // One per commune, because the colours were read against several.
+      communeReferences: stats.references ?? null,
+      note: 'The camera is high enough that this layer answers by AREA, not by '
+        + 'sale: it holds cells, not a list of mutations, so there is nothing to '
+        + 'rank or to quote a single price from. Say the view median with the '
+        + 'communes behind it. For one property, fly below '
+        + `${SCAN_CELL_MIN_ALTITUDE_M} m and ask again.`,
+    };
+  }
   if (!Number.isFinite(stats.salesFound)) {
     return {
       subject: 'ventes immobilières publiées au registre DVF',
@@ -1040,6 +1070,268 @@ export function dvfVoiceSummary(stats) {
   };
 }
 
+/**
+ * The disc's ink, and it is lighter than the parcel wash next door.
+ *
+ * A cell covers a whole block where a parcel covers one plot, so the same alpha
+ * would put four times the ink on the screen for the same claim. 0.15 with a
+ * firm edge keeps the basemap legible under a field of discs — the rule
+ * `filosofiCarreaux.js` states as "a layer that hides the map is not a layer,
+ * it is a replacement" — while the boundary, which is the part that survives
+ * being small, keeps most of the opacity.
+ */
+const CELL_FILL_ALPHA = 0.15;
+/**
+ * Whether the answer ON SCREEN is a field of cells.
+ *
+ * Written by `render` from the payload and read by `minShiftKm`, never derived
+ * from the camera: the two disagree for exactly as long as a scan is in flight,
+ * and during that window the threshold has to describe what is drawn.
+ */
+let _cellMode = false;
+const CELL_OUTLINE_ALPHA = 0.8;
+const CELL_OUTLINE_WIDTH_PX = 1.4;
+
+/** French plural with a thousands-separated count. */
+function plural(n, singular, pluralForm = `${singular}s`) {
+  return `${Number(n || 0).toLocaleString('fr-FR')} ${n > 1 ? pluralForm : singular}`;
+}
+
+/* ── the cell regime ───────────────────────────────────────────────────── */
+/**
+ * Above 600 m this layer stops drawing one mark per sale and draws one disc per
+ * patch of ground. See `scanRegime.js` for the switch and the measurement that
+ * forced it; what follows is only what the mark looks like and what it claims.
+ *
+ * THE COLOUR LANGUAGE DOES NOT CHANGE, and that is the point of doing it this
+ * way. A cell is painted from {@link DVF_RATIO_CLASSES} — the same five frozen
+ * bands around the same reference — so a reader who learned the ramp at street
+ * level reads the same ramp from altitude. Only the UNIT moves: one sale
+ * becomes the median of a cell's sales.
+ *
+ * WHAT A CELL IS COLOURED BY IS A MEDIAN OF RATIOS, NOT A RATIO OF MEDIANS.
+ * A box straddles communes — 0.02° at Lyon spans two arrondissements, and each
+ * publishes its own median — so every sale is divided by ITS OWN commune's
+ * denominator in the proxy and the cell takes the median of those quotients.
+ * Dividing a cell's median price by one blended commune median instead would
+ * paint Villeurbanne against Lyon 6e's prices and call the difference a market.
+ *
+ * @param {?number} ratio A sale's price over its own commune's median.
+ * @returns {?object} One of {@link DVF_RATIO_CLASSES}, or null.
+ */
+export function dvfCellClass(ratio) {
+  if (!(typeof ratio === 'number' && Number.isFinite(ratio) && ratio > 0)) return null;
+  return DVF_RATIO_CLASSES.find((entry) => ratio >= entry.min) || null;
+}
+
+/** The CSS colour of a cell. Neutral when the register priced nothing in it. */
+export function dvfCellColorCss(cell) {
+  const klass = dvfCellClass(cell?.medianRatio);
+  return klass ? klass.color : COLOR_NO_RATIO;
+}
+
+/**
+ * The reference a cell key is read against, shaped like {@link dvfReference}
+ * so the legend builders take it unchanged.
+ *
+ * `medianPrixM2` IS DELIBERATELY NULL HERE, and it is not a missing value. The
+ * box has as many denominators as it has communes, so there is no single €/m²
+ * the class breaks can be restated in — and `dvfLegendEntries` already falls
+ * back to the RATIO labels ("+25 % et plus") when it has no median, which is
+ * the only honest label for a key with two references behind it. The
+ * denominators are not hidden: they are named one by one in the note.
+ *
+ * @param {object} payload
+ * @returns {object}
+ */
+export function dvfCellReference(payload) {
+  const references = payload?.summary?.references || [];
+  const named = references.filter((entry) => Number.isFinite(entry?.medianPrixM2));
+  return {
+    basis: named.length ? 'communes' : 'none',
+    medianPrixM2: null,
+    name: null,
+    code: null,
+    territory: null,
+    yearsLabel: dvfYearsLabel(payload?.years),
+    comparableCount: references.reduce((sum, entry) => sum + (entry.comparableCount || 0), 0),
+    count: references.reduce((sum, entry) => sum + (entry.count || 0), 0),
+    unplacedCount: 0,
+    p25PrixM2: null,
+    p75PrixM2: null,
+    references: named,
+    label: named.length
+      ? `Chaque cellule est rapportée au médian de SA commune (${named.length})`
+      : 'Aucun médian communal : rien à rapporter',
+  };
+}
+
+/** class id → number of CELLS, for the key's bar. */
+export function countCellsByClass(cells) {
+  const counts = new Map();
+  for (const cell of cells || []) {
+    const klass = dvfCellClass(cell?.medianRatio);
+    const id = klass ? klass.id : 'no-ratio';
+    counts.set(id, (counts.get(id) || 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * The note above the key in cell mode: what the colours are divided by, named.
+ *
+ * EVERY DENOMINATOR, NOT A COUNT OF THEM. "Rapporté au médian de sa commune"
+ * without the medians is the failure this layer's header spends a paragraph
+ * on — a ratio whose denominator is not written down is not a measurement — so
+ * the communes are printed with their €/m², busiest first, capped at four
+ * because a key is not a table.
+ *
+ * @param {object} payload @returns {string}
+ */
+export function dvfCellLegendNote(payload) {
+  const reference = dvfCellReference(payload);
+  const named = reference.references.slice(0, 4)
+    .map((entry) => `${entry.name || entry.code} ${eurosPerM2(entry.medianPrixM2)}`);
+  const more = reference.references.length - named.length;
+  const line = [
+    named.length
+      ? `Rapporté au médian de chaque commune : ${named.join(' · ')}${more > 0 ? ` · +${more}` : ''}`
+      : reference.label,
+    reference.yearsLabel,
+    'classes gelées à ±5 % et ±25 % de ce médian',
+    // WHAT THE DISC IS, in the words `filosofiCarreaux.js` uses for the same
+    // mark: the colour is the price and the AREA is how many sales stand
+    // behind it. Without this line a big pale disc and a small vivid one read
+    // as two prices instead of as two sample sizes.
+    'taille du disque = nombre de ventes',
+  ].filter(Boolean).join(' · ');
+  return line;
+}
+
+/**
+ * The A5 line in cell mode: the box, the grid, and what the probe could miss.
+ * @param {object} payload @returns {string}
+ */
+export function dvfCellDisclosure(payload) {
+  const summary = payload?.summary || {};
+  const communes = payload?.communes || [];
+  const parts = [];
+  const spanKm = payload?.box
+    ? ((payload.box.north - payload.box.south) * 110.54).toFixed(1).replace('.', ',')
+    : null;
+  parts.push(`vue agrégée sur ${spanKm ? `${spanKm} km` : 'la boîte'} de côté, `
+    + `cellules de ${summary.cellM || '?'} m`);
+  parts.push(`${plural(summary.count || 0, 'vente')} dans la boîte, `
+    + `${summary.pricedCount || 0} avec un €/m²`);
+  // A4: the commune list comes from probing the box, not from intersecting it —
+  // see `boxSamplePoints`. A commune no probe landed in contributes nothing,
+  // and its ground is then empty for the same reason a field is.
+  if (communes.length) {
+    parts.push(`${plural(communes.length, 'commune')} identifiée${communes.length > 1 ? 's' : ''} `
+      + `par ${payload.communesProbed || 0} sondages : une commune qu'aucun sondage n'a touchée `
+      + 'ne contribue pas');
+  }
+  if ((payload?.unavailableYears || []).length) {
+    parts.push(`millésime(s) non téléchargé(s) : ${payload.unavailableYears.join(', ')}`);
+  }
+  parts.push(`descendre sous ${SCAN_CELL_MIN_ALTITUDE_M} m pour retrouver chaque vente `
+    + 'et sa parcelle');
+  const line = parts.join(' · ');
+  return `${line.charAt(0).toUpperCase()}${line.slice(1)}.`;
+}
+
+/**
+ * The card a cell opens: what the disc is a median OF.
+ * @param {object} cell @param {object} payload @returns {string}
+ */
+export function dvfCellCard(cell, payload) {
+  const klass = dvfCellClass(cell?.medianRatio);
+  const reference = (payload?.summary?.references || [])
+    .find((entry) => entry.code === cell?.communeCode) || null;
+  return [
+    `${plural(cell.count, 'vente')} dans cette cellule`,
+    cell.pricedCount < cell.count
+      ? `${cell.pricedCount} avec un €/m² exploitable`
+      : 'toutes avec un €/m² exploitable',
+    cell.medianPrixM2 !== null ? `médian ${eurosPerM2(cell.medianPrixM2)}` : null,
+    reference
+      ? `contre ${eurosPerM2(reference.medianPrixM2)} pour ${reference.name || reference.code}`
+      : null,
+    klass ? klass.label : 'pas de médian : rien n’est peint',
+    (cell.years || []).length ? `millésimes ${cell.years.join(', ')}` : null,
+    // The honest ceiling on what this mark can answer, said on the mark itself.
+    `descendre sous ${SCAN_CELL_MIN_ALTITUDE_M} m pour voir les ventes une par une`,
+  ].filter(Boolean).join(' · ');
+}
+
+/**
+ * Draw the cells: one translucent disc each, clamped to whatever surface the
+ * globe is drawing.
+ *
+ * CLAMPED LIKE THE PARCELS, NOT LIFTED LIKE THE CARROYAGE. `filosofiFeed.js`
+ * lays its discs a computed clearance above a terrain sample because it is
+ * drawing a national grid over terrain; this layer already solves the same
+ * problem next door with `classificationType`, which paints the surface the
+ * globe is ACTUALLY drawing — terrain under a map basemap, the tileset under
+ * the photoreal stack. Reusing it here means a cell disc and the parcel wash it
+ * turns into on the way down sit on the same ground by construction.
+ *
+ * @returns {number} Discs drawn.
+ */
+function drawDvfCells(payload, dataSource, classificationType) {
+  const cells = payload?.cells || [];
+  const breaks = dvfCellBreaks(payload?.summary?.cellM);
+  let drawn = 0;
+  for (const cell of cells) {
+    const radiusM = cellDiscRadiusM(cell, cell.count, breaks);
+    if (!(radiusM > 0)) continue;
+    const css = dvfCellColorCss(cell);
+    const ring = discRing(cell.lon, cell.lat, radiusM);
+    const positions = Cesium.Cartesian3.fromDegreesArray(ring.flat());
+    const klass = dvfCellClass(cell.medianRatio);
+    const name = cell.medianPrixM2 !== null
+      ? `${eurosPerM2(cell.medianPrixM2)} · ${plural(cell.count, 'vente')}`
+      : plural(cell.count, 'vente');
+    const description = dvfCellCard(cell, payload);
+    dataSource.entities.add({
+      id: `dvf-cell:${cell.key}`,
+      name,
+      description,
+      properties: {
+        kind: 'dvf-cell',
+        count: cell.count,
+        pricedCount: cell.pricedCount,
+        medianPrixM2: cell.medianPrixM2,
+        medianRatio: cell.medianRatio,
+        ratioClass: klass ? klass.id : null,
+        communeCode: cell.communeCode,
+      },
+      polygon: {
+        hierarchy: new Cesium.PolygonHierarchy(positions),
+        material: Cesium.Color.fromCssColorString(css).withAlpha(CELL_FILL_ALPHA),
+        classificationType,
+        outline: false,
+      },
+    });
+    dataSource.entities.add({
+      id: `dvf-cell:${cell.key}:edge`,
+      name,
+      description,
+      polyline: {
+        positions: [...positions, positions[0]],
+        width: CELL_OUTLINE_WIDTH_PX,
+        material: new Cesium.ColorMaterialProperty(
+          Cesium.Color.fromCssColorString(css).withAlpha(CELL_OUTLINE_ALPHA),
+        ),
+        clampToGround: true,
+        classificationType,
+      },
+    });
+    drawn += 1;
+  }
+  return drawn;
+}
+
 const baseLayer = createAddressScanLayer({
   id: DVF_LAYER_ID,
   name: 'Prix de l’immobilier (DVF)',
@@ -1059,7 +1351,20 @@ const baseLayer = createAddressScanLayer({
   // query string would move the signature, refetch an identical reply, and
   // spend a rate-limit slot to draw a subset of what was already in memory.
   drawOnlyParams: ['type'],
-  params: () => ({ radius: String(SCAN_RADIUS_M) }),
+  // TWO QUESTIONS, ONE ROUTE. Below 600 m the disc, above it the box — and the
+  // box is ABSENT from the query string rather than flagged, so the proxy reads
+  // the regime off the parameters it was given. Same contract as
+  // `urbanismeGpu.js`, and it means a share link carries the regime for free.
+  params: (point) => {
+    const cells = scanCellParams(point);
+    return Object.keys(cells).length ? cells : { radius: String(SCAN_RADIUS_M) };
+  },
+  // BIGGER IN CELL MODE, because the box is already snapped to a tile: inside
+  // one tile every camera position asks the identical question, and the shell
+  // skips a scan only when BOTH the centre has not moved far enough AND the
+  // query string is unchanged. Half a tile is what stops a pan across a block
+  // from re-asking a question whose answer is already drawn.
+  minShiftKm: () => (_cellMode ? 0.6 : ADDRESS_SCAN_MIN_SHIFT_KM),
   // ON, since the layer started washing the PLOTS. A ground-classification
   // primitive reads its classification surface once, when it is built, so a
   // draw addressed to terrain survives a switch to the photoreal tileset —
@@ -1070,8 +1375,37 @@ const baseLayer = createAddressScanLayer({
   // block this layer speaks for rather than the 12 km its ceiling allows.
   scanReachM: SCAN_RADIUS_M,
 
-  render({ payload, dataSource, viewer, runtime }) {
+  /**
+   * A cell's disc and its edge are one subject, so a click on either selects
+   * the disc — the mark that has a colour to take and a size to grow. Same rule
+   * the DPE layer applies to its footprint and its badge.
+   */
+  selectionFor(entityId) {
+    const id = String(entityId ?? '');
+    return id.startsWith('dvf-cell:') && id.endsWith(':edge')
+      ? id.slice(0, -':edge'.length)
+      : null;
+  },
+
+  render({ payload, dataSource, viewer, runtime, point }) {
     _typeFilter = String(runtime?.type ?? 'tous');
+    // THE PAYLOAD DECIDES, NOT THE CAMERA. An answer in flight while the reader
+    // crossed 600 m lands after the altitude already says the other thing, and
+    // drawing a box payload as points — or the reverse — is one frame of
+    // garbage plus a key describing neither. `cells` is only ever present on a
+    // box answer.
+    _cellMode = Array.isArray(payload?.cells);
+    if (_cellMode) {
+      const drawn = drawDvfCells(payload, dataSource, gpuClassificationTypeForScene(viewer?.scene));
+      drawScanBoundary(dataSource, { id: 'dvf:scan-edge', box: payload.box });
+      // The building theme paints volumes from individual sales and a cell has
+      // none, so it is WITHDRAWN rather than left standing: volumes tinted from
+      // the block the reader left is exactly the failure `withdrawIfDormant`
+      // exists to prevent, arrived by a different road.
+      _themePayload = null;
+      publishTheme();
+      return drawn;
+    }
     const reference = dvfReference(payload);
     const sales = filterSalesByType(payload.sales, _typeFilter);
     // THE GROUND FIRST, so the markers are added after and pick above their
@@ -1131,6 +1465,14 @@ const baseLayer = createAddressScanLayer({
       });
       drawn += 1;
     }
+    // The edge of the disc, so the field of markers reads as a probe rather
+    // than as a layer that stopped drawing halfway. Never counted — see
+    // `scanBoundary.js`.
+    drawScanBoundary(dataSource, {
+      id: 'dvf:scan-edge',
+      centre: point,
+      radiusM: SCAN_RADIUS_M,
+    });
     // The theme speaks for the answer that was just drawn, so it is published
     // here rather than from `update()`: `render` is also what a map-stack
     // redraw calls, and the points must never outlive the payload.
@@ -1168,6 +1510,18 @@ const baseLayer = createAddressScanLayer({
     // published either way: a control a reader cannot find until the layer has
     // answered is a control they will not find.
     if (!payload) return { chips };
+    if (Array.isArray(payload.cells)) {
+      // NO TYPE CHIPS IN CELL MODE, and they are removed rather than disabled.
+      // `drawOnlyParams` filters rows the proxy served; a cell answer carries
+      // no rows to filter, so a chip here would be a control that silently does
+      // nothing — worse than one that is not offered.
+      return {
+        legend: dvfLegendEntries(dvfCellReference(payload), countCellsByClass(payload.cells)),
+        legendBar: true,
+        legendNote: dvfCellLegendNote(payload),
+        note: dvfCellDisclosure(payload),
+      };
+    }
     const reference = dvfReference(payload);
     const sales = filterSalesByType(payload.sales, filter);
     return {
@@ -1189,6 +1543,32 @@ const baseLayer = createAddressScanLayer({
 
   summarize(payload) {
     const summary = payload.summary || {};
+    if (Array.isArray(payload.cells)) {
+      const reference = dvfCellReference(payload);
+      return {
+        // NAMED `cells`, so nothing downstream can mistake this for the disc
+        // answer. `salesFound` still means "mutations behind the drawing", but
+        // it is now the box's and not a radius's, and `scanBasis` is what says
+        // which — the voice surface reads it before it quotes a number.
+        scanBasis: 'cells',
+        cellCount: summary.cells ?? 0,
+        cellSizeM: summary.cellM ?? null,
+        communes: (payload.communes || []).map((entry) => entry.name || entry.code),
+        years: payload.years ?? null,
+        salesFound: summary.count ?? 0,
+        comparableCount: summary.pricedCount ?? 0,
+        localMedianPrixM2: summary.medianPrixM2 ?? null,
+        referenceBasis: reference.basis,
+        referenceLabel: reference.label,
+        // Every denominator, not one — see `dvfCellReference`.
+        references: reference.references,
+        themeId: DVF_LAYER_ID,
+        themePrecedence: DVF_THEME_PRECEDENCE,
+        themePoints: 0,
+        coverage: dvfCellDisclosure(payload),
+        legend: dvfLegendEntries(reference, countCellsByClass(payload.cells)),
+      };
+    }
     const reference = dvfReference(payload);
     return {
       commune: payload.commune?.name ?? null,
@@ -1284,6 +1664,7 @@ const dvfSalesLayer = {
   disable() {
     _themeEnabled = false;
     _themePayload = null;
+    _cellMode = false;
     publishTheme();
     baseLayer.disable();
   },

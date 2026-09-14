@@ -58,6 +58,7 @@
     "qa:card-dismissal": "node scripts/qa-card-dismissal.mjs",
     "qa:stale-build": "node scripts/qa-stale-build-recovery.mjs",
     "qa:dvf-row": "node scripts/qa-dvf-row.mjs",
+    "qa:scan-cells": "node scripts/qa-scan-cells.mjs",
     "qa:idfm-stops": "node scripts/qa-idfm-stops.mjs",
     "qa:road-status-fr": "node scripts/qa-road-status-fr.mjs",
     "qa:traffic-lod": "node scripts/qa-traffic-lod.mjs",

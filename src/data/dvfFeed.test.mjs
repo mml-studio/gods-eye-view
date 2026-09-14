@@ -7,12 +7,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  DVF_CELL_BREAKS,
   DVF_DEFAULT_RADIUS_M,
   DVF_MAX_RADIUS_M,
   DVF_UNCOVERED_DEPARTEMENTS,
+  aggregateSalesIntoCells,
   buildDvfUrl,
   clampDvfRadius,
   departementOf,
+  dvfCellBreaks,
   dvfCoverage,
   groupMutations,
   haversineM,
@@ -189,4 +192,101 @@ test('the distance the estimate measures is the distance the map drew', () => {
   assert.equal(sales[0].distanceM, 0);
   // One minute of latitude is a nautical mile, to a metre.
   assert.equal(Math.round(haversineM(48.0, 2.0, 48.0 + 1 / 60, 2.0)), 1853);
+});
+
+// ── the cell regime ────────────────────────────────────────────────────────
+// The one rule that cannot bend: a box straddles communes, and a sale is
+// divided by the median of ITS OWN commune. Everything else here follows.
+test('each commune keeps its own denominator across a box', () => {
+  const box = { south: 45.76, west: 4.84, north: 45.78, east: 4.86 };
+  const cheap = {
+    commune: { code: '69383', name: 'Lyon 3e' },
+    mutations: [
+      { lon: 4.8450, lat: 45.7700, prixM2: 4_000, communeCode: '69383', date: '2024-01-02' },
+      { lon: 4.8452, lat: 45.7701, prixM2: 4_000, communeCode: '69383', date: '2024-02-02' },
+      { lon: 4.8454, lat: 45.7702, prixM2: 4_000, communeCode: '69383', date: '2024-03-02' },
+    ],
+  };
+  const dear = {
+    commune: { code: '69386', name: 'Lyon 6e' },
+    mutations: [
+      { lon: 4.8550, lat: 45.7760, prixM2: 8_000, communeCode: '69386', date: '2024-01-02' },
+      { lon: 4.8552, lat: 45.7761, prixM2: 8_000, communeCode: '69386', date: '2024-02-02' },
+      { lon: 4.8554, lat: 45.7762, prixM2: 8_000, communeCode: '69386', date: '2024-03-02' },
+    ],
+  };
+  const { cells, summary } = aggregateSalesIntoCells([cheap, dear], box, 150);
+  assert.equal(summary.references.length, 2);
+  // 4 000 in a commune whose median is 4 000 and 8 000 in one whose median is
+  // 8 000 are the SAME reading: both at their own market. A single blended
+  // denominator of 6 000 would have painted one 0.67 and the other 1.33.
+  for (const cell of cells) assert.equal(cell.medianRatio, 1);
+});
+
+test('the summary counts the box, never the communes behind it', () => {
+  const box = { south: 45.77, west: 4.84, north: 45.78, east: 4.86 };
+  const edition = {
+    commune: { code: '69386', name: 'Lyon 6e' },
+    mutations: [
+      { lon: 4.8500, lat: 45.7750, prixM2: 5_000, communeCode: '69386', date: '2024-01-02' },
+      // Same commune, outside the box: it belongs in the DENOMINATOR and must
+      // not be counted as something the reader can see.
+      { lon: 4.9500, lat: 45.9000, prixM2: 9_000, communeCode: '69386', date: '2024-01-03' },
+    ],
+  };
+  const { cells, summary } = aggregateSalesIntoCells([edition], box, 150);
+  assert.equal(summary.count, 1);
+  assert.equal(cells.reduce((sum, cell) => sum + cell.count, 0), 1);
+  // The denominator still saw both — that is the whole point of keeping the
+  // reference's own sample size separate from the box's.
+  assert.equal(summary.references[0].count, 2);
+});
+
+test('a sale the register cannot price is counted but never coloured', () => {
+  const box = { south: 45.77, west: 4.84, north: 45.78, east: 4.86 };
+  const { cells } = aggregateSalesIntoCells([{
+    commune: { code: '69386', name: 'Lyon 6e' },
+    mutations: [
+      { lon: 4.8500, lat: 45.7750, prixM2: null, communeCode: '69386', date: '2024-01-02' },
+      { lon: 4.8501, lat: 45.7751, prixM2: null, communeCode: '69386', date: '2024-01-03' },
+    ],
+  }], box, 150);
+  assert.equal(cells.length, 1);
+  assert.equal(cells[0].count, 2);
+  assert.equal(cells[0].pricedCount, 0);
+  assert.equal(cells[0].medianPrixM2, null);
+  assert.equal(cells[0].medianRatio, null);
+});
+
+test('a commune whose edition prices nothing yields no ratio, not a ratio of one', () => {
+  const box = { south: 45.77, west: 4.84, north: 45.78, east: 4.86 };
+  const { cells } = aggregateSalesIntoCells([{
+    commune: { code: '68066', name: 'Colmar' },
+    mutations: [{ lon: 4.8500, lat: 45.7750, prixM2: null, communeCode: '68066', date: '2024-01-02' }],
+  }], box, 150);
+  assert.equal(cells[0].medianRatio, null);
+});
+
+test('a mutation with no coordinate never reaches a cell', () => {
+  const box = { south: 45.77, west: 4.84, north: 45.78, east: 4.86 };
+  const { cells, summary } = aggregateSalesIntoCells([{
+    commune: { code: '69386', name: 'Lyon 6e' },
+    mutations: [
+      { lon: null, lat: null, prixM2: 5_000, communeCode: '69386', date: '2024-01-02' },
+      { lon: 4.8500, lat: 45.7750, prixM2: 5_000, communeCode: '69386', date: '2024-01-03' },
+    ],
+  }], box, 150);
+  assert.equal(summary.count, 1);
+  assert.equal(cells.length, 1);
+});
+
+test('the size breaks are published per grid step and fall back rather than throw', () => {
+  assert.deepEqual([...dvfCellBreaks(150)], [2, 5, 10, 25, 60]);
+  assert.deepEqual([...dvfCellBreaks(850)], [5, 20, 50, 130, 350]);
+  assert.deepEqual([...dvfCellBreaks(undefined)], [2, 5, 10, 25, 60]);
+  assert.deepEqual([...dvfCellBreaks(900)], [5, 20, 50, 130, 350]);
+  for (const breaks of Object.values(DVF_CELL_BREAKS)) {
+    const ascending = [...breaks].every((edge, index) => index === 0 || edge > breaks[index - 1]);
+    assert.ok(ascending, 'size breaks must ascend or a bigger count draws a smaller disc');
+  }
 });
