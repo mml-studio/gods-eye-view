@@ -139,20 +139,27 @@ test('every published equipment type is folded onto a named mechanism', () => {
   // 87 brumisateurs, 65 musées, 39 piscines, 19 mairies, 17 bains-douches,
   // 16 bibliothèques, 13 terrains de boules, 12 ombrières temporaires,
   // 11 baignades extérieures, 4 découverte et initiation.
+  //
+  // THREE mechanisms, not the five this started with. The fold is onto the
+  // question actually asked — do I go IN, do I stand UNDER something, or is
+  // there WATER — and it is exact rather than a rounding: a brumisateur and a
+  // piscine are both water, and the register's own residual bucket is by
+  // definition outdoors, which is what `ombre` says.
   const published = {
     'Ombrière pérenne': 'ombre',
     'Ombrière temporaire': 'ombre',
+    'Terrain de boules': 'ombre',
+    'Découverte et Initiation': 'ombre',
     'Lieux de culte': 'pierre',
     'Musée': 'pierre',
     "Mairie d'arrondissement": 'pierre',
     'Bibliothèque': 'pierre',
-    Brumisateur: 'brume',
-    Piscine: 'bain',
-    'Bains-douches': 'bain',
-    'Baignade extérieure': 'bain',
-    'Terrain de boules': 'plein-air',
-    'Découverte et Initiation': 'plein-air',
+    Brumisateur: 'eau',
+    Piscine: 'eau',
+    'Bains-douches': 'eau',
+    'Baignade extérieure': 'eau',
   };
+  assert.equal(Object.keys(published).length, 12, 'all 12 published types are named');
   for (const [type, family] of Object.entries(published)) {
     assert.equal(fraicheurFamily(type), family, `${type} must fold onto ${family}`);
     assert.ok(FRAICHEUR_FAMILIES.includes(family));
@@ -163,29 +170,47 @@ test('every published equipment type is folded onto a named mechanism', () => {
   // A church is on this list because the stone is cold, and the fold has to say
   // so rather than filing it under "amenity".
   assert.equal(fraicheurFamily('Lieux de culte'), 'pierre');
-  assert.equal(fraicheurFamily(null), 'plein-air');
+  // An unmapped type takes the WEAKEST of the three claims. "Outdoors, no door"
+  // can be wrong about a future indoor type without being a lie about what was
+  // measured; "cold stone you go inside" could not.
+  assert.equal(fraicheurFamily(null), 'ombre');
+  assert.equal(fraicheurFamily('Type que le registre n’a jamais publié'), 'ombre');
 });
 
-test('a canopy of exactly zero is its own band and an unpublished one is grey', () => {
-  // 66 of the 984 spaces publish exactly 0 and 1 publishes nothing at all.
-  // "No tall vegetation was found here" and "nobody looked" are different
-  // statements and the ramp must not merge them.
-  assert.equal(fraicheurCanopyBand(0).id, 'nue');
+test('the canopy fold keeps the zero inside the low band and the null outside both', () => {
+  // The ramp was six bands and is two. Six steps of one hue drawn at alpha 0.34
+  // over a photorealistic city are not separable from each other, so six key
+  // rows were buying three distinguishable greens — and the question has two
+  // answers: is there shade over this park or is there not.
+  assert.equal(FRAICHEUR_CANOPY_BANDS.length, 2);
+  assert.deepEqual(FRAICHEUR_CANOPY_BANDS.map((band) => band.id), ['clair', 'ombrage']);
+
+  // WHAT THE FOLD COST, asserted so it cannot be forgotten: `nue` was its own
+  // band because "no tall vegetation was found here" — exactly 0, on 66 spaces
+  // — is a different statement from "a little was". Those 66 are now inside
+  // `clair`, and the statement moved to the band's blurb and to their cards.
+  assert.equal(fraicheurCanopyBand(0).id, 'clair');
+  assert.match(FRAICHEUR_CANOPY_BANDS[0].blurb, /66/);
+
+  // What did NOT fold: "nobody looked" is still not a measurement.
   assert.equal(fraicheurCanopyBand(null).id, FRAICHEUR_CANOPY_UNKNOWN.id);
   assert.equal(fraicheurCanopyBand(undefined).id, FRAICHEUR_CANOPY_UNKNOWN.id);
   assert.equal(fraicheurCanopyBand('').id, FRAICHEUR_CANOPY_UNKNOWN.id);
   assert.notEqual(fraicheurCanopyBand(null).id, fraicheurCanopyBand(0).id);
-  // Thresholds are the measured quartiles of the 983 spaces carrying the
-  // metric: p25 0.1083, p50 0.3197, p75 0.5366.
-  assert.equal(fraicheurCanopyBand(0.05).id, 'rare');
-  assert.equal(fraicheurCanopyBand(0.10).id, 'clairsemee');
-  assert.equal(fraicheurCanopyBand(0.25).id, 'moyenne');
-  assert.equal(fraicheurCanopyBand(0.40).id, 'dense');
-  assert.equal(fraicheurCanopyBand(0.55).id, 'couverte');
-  assert.equal(fraicheurCanopyBand(1).id, 'couverte');
+
+  // The cut is at a quarter of the ground, and it is FIXED rather than
+  // quantiled per payload: a bin that meant one thing in the 12e and another in
+  // the 1er would make two viewports incomparable.
+  assert.equal(fraicheurCanopyBand(0.05).id, 'clair');
+  assert.equal(fraicheurCanopyBand(0.2499).id, 'clair');
+  assert.equal(fraicheurCanopyBand(0.25).id, 'ombrage');
+  assert.equal(fraicheurCanopyBand(0.40).id, 'ombrage');
+  assert.equal(fraicheurCanopyBand(1).id, 'ombrage');
+
   // The grey band must not be a member of the ramp — a null would otherwise be
   // indistinguishable from a real measurement on screen.
   const ramp = new Set(FRAICHEUR_CANOPY_BANDS.map((band) => band.color.toLowerCase()));
+  assert.equal(ramp.size, FRAICHEUR_CANOPY_BANDS.length, 'the two bands are two colours');
   assert.equal(ramp.has(FRAICHEUR_CANOPY_UNKNOWN.color.toLowerCase()), false);
 });
 

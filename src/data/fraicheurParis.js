@@ -49,14 +49,14 @@
  * ── What each channel claims ───────────────────────────────────────────────
  *
  * FILL on a green space is `indice_veget_sup8m_2024` — the share of the ground
- * under vegetation TALLER THAN 8 m at the 2024 survey, on seven fixed bands.
- * Not area, deliberately: area says how big a park is and this says how much of
- * it casts shade at three in the afternoon, which is the only kind of green a
- * heatwave cares about. `nue` (exactly 0, 66 spaces) is its OWN band and not
- * the bottom of the ramp, and the one space that publishes no index at all is
- * grey. The register also publishes `p_vegetation_h`, which is a DIFFERENT
- * number on 903 of the 953 rows carrying both; the card prints both and calls
- * neither a correction.
+ * under vegetation TALLER THAN 8 m at the 2024 survey, on TWO fixed bands cut
+ * at a quarter of the ground. Not area, deliberately: area says how big a park
+ * is and this says how much of it casts shade at three in the afternoon, which
+ * is the only kind of green a heatwave cares about. The one space that
+ * publishes no index at all is grey and is reported in the key's NOTE rather
+ * than given a row of its own. The register also publishes `p_vegetation_h`,
+ * which is a DIFFERENT number on 903 of the 953 rows carrying both; the card
+ * prints both and calls neither a correction.
  *
  * A HOT STROKE around a green space means `canicule_ouverture = "Oui"`, and
  * this is the finding the layer exists to put on a screen: **23 of the 984**.
@@ -82,7 +82,9 @@
  * museum and a library — 225 of the 535 are cold stone you go inside, the
  * biggest family and the one nobody guesses. Naming the mechanism is what turns
  * the list back into what it is; flattening it to "amenity" is what would hide
- * it.
+ * it. THREE mechanisms and not the register's twelve types, and not the five
+ * this file shipped first: you go in (225), you stand under something (156), or
+ * there is water (154). The published `type` stays on every card, verbatim.
  *
  * COLOUR on a fountain is `dispo`, which is live: 1 238 OUI against 85 NON, and
  * the 85 carry a stated outage window. Ten of them are outside a window that
@@ -104,6 +106,17 @@
  * its own clock whenever the Paris minute changes — 5.0 ms over the whole pack,
  * measured — and `Europe/Paris` and not the browser's zone, because an operator
  * in Denver must not be shown a Paris park as open eight hours after it shut.
+ *
+ * ── Four registers, four buttons, and a key that follows them ─────────────
+ *
+ * Every register is drawn at once only if the reader asks for it. With all four
+ * on, the key printed 18 rows over a screen where the tree register alone takes
+ * up to 12 500 of the ~14 300 dots — 95 % of the ink and three of the rows, for
+ * the register that says the least per object — and the 23 heatwave parks this
+ * layer exists to show were underneath all of it. So each register has a chip
+ * (`FRAICHEUR_REGISTERS`), the key prints only what is drawing, and THE TREES
+ * ARE OFF BY DEFAULT: they are also the only register fetched per viewport, so
+ * a reader who never asks for them never pays the 1.7 MB either.
  *
  * ── What is NOT drawn, and is counted instead ──────────────────────────────
  *
@@ -151,7 +164,12 @@ import {
   restoreSpriteOrder,
   unregisterSpriteCollection,
 } from './spriteOrder.js';
-import { cachedGroundFloor, warmGroundFloor } from './groundFloor.js';
+import { cachedGroundFloor, coarseFloorCoord, warmGroundFloor } from './groundFloor.js';
+import {
+  provisionalFloor,
+  provisionalFloorRetryDelayMs,
+  sampleProvisionalFloors,
+} from './provisionalFloor.js';
 import { boxKey, boxesIntersect, focusedViewBox, snapBoxOutward } from './viewportBox.js';
 import { cameraViewBox } from './viewGate.js';
 import {
@@ -230,8 +248,28 @@ const CAMERA_DEBOUNCE_MS = 400;
 
 /** Card anchor lift above the ground floor, in metres. */
 const CARD_LIFT_M = 4;
-/** Ground-floor warm-up budget: card anchors, not every dot. */
+/** Metres above the resolved ground floor a drawn dot sits. */
+const POINT_LIFT_M = 1;
+/**
+ * DEM cells requested per rebuild.
+ *
+ * The budget is counted in CELLS and not in points, which is the correction:
+ * the first cut capped a list of 400 POINTS and fed it only the spaces and the
+ * equipment, so a viewport of 1 323 taps and 12 500 trees warmed a few dozen
+ * ~111 m cells and left the rest of the register on the ellipsoid. Four hundred
+ * cells is ~5 km² of Paris, two chunks of the terrain proxy's ≤200-per-request
+ * batching, and the cells it does not reach are not left on the ellipsoid —
+ * they keep the rendered-surface floor sampled below.
+ */
 const FLOOR_WARM_LIMIT = 400;
+/**
+ * How far a cell the probe budget did not reach may borrow a sampled floor
+ * from, in km. The whole of Paris is 105 km² and the relief inside the
+ * boulevards is metres — measured 8.1 m across the Montagne Sainte-Geneviève —
+ * where the ellipsoid is wrong by tens of metres, so a borrowed floor from
+ * anywhere in the same viewport is two orders of magnitude better than none.
+ */
+const FLOOR_FILL_KM = 10;
 
 /**
  * Fill alpha for a green space.
@@ -257,12 +295,62 @@ const TREE_MIN_PX = 3;
 const TREE_MAX_PX = 9;
 
 /**
- * The five cooling mechanisms, in colour.
+ * The four registers, as a filter — and the reason this layer has chips at all.
+ *
+ * MEASURED ON THE SCREEN, not argued from taste. With every register on, the
+ * key printed 18 rows, and over central Paris the tree register alone draws up
+ * to 12 500 of the ~14 300 dots: 95 % of the ink and three of the rows, for the
+ * one register that says the least per object. The 23 green spaces that declare
+ * a heatwave arrangement — the finding this layer exists to put on a screen —
+ * were underneath all of it.
+ *
+ * So the registers became switchable and the key follows the switches: a row is
+ * printed only for a register that is actually drawing. One click each way, the
+ * same mechanism `edf-power-plants` uses for its filières.
+ *
+ * TREES ARE OFF BY DEFAULT, and that is the one default that changed. It is not
+ * only an ink decision: the tree register is the only one fetched PER VIEWPORT
+ * (1.7 MB decoded on the measured central box, against one 643 KB document for
+ * the other three), so a reader who never asks for it never pays for it either.
+ * `fraicheurTreeLabel` already had the wording for a register that is not
+ * drawing; it gains one more reason.
+ */
+export const FRAICHEUR_REGISTERS = Object.freeze(['spaces', 'equipment', 'fountains', 'trees']);
+
+/** Register → the chip label, the record kind it draws, and its default. */
+export const FRAICHEUR_REGISTER_SPECS = Object.freeze({
+  spaces: Object.freeze({ chip: 'PARCS', kind: 'space', on: true }),
+  equipment: Object.freeze({ chip: 'REFUGES', kind: 'equipment', on: true }),
+  fountains: Object.freeze({ chip: 'FONTAINES', kind: 'fountain', on: true }),
+  trees: Object.freeze({ chip: 'ARBRES', kind: 'tree', on: false }),
+});
+
+/** Record kind → register, the inverse of {@link FRAICHEUR_REGISTER_SPECS}. */
+const KIND_TO_REGISTER = Object.freeze(Object.fromEntries(
+  FRAICHEUR_REGISTERS.map((id) => [FRAICHEUR_REGISTER_SPECS[id].kind, id]),
+));
+
+/** The default filter, rebuilt fresh so a caller cannot mutate the constant. */
+export function fraicheurDefaultRegisters() {
+  return Object.fromEntries(
+    FRAICHEUR_REGISTERS.map((id) => [id, FRAICHEUR_REGISTER_SPECS[id].on]),
+  );
+}
+
+/**
+ * The three cooling mechanisms, in colour.
  *
  * Deliberately NOT a green ramp: the polygons underneath already own green, and
  * a green dot on a green park is not a dot. The family is read on hue and the
  * register it came from is read on size — 9 px for the 535 listed refuges, 5 px
  * for the 1 323 taps, 3–9 px for the trees.
+ *
+ * Three and not five since the key was cut down: `brume` and `bain` are both
+ * water and now share `eau`, and the register's own residual `plein-air` is by
+ * definition outdoors, which is what `ombre` says. The two hues that came free
+ * — `#1565c0` and `#ec407a` — are NOT reassigned anywhere in this layer; a
+ * colour that has stopped meaning something has to stop appearing, or the next
+ * reader of a screenshot decodes it with the old key.
  */
 export const FRAICHEUR_FAMILY_COLORS = Object.freeze({
   // Cold stone you go INSIDE — an interior colour, and explicitly not a grey.
@@ -270,18 +358,18 @@ export const FRAICHEUR_FAMILY_COLORS = Object.freeze({
   // this": the one space with no canopy index, the 19 407 trees with no
   // surveyed height, and any fountain that stops publishing `dispo`.
   pierre: '#7e57c2',
+  // Outdoors, no door: the ombrières and the register's own residual bucket.
+  // This is also where an UNMAPPED published type lands, which is why it is the
+  // weakest of the three claims and not the most specific one.
   ombre: '#8d6e63',
-  brume: '#4dd0e1',
-  bain: '#1565c0',
-  // The register's own residual bucket, in a hue that belongs to no other
-  // channel — it must never be mistaken for shade, water or stone, and amber
-  // was not available because the 183 remarkable trees own it.
-  'plein-air': '#ec407a',
+  // Water, sprayed or swum in. Distinct from the fountains' own teal (#26a69a):
+  // a mister is a refuge with an address, a tap is a tap.
+  eau: '#4dd0e1',
 });
 
 /** Colour for one equipment family; an unmapped family takes the residual. */
 export function fraicheurFamilyColor(family) {
-  return FRAICHEUR_FAMILY_COLORS[family] || FRAICHEUR_FAMILY_COLORS['plein-air'];
+  return FRAICHEUR_FAMILY_COLORS[family] || FRAICHEUR_FAMILY_COLORS.ombre;
 }
 
 /**
@@ -358,6 +446,13 @@ let _highlight = null;
 let _selectedId = null;
 let _clickHandler = null;
 let _moveEndRemover = null;
+/** Pending deferred floor pass, and how many of the five have been spent. */
+let _floorRetryTimer = null;
+let _floorRetries = 0;
+/** Which registers are drawing. See {@link FRAICHEUR_REGISTERS}. */
+let _registers = fraicheurDefaultRegisters();
+/** The manager's "your controls changed, repaint the row" callback. */
+let _rowControlsListener = null;
 let _debounceTimer = null;
 let _abort = null;
 let _treeAbort = null;
@@ -579,7 +674,6 @@ function drawSpaces(spaces) {
       asynchronous: true,
       releaseGeometryInstances: false,
     }));
-    _fills.show = _enabled;
   }
   if (strokeInstances.length && groundLinesSupported()) {
     _caniculeStrokes = _viewer.scene.groundPrimitives.add(new Cesium.GroundPolylinePrimitive({
@@ -589,16 +683,175 @@ function drawSpaces(spaces) {
       asynchronous: true,
       releaseGeometryInstances: false,
     }));
-    _caniculeStrokes.show = _enabled;
   }
+  // Both batches were just (re)built with `show` defaulting to true; the chips
+  // decide whether they are actually on.
+  applyRegisterVisibility();
+}
+
+// --- The ground under a dot -------------------------------------------------
+
+/**
+ * The floor one object stands on: the shared DEM/mesh cell when it is warm, the
+ * PROVISIONAL rendered-surface read when it is not, and null when neither has
+ * an answer yet.
+ *
+ * WHY THE SECOND SOURCE EXISTS. `cachedGroundFloor` answers over the NETWORK,
+ * and until it does this file returned 0 — the WGS84 ellipsoid, which under
+ * Paris is tens of metres below the street. Every dot here draws with
+ * `disableDepthTestDistance: Infinity` (so a tap is not swallowed by the kerb
+ * it stands on), so a buried dot is painted anyway and its screen position
+ * becomes a function of the CAMERA POSE: pan the map and the trees, the taps
+ * and the refuges slide across the rooftops, then jump when the DEM lands. That
+ * is the reported "the points move with the map instead of being fixed to it",
+ * and it is the same defect `sharedMobilityFrance.js` measured on its fleet.
+ *
+ * @param {{lat: number, lon: number}} at
+ * @returns {?number} Ellipsoidal floor in metres, or null.
+ */
+function recordFloor(at) {
+  const floor = cachedGroundFloor(at.lat, at.lon);
+  if (Number.isFinite(floor)) return floor;
+  const provisional = provisionalFloor(at.lat, at.lon);
+  return Number.isFinite(provisional) ? provisional : null;
+}
+
+/** Cartesian for one object at a given lift above the best floor now known. */
+function floorPosition(at, liftM) {
+  return Cesium.Cartesian3.fromDegrees(at.lon, at.lat, (recordFloor(at) ?? 0) + liftM);
 }
 
 /** Cartesian anchor for one record's card, on the shared coarse ground floor. */
 function cardPosition(record) {
   const at = record?.at;
   if (!at) return null;
-  const floor = cachedGroundFloor(at.lat, at.lon);
-  return Cesium.Cartesian3.fromDegrees(at.lon, at.lat, (Number.isFinite(floor) ? floor : 0) + CARD_LIFT_M);
+  return floorPosition(at, CARD_LIFT_M);
+}
+
+/**
+ * Every DRAWN object's coordinate, for the two floor sources.
+ *
+ * Filtered on the register filter rather than on the index: a hidden register
+ * is not on screen, so probing the ground under it would spend a budget of 40
+ * `sampleHeight` calls on cells nobody is looking at — and with the trees off
+ * by default that is most of the index.
+ */
+function floorPoints() {
+  const points = [];
+  for (const record of _records.values()) {
+    if (registerDrawn(record)) points.push(record.at);
+  }
+  return points;
+}
+
+/** True while any drawn object is still standing on no measured floor at all. */
+function hasColdFloor() {
+  for (const record of _records.values()) {
+    if (registerDrawn(record) && recordFloor(record.at) == null) return true;
+  }
+  return false;
+}
+
+/**
+ * Ground the cold cells against the surface actually being DRAWN, then warm the
+ * DEM behind it.
+ *
+ * Synchronous, no network of ours, ≤40 probes and nothing at all above 25 km of
+ * camera. The DEM warm is fire-and-forget and NOTHING repositions what it
+ * resolves, which is the other half of why the retry loop below exists.
+ * @returns {number} Cells a later pass could still do better on.
+ */
+function sampleFloors() {
+  const points = floorPoints();
+  if (!points.length) return 0;
+  const { pending } = sampleProvisionalFloors(_viewer?.scene, points, { fillKm: FLOOR_FILL_KM });
+  // Deduped to CELLS and capped on cells, and a cell that is already warm does
+  // not spend a slot: that is what lets a second pass reach the cells the first
+  // one's cap cut off, instead of re-offering the same 400 for ever.
+  const cells = new Map();
+  for (const at of points) {
+    if (cachedGroundFloor(at.lat, at.lon) != null) continue;
+    const c = coarseFloorCoord(at.lat, at.lon);
+    const key = `${c.lat},${c.lon}`;
+    if (cells.has(key)) continue;
+    cells.set(key, c);
+    if (cells.size >= FLOOR_WARM_LIMIT) break;
+  }
+  if (cells.size) warmGroundFloor([...cells.values()]);
+  return pending;
+}
+
+/**
+ * Re-place every drawn dot on the best floor now known for its cell.
+ *
+ * A `PointPrimitive` position is written ONCE, at `add()`, so a floor that
+ * lands after the rebuild changes nothing until something walks the set — which
+ * is what this is. Cheap: no network, no allocation beyond the new Cartesians.
+ * @returns {number} How many dots actually moved.
+ */
+function reanchor() {
+  let moved = 0;
+  for (const record of _records.values()) {
+    if (!registerDrawn(record)) continue;
+    const point = record.point;
+    if (!point || point.isDestroyed?.() || !point.position) continue;
+    const next = floorPosition(record.at, POINT_LIFT_M);
+    // 5 cm: below this the move is not a pixel anywhere, and rewriting the
+    // primitive would only cost the collection a dirty flag.
+    if (Cesium.Cartesian3.equalsEpsilon(point.position, next, 0, 0.05)) continue;
+    point.position = next;
+    moved += 1;
+  }
+  // The open card carries a COPY of its object's anchor, so it has to follow
+  // the dot up rather than stay where the buried dot used to be.
+  if (moved && _selectedId) repaintSelectedCard();
+  return moved;
+}
+
+/** One deferred floor pass: sample again, re-place, decide whether to return. */
+function refreshFloors() {
+  if (!_enabled || !_viewer || !_records.size) return;
+  const pending = sampleFloors();
+  if (reanchor()) governorRequestRender('fraicheur-fr-reanchor');
+  if (pending || hasColdFloor()) scheduleFloorRetry();
+}
+
+/**
+ * Come back for the objects the surface could not place yet.
+ *
+ * A probe misses while the tiles under a dot have not streamed — the ordinary
+ * state for the second or two after arriving somewhere — and a parked camera
+ * produces no rebuild, so nothing would ask again. Bounded on purpose: five
+ * DOUBLING wake-ups (~37 s in total, `provisionalFloor.js`), refilled only when
+ * the situation is new, so ground with no photoreal coverage cannot undo the
+ * render governor's idle parking. A fixed-interval loop was measured expiring
+ * before a cold stream finished, which leaves the defect whole.
+ */
+function scheduleFloorRetry() {
+  if (_floorRetryTimer != null) return;
+  const delay = provisionalFloorRetryDelayMs(_floorRetries);
+  if (delay == null) return; // budget spent — wait for the camera to move
+  _floorRetries += 1;
+  _floorRetryTimer = setTimeout(() => {
+    _floorRetryTimer = null;
+    refreshFloors();
+  }, delay);
+}
+
+/** Drops a pending pass and refills its budget: a new situation gets a new one. */
+function resetFloorRetries() {
+  if (_floorRetryTimer != null) {
+    clearTimeout(_floorRetryTimer);
+    _floorRetryTimer = null;
+  }
+  _floorRetries = 0;
+}
+
+/** Sample, re-place and book a return pass after a rebuild. */
+function groundDrawnObjects() {
+  const pending = sampleFloors();
+  reanchor();
+  if (pending || hasColdFloor()) scheduleFloorRetry();
 }
 
 /**
@@ -620,10 +873,9 @@ function cssColor(css) {
 
 function addPoint(collection, { id, at, color, pixelSize }) {
   if (!collection) return null;
-  const floor = cachedGroundFloor(at.lat, at.lon);
   return collection.add({
     id,
-    position: Cesium.Cartesian3.fromDegrees(at.lon, at.lat, (Number.isFinite(floor) ? floor : 0) + 1),
+    position: floorPosition(at, POINT_LIFT_M),
     color: cssColor(color),
     pixelSize,
     outlineColor: OUTLINE_COLOR,
@@ -647,14 +899,12 @@ function drawRefuges(payload) {
   _equipmentPoints?.removeAll();
   _fountainPoints?.removeAll();
 
-  const warm = [];
   const spaces = Array.isArray(payload?.spaces) ? payload.spaces : [];
   for (const space of spaces) {
     const at = fraicheurSpaceAnchor(space);
     if (!at) continue;
     const id = `${FRAICHEUR_FR_LAYER_ID}:${space.id}`;
     _records.set(id, { id, kind: 'space', row: space, at, color: fraicheurSpaceColor(space) });
-    if (warm.length < FLOOR_WARM_LIMIT) warm.push(at);
   }
   drawSpaces(spaces);
 
@@ -664,7 +914,6 @@ function drawRefuges(payload) {
     const color = fraicheurFamilyColor(site.family);
     const point = addPoint(_equipmentPoints, { id, at, color, pixelSize: EQUIPMENT_PX });
     _records.set(id, { id, kind: 'equipment', row: site, at, color, point, basePixelSize: EQUIPMENT_PX });
-    if (warm.length < FLOOR_WARM_LIMIT) warm.push(at);
   }
   for (const fountain of Array.isArray(payload?.fountains) ? payload.fountains : []) {
     const at = { lon: fountain.p[0], lat: fountain.p[1] };
@@ -673,8 +922,10 @@ function drawRefuges(payload) {
     const point = addPoint(_fountainPoints, { id, at, color, pixelSize: FOUNTAIN_PX });
     _records.set(id, { id, kind: 'fountain', row: fountain, at, color, point, basePixelSize: FOUNTAIN_PX });
   }
+  // Last, and it is what grounds the whole rebuild: every register's records
+  // exist by the time it returns, and it is also the entry point the tree
+  // viewport uses on its own.
   drawTrees(_treePayload);
-  if (warm.length) warmGroundFloor(warm);
   governorRequestRender('fraicheur-fr-draw');
   // A refresh must not silently drop the card the operator was reading; the
   // object has not moved, and its render id carries its geometry, so it is the
@@ -700,7 +951,91 @@ function drawTrees(payload) {
     const point = addPoint(_treePoints, { id, at, color, pixelSize });
     _records.set(id, { id, kind: 'tree', row: tree, at, color, point, basePixelSize: pixelSize });
   }
+  // Every rebuild in this layer ends here — `drawRefuges` finishes by calling
+  // this — so this is the one place the drawn set is grounded. A fresh payload
+  // is a NEW situation, which is what refills the retry budget: a tree box that
+  // arrives after five spent wake-ups must still be placed.
+  resetFloorRetries();
+  groundDrawnObjects();
   governorRequestRender('fraicheur-fr-trees');
+}
+
+/**
+ * Show exactly the registers the chips have on.
+ *
+ * The `show` flag is what carries the filter rather than a rebuild, for three
+ * reasons that all point the same way: a `PointPrimitiveCollection` with
+ * `show = false` is not picked, so a hidden register cannot be clicked through
+ * the ones above it; the records stay indexed, so switching a register back on
+ * is a flag and not a refetch; and the ground batches are 127 465 vertices that
+ * must not be re-tessellated to answer a button.
+ *
+ * The heatwave stroke follows the fills: it is an annotation ON the spaces, and
+ * 23 orange outlines drawn around parks that are not there would be a key with
+ * no subject.
+ */
+function applyRegisterVisibility() {
+  const on = _enabled;
+  if (_equipmentPoints) _equipmentPoints.show = on && _registers.equipment;
+  if (_fountainPoints) _fountainPoints.show = on && _registers.fountains;
+  if (_treePoints) _treePoints.show = on && _registers.trees;
+  if (_fills) _fills.show = on && _registers.spaces;
+  if (_caniculeStrokes) _caniculeStrokes.show = on && _registers.spaces;
+  if (_highlight) _highlight.show = on && _registers.spaces;
+}
+
+/**
+ * One chip per register, each a plain on/off.
+ *
+ * NOT the exclusive strip `edf-power-plants` uses for its filières: those are
+ * three readings of ONE fleet and picking two of three is a muddle, where these
+ * are four different registers that answer the same question in four ways —
+ * "where can I cool off" is answered by a park, a mister and a tap on the same
+ * screen, which is why they are fetched together in the first place. So the
+ * chips are independent, and all four off is a legitimate (if empty) state
+ * rather than something to guard against: the row still reads, and one click
+ * brings a register back.
+ *
+ * The title carries the count, because a chip that says only `ARBRES` cannot
+ * tell a reader whether switching it on costs them 30 dots or 12 500.
+ * @returns {Array<object>} Row-control chip descriptors.
+ */
+function registerChips() {
+  const summary = _summary;
+  const counts = {
+    spaces: summary?.spaces ?? null,
+    equipment: summary?.equipment ?? null,
+    fountains: summary?.fountains ?? null,
+    trees: _registers.trees ? (_treePayload?.trees?.length ?? null) : _treeTotal,
+  };
+  return FRAICHEUR_REGISTERS.map((id) => {
+    const active = _registers[id] === true;
+    const count = counts[id];
+    const spec = FRAICHEUR_REGISTER_SPECS[id];
+    return {
+      id: `reg:${id}`,
+      label: spec.chip,
+      active,
+      state: active ? 'active' : 'idle',
+      title: Number.isFinite(count)
+        ? `${spec.chip} — ${fr(count)} objets${active ? '' : ' (masqués)'}`
+        : `${spec.chip}${active ? '' : ' — masqués'}`,
+      params: { [id]: !active },
+    };
+  });
+}
+
+/** True when the register a record came from is currently drawing. */
+function registerDrawn(record) {
+  const register = KIND_TO_REGISTER[record?.kind];
+  return register ? _registers[register] === true : false;
+}
+
+/** Records currently on screen, which is not every record in the index. */
+function drawnRecordCount() {
+  let count = 0;
+  for (const record of _records.values()) if (registerDrawn(record)) count += 1;
+  return count;
 }
 
 /** Re-classify against the active surface, rebuilding the baked ground batches. */
@@ -716,6 +1051,11 @@ function applyClassification(next) {
   // a park selected when the operator switches map stack would keep its card
   // and silently lose its outline.
   if (selected && _records.get(selected)?.kind === 'space') selectObject(selected);
+  // The surface being drawn has changed, so every provisional read taken
+  // against the old one is worth re-taking and the DEM/mesh preference behind
+  // `cachedGroundFloor` may now answer differently.
+  resetFloorRetries();
+  refreshFloors();
   _viewer?.scene?.requestRender?.();
 }
 
@@ -898,6 +1238,24 @@ function selectObject(id) {
   governorRequestRender('fraicheur-fr-select');
 }
 
+/**
+ * Rewrite the open card's anchor without touching the highlight.
+ *
+ * `selectObject` bakes the anchor into the overlay entry, so a dot that is
+ * re-placed on a floor that landed after the click leaves its card standing
+ * where the buried dot used to be. Rebuilding the entry is the whole fix; the
+ * polygon highlight is ground-clamped and has not moved.
+ */
+function repaintSelectedCard() {
+  const record = _selectedId ? _records.get(_selectedId) : null;
+  if (!record) return;
+  const entry = createFraicheurSelectedOverlayEntry(record, _payload);
+  if (!entry) return;
+  _overlayHost.setEntries(
+    FRAICHEUR_FR_OVERLAY_SOURCE_ID, [entry], FRAICHEUR_FR_OVERLAY_SOURCE_OPTIONS,
+  );
+}
+
 function onKeyDown(event) {
   if (event.key === 'Escape' && _selectedId) clearSelection();
 }
@@ -984,6 +1342,20 @@ async function loadRefuges({ force = false } = {}) {
  * and both name the number the operator would need to reach.
  */
 async function loadTrees() {
+  // The chips gate the REQUEST, not just the paint. This register is the only
+  // one fetched per viewport — 1.7 MB decoded on the measured central box — so
+  // a reader who has not asked for the trees must not be buying them on every
+  // camera move either.
+  if (!_registers.trees) {
+    if (_treePayload || _treeBoxKey) {
+      _treePayload = null;
+      _treeBoxKey = null;
+      drawTrees(null);
+    }
+    _treeTotal = null;
+    _treeStatus = 'off';
+    return false;
+  }
   const { box, reason } = fraicheurTreeViewport(_viewer);
   if (!box) {
     if (_treePayload || _treeBoxKey) {
@@ -1065,6 +1437,13 @@ async function load({ force = false } = {}) {
 function scheduleLoad() {
   clearTimeout(_debounceTimer);
   _debounceTimer = setTimeout(() => { void load(); }, CAMERA_DEBOUNCE_MS);
+  // A camera move is a new situation whether or not it changes the box: panning
+  // a few streets inside the same tree box refetches NOTHING, so without this
+  // the dots that were placed on a cold cell would keep their cold floor for as
+  // long as the operator stays in the neighbourhood. Independent of the fetch
+  // debounce on purpose — it costs no request.
+  resetFloorRetries();
+  refreshFloors();
 }
 
 // --- Detection --------------------------------------------------------------
@@ -1085,6 +1464,9 @@ function collectDetectableObjects(options = {}) {
     : 2600;
   const tiers = [[], [], [], []];
   for (const record of _records.values()) {
+    // A register the chips have off is not on screen, and DETECT must not call
+    // out an object the reader cannot see or click.
+    if (!registerDrawn(record)) continue;
     if (record.kind === 'space' && record.row?.canicule === true) tiers[0].push(record);
     else if (record.kind === 'equipment') tiers[1].push(record);
     else if (record.kind === 'tree' && record.row?.remarquable === true) tiers[2].push(record);
@@ -1099,11 +1481,8 @@ function collectDetectableObjects(options = {}) {
   const result = [];
   for (let i = start; i < ordered.length; i += stride) {
     const record = ordered[i];
-    const floor = cachedGroundFloor(record.at.lat, record.at.lon);
     result.push({
-      position: Cesium.Cartesian3.fromDegrees(
-        record.at.lon, record.at.lat, (Number.isFinite(floor) ? floor : 0) + CARD_LIFT_M,
-      ),
+      position: floorPosition(record.at, CARD_LIFT_M),
       sourceId: record.id,
       id: fraicheurDetectLabel(record),
       type: fraicheurDetectType(record),
@@ -1148,10 +1527,16 @@ export function buildFraicheurLoadingLabel({
   // screen — but it must not be silent either, or an operator reads an empty
   // street as a street with no trees on it.
   const suffix = treeStatus === 'unavailable' ? ' · arbres indisponibles pour cette vue' : '';
+  // Only the registers actually drawing. The three of them are counted off the
+  // SUMMARY rather than off the record index, so a chip flip costs an addition
+  // and not a walk of up to 14 300 records on the panel's one-second refresh.
+  const drawn = (_registers.spaces ? summary.spaces : 0)
+    + (_registers.equipment ? summary.equipment : 0)
+    + (_registers.fountains ? summary.fountains : 0);
   return (fraicheurLoadingLabel({
     status: 'ready',
     summary,
-    drawn: summary.spaces + summary.equipment + summary.fountains,
+    drawn,
     // Off the payload and not by walking the record index: `getStats()` runs on
     // the panel's one-second refresh and the index holds up to 12 500 trees.
     trees: _treePayload?.trees?.length ?? 0,
@@ -1219,11 +1604,7 @@ const fraicheurParisLayer = {
   enable(viewer) {
     _enabled = true;
     _error = null;
-    for (const collection of [_treePoints, _fountainPoints, _equipmentPoints]) {
-      if (collection) collection.show = true;
-    }
-    if (_fills) _fills.show = true;
-    if (_caniculeStrokes) _caniculeStrokes.show = true;
+    applyRegisterVisibility();
     // The boot-time stack settle fires no event, so re-derive on every enable
     // rather than trusting whatever the last event left behind.
     applyClassification(powerClassificationTypeForScene(viewer?.scene || _viewer?.scene));
@@ -1234,6 +1615,11 @@ const fraicheurParisLayer = {
     if (!_moveEndRemover) {
       _moveEndRemover = viewer.camera.moveEnd.addEventListener(scheduleLoad);
     }
+    // Re-enabling draws whatever records survived the last disable, and their
+    // positions were baked when they were added. Ground them again rather than
+    // waiting for a fetch that an unchanged pack will not perform.
+    resetFloorRetries();
+    refreshFloors();
     // DataLayerManager calls update() immediately after enable(), which owns
     // the first fetch. Avoid racing it with a second aborting request here.
   },
@@ -1243,15 +1629,12 @@ const fraicheurParisLayer = {
     clearSelection();
     clearTimeout(_debounceTimer);
     _debounceTimer = null;
+    resetFloorRetries();
     _abort?.abort();
     _abort = null;
     _treeAbort?.abort();
     _treeAbort = null;
-    for (const collection of [_treePoints, _fountainPoints, _equipmentPoints]) {
-      if (collection) collection.show = false;
-    }
-    if (_fills) _fills.show = false;
-    if (_caniculeStrokes) _caniculeStrokes.show = false;
+    applyRegisterVisibility();
     _overlayHost.setVisible(FRAICHEUR_FR_OVERLAY_SOURCE_ID, false);
     if (_clickHandler) {
       _clickHandler.destroy();
@@ -1284,7 +1667,10 @@ const fraicheurParisLayer = {
   getStats() {
     const summary = refreshSummary();
     const stats = {
-      count: _records.size,
+      // Objects ON SCREEN, not rows in the index: with the tree register off,
+      // reporting 14 300 over a globe showing 1 800 would be a different lie
+      // from the one an under-count would tell.
+      count: drawnRecordCount(),
       lastUpdate: _lastUpdate,
       loading: _loading,
       status: _status === 'ready' ? 'ok' : _status,
@@ -1329,64 +1715,154 @@ const fraicheurParisLayer = {
   },
 
   /**
-   * Colour legend for the control-panel row.
+   * The row's controls: one chip per register, and the key for what is drawing.
    *
-   * Four registers, so four blocks, and the ORDER is the argument: the 23
-   * spaces that declare a heatwave arrangement come first because they are the
-   * finding, before the canopy ramp they are mostly at the bottom of. Rows at
-   * zero are dropped, except the heatwave row, which is kept even at zero
-   * because "none of the parks you can see stays open in a heatwave" is the
-   * entry a reader has to be given.
+   * ── The key follows the chips, and that is the whole simplification ───────
+   *
+   * It printed 18 rows — 19 the day a fountain stops publishing `dispo`. Four
+   * registers of four geometries, each with its own classification, all painted
+   * at once over a photorealistic city, and the reader has one question at a
+   * time. Now a register that is off contributes nothing to the key, and the
+   * key is 8 rows with the defaults and 11 with the trees on — measured, in
+   * `scripts/qa-fraicheur-fr.mjs`.
+   *
+   * The ORDER is unchanged and still the argument: the 23 spaces that declare a
+   * heatwave arrangement come first because they are the finding, before the
+   * canopy bands they are mostly at the bottom of. Rows at zero are dropped,
+   * except the heatwave row, which is kept at zero because "none of the parks
+   * you can see stays open in a heatwave" is the entry a reader has to be given
+   * — and it is dropped entirely only when the park register itself is off,
+   * where it would be a claim about something not on the screen.
+   *
+   * ── What moved OUT of the key and into the note ───────────────────────────
+   *
+   * `Canopée non mesurée` is one space in 984. A key row spends the same height
+   * on it as on the 582 shaded parks, and a reader scanning eight swatches for
+   * a colour they can see on the map will never find that grey. It is in the
+   * note instead, which prints as TEXT under the block — the register's own
+   * silence, reported rather than ranked.
    */
   getRowControls() {
     const summary = refreshSummary();
-    if (!summary) return { chips: [], legend: [] };
+    if (!summary) return { chips: registerChips(), legend: [] };
     const legend = [];
-    // `ouvert_24h` counted INSIDE the heatwave set, not across the register:
-    // 189 of the 984 spaces carry the flag and only 9 of the 23 heatwave ones
-    // do, and quoting the wrong one here would turn the finding upside down.
-    const canicule24 = (_payload?.spaces || [])
-      .filter((space) => space.canicule === true && space.open24 === true).length;
-    legend.push({
-      label: 'Ouvert en canicule',
-      color: FRAICHEUR_CANICULE_COLOR,
-      count: summary.canicule,
-      blurb: `${fr(summary.canicule)} des ${fr(summary.spaces)} espaces verts frais déclarent une ouverture canicule, `
-        + `dont ${fr(canicule24)} ouverts 24 h/24. `
-        + `${fr(summary.caniculeWithoutCanopy)} d’entre eux n’ont AUCUNE canopée mesurée au-dessus de 8 m — `
-        + `leur médiane est à 0,0280 contre 0,3197 sur l’ensemble du registre.`,
-    });
-    for (const band of [...FRAICHEUR_CANOPY_BANDS, FRAICHEUR_CANOPY_UNKNOWN]) {
-      const row = summary.canopyBands.find((entry) => entry.id === band.id);
-      if (!row || row.count <= 0) continue;
-      legend.push({ label: row.label, color: row.color, count: row.count, blurb: row.blurb });
-    }
-    for (const id of FRAICHEUR_FAMILIES) {
-      const row = summary.families.find((entry) => entry.id === id);
-      if (!row || row.count <= 0) continue;
+    const notes = [];
+
+    if (_registers.spaces) {
+      // `ouvert_24h` counted INSIDE the heatwave set, not across the register:
+      // 189 of the 984 spaces carry the flag and only 9 of the 23 heatwave ones
+      // do, and quoting the wrong one here would turn the finding upside down.
+      const canicule24 = (_payload?.spaces || [])
+        .filter((space) => space.canicule === true && space.open24 === true).length;
       legend.push({
-        label: FRAICHEUR_FAMILY_LABELS[id],
-        color: fraicheurFamilyColor(id),
-        count: row.count,
-        blurb: FRAICHEUR_FAMILY_BLURBS[id],
+        label: 'Ouvert en canicule',
+        color: FRAICHEUR_CANICULE_COLOR,
+        count: summary.canicule,
+        blurb: `${fr(summary.canicule)} des ${fr(summary.spaces)} espaces verts frais déclarent une ouverture canicule, `
+          + `dont ${fr(canicule24)} ouverts 24 h/24. `
+          + `${fr(summary.caniculeWithoutCanopy)} d’entre eux n’ont AUCUNE canopée mesurée au-dessus de 8 m — `
+          + `leur médiane est à 0,0280 contre 0,3197 sur l’ensemble du registre.`,
+      });
+      for (const band of FRAICHEUR_CANOPY_BANDS) {
+        const row = summary.canopyBands.find((entry) => entry.id === band.id);
+        if (!row || row.count <= 0) continue;
+        legend.push({ label: row.label, color: row.color, count: row.count, blurb: row.blurb });
+      }
+      const unmeasured = summary.canopyBands
+        .find((entry) => entry.id === FRAICHEUR_CANOPY_UNKNOWN.id)?.count || 0;
+      if (unmeasured > 0) {
+        notes.push(`${fr(unmeasured)} espace${unmeasured > 1 ? 's' : ''} sans indice de canopée publié, `
+          + `tracé${unmeasured > 1 ? 's' : ''} en gris — la couleur réservée dans cette couche à « le registre ne l’a pas mesuré ».`);
+      }
+    }
+
+    if (_registers.equipment) {
+      for (const id of FRAICHEUR_FAMILIES) {
+        const row = summary.families.find((entry) => entry.id === id);
+        if (!row || row.count <= 0) continue;
+        legend.push({
+          label: FRAICHEUR_FAMILY_LABELS[id],
+          color: fraicheurFamilyColor(id),
+          count: row.count,
+          blurb: FRAICHEUR_FAMILY_BLURBS[id],
+        });
+      }
+    }
+
+    if (_registers.fountains) {
+      const fountainCounts = [summary.fountainsAvailable, summary.fountainsOut,
+        summary.fountains - summary.fountainsAvailable - summary.fountainsOut];
+      FRAICHEUR_FOUNTAIN_STATES.forEach((state, index) => {
+        if (!(fountainCounts[index] > 0)) return;
+        legend.push({ label: state.label, color: state.color, count: fountainCounts[index], blurb: state.blurb });
       });
     }
-    const fountainCounts = [summary.fountainsAvailable, summary.fountainsOut,
-      summary.fountains - summary.fountainsAvailable - summary.fountainsOut];
-    FRAICHEUR_FOUNTAIN_STATES.forEach((state, index) => {
-      if (!(fountainCounts[index] > 0)) return;
-      legend.push({ label: state.label, color: state.color, count: fountainCounts[index], blurb: state.blurb });
-    });
-    if (_treePayload?.summary?.bands) {
+
+    if (_registers.trees && _treePayload?.summary?.bands) {
       for (const band of _treePayload.summary.bands) {
         if (!(band.count > 0)) continue;
         legend.push({ label: band.label, color: band.color, count: band.count, blurb: band.blurb });
       }
     }
-    return { chips: [], legend };
+
+    return { chips: registerChips(), legend, note: notes.join(' ') };
+  },
+
+  /**
+   * Which registers draw. See {@link FRAICHEUR_REGISTERS}.
+   *
+   * Nothing is thrown away and nothing is refetched by a chip going back on:
+   * the whole pack stays in `_records`, and only the tree register — the one
+   * that is fetched per viewport — has to go back to the proxy, which `load()`
+   * does on the next pass.
+   * @param {Record<string, boolean>} [params]
+   * @returns {boolean} False only when the call addresses no known register.
+   */
+  setParams(params = {}) {
+    const next = { ..._registers };
+    let addressed = false;
+    for (const id of FRAICHEUR_REGISTERS) {
+      if (params?.[id] === undefined) continue;
+      addressed = true;
+      next[id] = params[id] === true;
+    }
+    if (!addressed) return false;
+    // Idempotent, and reported as a SUCCESS: re-applying the filter a row is
+    // already showing is not a rejection, and returning false would have the
+    // manager log a params-failed for a button that did exactly what it said.
+    if (FRAICHEUR_REGISTERS.every((id) => next[id] === _registers[id])) return true;
+    _registers = next;
+    // A card left open over a register that has just gone dark would be a
+    // reading of an object the operator can no longer see or click.
+    const selected = _selectedId ? _records.get(_selectedId) : null;
+    if (selected && !registerDrawn(selected)) clearSelection();
+    applyRegisterVisibility();
+    // Turning a register back on reveals dots whose positions were baked while
+    // nothing was probing the ground under them.
+    resetFloorRetries();
+    refreshFloors();
+    // The trees are the one register with a request behind the button — off
+    // clears them here, on refetches on the next pass.
+    if (!_registers.trees) void loadTrees();
+    else scheduleLoad();
+    _rowControlsListener?.();
+    governorRequestRender('fraicheur-fr-registers');
+    return true;
+  },
+
+  /** @returns {Record<string, boolean>} */
+  getParams() {
+    return { ..._registers };
+  },
+
+  setRowControlsListener(listener) {
+    _rowControlsListener = typeof listener === 'function' ? listener : null;
   },
 
   destroy(viewer) {
+    resetFloorRetries();
+    _registers = fraicheurDefaultRegisters();
+    _rowControlsListener = null;
     if (_enabled) this.disable(viewer);
     else {
       clearSelection();
@@ -1437,7 +1913,13 @@ const fraicheurParisLayer = {
 export function _setFraicheurStateForTest({
   viewer, payload, trees = null, overlayHost, enabled = true, inView = true,
   treeStatus = 'idle', treeTotal = null, now = Date.now(), fetchImpl,
+  registers,
 } = {}) {
+  // A seeded state draws whatever it was handed: a test that passes `trees`
+  // means to see them, and making it also pass `registers: { trees: true }`
+  // would be a second way to say the same thing. An explicit `registers` still
+  // wins, which is how the chip behaviour itself is tested.
+  _registers = { ...fraicheurDefaultRegisters(), ...(trees ? { trees: true } : {}), ...(registers || {}) };
   _fetchImpl = fetchImpl || null;
   _nowOverride = Number.isFinite(now) ? Number(now) : null;
   _viewer = viewer || null;
@@ -1500,6 +1982,8 @@ export function _selectFraicheurForTest(id) {
 /** Exercise the production clear path and restore the production host seam. */
 export function _clearFraicheurSelectionForTest() {
   clearSelection();
+  _registers = fraicheurDefaultRegisters();
+  _rowControlsListener = null;
   _nowOverride = null;
   _fetchImpl = null;
   _treeBoxKey = null;

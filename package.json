@@ -64,6 +64,7 @@
     "qa:edf-plants": "node scripts/qa-edf-plants.mjs",
     "qa:energy-fr": "node scripts/qa-energy-fr.mjs",
     "qa:shared-mobility-fr": "node scripts/qa-shared-mobility-fr.mjs",
+    "qa:fraicheur-fr": "node scripts/qa-fraicheur-fr.mjs",
     "qa:gas-fr": "node scripts/qa-gas-fr.mjs",
     "qa:power-grid": "node scripts/qa-power-grid.mjs",
     "qa:bdtopo": "node scripts/qa-bdtopo-buildings.mjs",

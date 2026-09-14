@@ -21,6 +21,7 @@ import { readFileSync } from 'node:fs';
 import fraicheurParisLayer, {
   FRAICHEUR_CANICULE_COLOR,
   FRAICHEUR_FAMILY_COLORS,
+  FRAICHEUR_REGISTERS,
   FRAICHEUR_FILL_ALPHA,
   FRAICHEUR_FOUNTAIN_STATES,
   FRAICHEUR_FR_LAYER_ID,
@@ -55,6 +56,7 @@ import fraicheurParisLayer, {
 import {
   FRAICHEUR_CANOPY_BANDS,
   FRAICHEUR_CANOPY_UNKNOWN,
+  FRAICHEUR_FAMILIES,
   projectFraicheurRefuges,
 } from './fraicheurFeed.js';
 import {
@@ -231,16 +233,29 @@ function _recordsOfKind(kind) {
   return out;
 }
 
-test('the five mechanisms and the three fountain states are separable colours', () => {
+test('the three mechanisms and the three fountain states are separable colours', () => {
   const colors = Object.values(FRAICHEUR_FAMILY_COLORS).map((c) => c.toLowerCase());
   assert.equal(new Set(colors).size, colors.length, 'no two mechanisms share a colour');
-  assert.equal(colors.length, 5);
+  // Three and not the five this started with: `brume` and `bain` are both water
+  // and `plein-air` is by definition outdoors, which is what `ombre` says. The
+  // count is asserted so a family cannot be added back without the key being
+  // looked at again.
+  assert.equal(colors.length, 3);
+  assert.deepEqual(Object.keys(FRAICHEUR_FAMILY_COLORS), [...FRAICHEUR_FAMILIES]);
+  // The two hues that came free must not reappear anywhere in this layer: a
+  // colour that has stopped meaning something has to stop being drawn, or an
+  // old screenshot decodes against the new key.
+  for (const retired of ['#1565c0', '#ec407a']) {
+    assert.equal(colors.includes(retired), false, `${retired} was retired with its family`);
+  }
   // Not a green ramp: the polygons underneath own green, and a green dot on a
   // green park is not a dot.
   const canopy = new Set([...FRAICHEUR_CANOPY_BANDS, FRAICHEUR_CANOPY_UNKNOWN]
     .map((band) => band.color.toLowerCase()));
   for (const color of colors) assert.equal(canopy.has(color), false);
-  assert.equal(fraicheurFamilyColor('inconnue'), FRAICHEUR_FAMILY_COLORS['plein-air']);
+  // An unmapped published type lands in the WEAKEST of the three claims —
+  // "outdoors, no door" — and never in the most specific one.
+  assert.equal(fraicheurFamilyColor('inconnue'), FRAICHEUR_FAMILY_COLORS.ombre);
 
   // `dispo` is a STRING pair upstream, so the state table is three-valued and a
   // future null must not silently become "available".
@@ -415,8 +430,18 @@ test('the overlay entry accents a heatwave park differently from everything else
 
 test('the row legend leads with the heatwave asymmetry and counts only what it colours', () => {
   _setFraicheurStateForTest({ payload: PACK, trees: TREES, overlayHost: recordingHost(), now: AFTERNOON });
-  const { chips, legend } = _fraicheurRowControlsForTest();
-  assert.deepEqual(chips, []);
+  const { chips, legend, note } = _fraicheurRowControlsForTest();
+  // One chip per register, and every one of them carries the params that flip
+  // it — a chip with no `params` is a button the manager cannot act on.
+  assert.deepEqual(chips.map((chip) => chip.id),
+    FRAICHEUR_REGISTERS.map((id) => `reg:${id}`));
+  for (const chip of chips) {
+    assert.ok(chip.label, 'every chip is named');
+    assert.ok(chip.params && typeof chip.params === 'object');
+    const [[key, value]] = Object.entries(chip.params);
+    assert.ok(FRAICHEUR_REGISTERS.includes(key));
+    assert.equal(value, !chip.active, 'a chip toggles its own register');
+  }
   assert.ok(legend.length > 1);
   // First, because it is the finding: the register is 984 parks and 23 of them
   // declare a heatwave arrangement.
@@ -433,13 +458,17 @@ test('the row legend leads with the heatwave asymmetry and counts only what it c
     assert.ok(Number.isFinite(row.count), `${row.label} carries a count`);
     assert.ok(row.color, `${row.label} carries a colour`);
   }
-  // The canopy rows must sum to the parks, and no ramp row may be a duplicate
-  // of the grey "not measured" one.
+  // The two canopy rows plus whatever the note withheld must still sum to the
+  // parks: the fold cut the KEY down, never the register.
   const rampRows = legend.filter((row) => FRAICHEUR_CANOPY_BANDS.some((b) => b.label === row.label));
-  const greyRows = legend.filter((row) => row.label === FRAICHEUR_CANOPY_UNKNOWN.label);
-  const canopyTotal = [...rampRows, ...greyRows].reduce((sum, row) => sum + row.count, 0);
-  assert.equal(canopyTotal, PACK.summary.spaces);
-  assert.equal(greyRows.length, 1);
+  assert.equal(rampRows.length, FRAICHEUR_CANOPY_BANDS.length);
+  const unmeasured = PACK.spaces.filter((space) => space.canopy === null).length;
+  const canopyTotal = rampRows.reduce((sum, row) => sum + row.count, 0);
+  assert.equal(canopyTotal + unmeasured, PACK.summary.spaces);
+  // The grey "not measured" band is REPORTED, not ranked: one space in 984
+  // cannot have the same key height as the 582 shaded parks.
+  assert.equal(legend.some((row) => row.label === FRAICHEUR_CANOPY_UNKNOWN.label), false);
+  if (unmeasured > 0) assert.match(norm(note), /sans indice de canopée publié/);
   // The tree bands only appear when trees are actually on screen.
   const treeRows = legend.filter((row) => FRAICHEUR_TREE_BANDS.some((b) => b.label === row.label));
   assert.ok(treeRows.length > 0);
@@ -450,7 +479,51 @@ test('the row legend leads with the heatwave asymmetry and counts only what it c
     .filter((row) => FRAICHEUR_TREE_BANDS.some((b) => b.label === row.label));
   assert.equal(withoutTrees.length, 0, 'no tree band is legended when no tree is drawn');
   _clearFraicheurSelectionForTest();
-  assert.deepEqual(_fraicheurRowControlsForTest(), { chips: [], legend: [] });
+  assert.deepEqual(_fraicheurRowControlsForTest().legend, []);
+});
+
+test('a register switched off contributes nothing to the key', () => {
+  // The whole point of the chips: the key printed 18 rows because four
+  // registers were painted at once, and a reader has one question at a time.
+  _setFraicheurStateForTest({
+    payload: PACK, trees: TREES, overlayHost: recordingHost(), now: AFTERNOON,
+  });
+  const all = _fraicheurRowControlsForTest().legend.length;
+  _clearFraicheurSelectionForTest();
+
+  _setFraicheurStateForTest({
+    payload: PACK, trees: TREES, overlayHost: recordingHost(), now: AFTERNOON,
+    registers: { trees: false },
+  });
+  const withoutTrees = _fraicheurRowControlsForTest().legend;
+  assert.ok(withoutTrees.length < all, 'the tree bands leave with their register');
+  assert.equal(withoutTrees.some((row) => FRAICHEUR_TREE_BANDS.some((b) => b.label === row.label)), false);
+  _clearFraicheurSelectionForTest();
+
+  // The heatwave row is kept at ZERO when the parks are on — "none of the parks
+  // you can see stays open in a heatwave" is an entry a reader has to be given
+  // — but it goes when the parks themselves go, where it would be a claim about
+  // something not on the screen.
+  _setFraicheurStateForTest({
+    payload: PACK, overlayHost: recordingHost(), now: AFTERNOON,
+    registers: { spaces: false },
+  });
+  const withoutSpaces = _fraicheurRowControlsForTest().legend;
+  assert.equal(withoutSpaces.some((row) => row.label === 'Ouvert en canicule'), false);
+  assert.equal(withoutSpaces.some((row) => FRAICHEUR_CANOPY_BANDS.some((b) => b.label === row.label)), false);
+  assert.ok(withoutSpaces.length > 0, 'the refuges and the taps are still keyed');
+  _clearFraicheurSelectionForTest();
+
+  // All four off is a legitimate state, not something to guard against: the
+  // chips are independent, and one click brings a register back.
+  _setFraicheurStateForTest({
+    payload: PACK, overlayHost: recordingHost(), now: AFTERNOON,
+    registers: { spaces: false, equipment: false, fountains: false, trees: false },
+  });
+  const controls = _fraicheurRowControlsForTest();
+  assert.deepEqual(controls.legend, []);
+  assert.equal(controls.chips.length, FRAICHEUR_REGISTERS.length, 'the way back is still on the row');
+  _clearFraicheurSelectionForTest();
 });
 
 test('the open-now answer is recomputed on the browser clock, not on the fetch', () => {
@@ -630,8 +703,12 @@ test('the real load path builds the two proxy URLs the vite plugin answers', asy
     }
     return { ok: true, json: async () => TREES };
   };
+  // The tree register is OFF by default — it is the one fetched per viewport —
+  // so a test that asserts on its URL has to ask for it, exactly as the reader
+  // does with the ARBRES chip.
   _setFraicheurStateForTest({
     payload: null, viewer, overlayHost: host, fetchImpl, now: AFTERNOON,
+    registers: { trees: true },
   });
   const changed = await _fraicheurLoadForTest({ force: true });
   assert.equal(changed, true);
@@ -663,7 +740,10 @@ test('a refused tree box clears the trees rather than leaving the last box drawn
   const fetchImpl = async (url) => (String(url).startsWith(FRAICHEUR_REFUGES_URL)
     ? { ok: true, json: async () => ({ ...PACK, fetchedAt: AFTERNOON }) }
     : { ok: true, json: async () => answer });
-  _setFraicheurStateForTest({ payload: null, viewer, overlayHost: recordingHost(), fetchImpl, now: AFTERNOON });
+  _setFraicheurStateForTest({
+    payload: null, viewer, overlayHost: recordingHost(), fetchImpl, now: AFTERNOON,
+    registers: { trees: true },
+  });
   await _fraicheurLoadForTest({ force: true });
   assert.equal(_fraicheurTreeStateForTest().drawn, TREES.trees.length);
 
@@ -672,7 +752,10 @@ test('a refused tree box clears the trees rather than leaving the last box drawn
   // trees under a refusal message.
   answer = { box: TREES.box, trees: [], truncated: true, totalInBox: 10571, budget: 12500 };
   _clearFraicheurSelectionForTest();
-  _setFraicheurStateForTest({ payload: null, viewer, overlayHost: recordingHost(), fetchImpl, now: AFTERNOON });
+  _setFraicheurStateForTest({
+    payload: null, viewer, overlayHost: recordingHost(), fetchImpl, now: AFTERNOON,
+    registers: { trees: true },
+  });
   await _fraicheurLoadForTest({ force: true });
   const state = _fraicheurTreeStateForTest();
   assert.equal(state.status, 'too-dense');

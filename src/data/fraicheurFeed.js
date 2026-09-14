@@ -203,7 +203,7 @@ export const FRAICHEUR_DAY_LABELS = Object.freeze([
 ]);
 
 /**
- * The five ways a Parisian actually gets cool, and the 12 published types
+ * The THREE ways a Parisian actually gets cool, and the 12 published types
  * folded onto them.
  *
  * Folded on the PHYSICS, never on the name. The register's own `type` is a list
@@ -214,45 +214,52 @@ export const FRAICHEUR_DAY_LABELS = Object.freeze([
  * a museum and a library. Naming the mechanism is what turns the list back into
  * what it is.
  *
+ * ── Why three and not the five this started with ────────────────────────────
+ *
+ * The first cut had five, and it was five because the register has five
+ * mechanisms, not because a reader has five questions. The key printed 18 rows
+ * over a screen where 12 500 tree dots take 95 % of the ink, and a five-way
+ * split of 535 objects inside that is a distinction nobody can spend. The fold
+ * is onto the question actually asked — do I go IN, do I stand UNDER something,
+ * or is there WATER — and it is exact: `brume` and `bain` are both water, and
+ * the register's own residual `plein-air` is by definition outdoors, which is
+ * what `ombre` already says.
+ *
+ * What is NOT lost: the published `type` is on every card, verbatim, and the
+ * counts below stay in the blurbs. A reader who wants to know how many of the
+ * 154 water refuges are misters rather than pools reads it in the key.
+ *
  * The counts are the whole register, measured 2026-09-01 (they sum to 535):
  *
- *   pierre     225 — Lieux de culte 125, Musée 65, Mairie d'arrondissement 19,
- *                    Bibliothèque 16. Thermal mass you go inside. The BIGGEST
- *                    family, and the one nobody would have guessed: 125 of the
- *                    city's 535 official cool spots are churches.
- *   ombre      139 — Ombrière pérenne 127, Ombrière temporaire 12. Shade you
- *                    stand under. Kept apart from `pierre` because a canopy
- *                    over a pavement is not a cold room, and kept together
- *                    across pérenne/temporaire because the 12 temporary ones
- *                    are the same object with a shorter lease.
- *   brume       87 — Brumisateur. Evaporative cooling, alone, because it is the
- *                    only family that works by taking heat out of you rather
- *                    than by keeping it off you.
- *   bain        67 — Piscine 39, Bains-douches 17, Baignade extérieure 11.
- *                    Water you get INTO. The bains-douches are here rather than
- *                    with the cold stone because the point of them is the water.
- *   plein-air   17 — Terrain de boules 13, Découverte et Initiation 4. Open
- *                    ground the city has listed. The catch-all, and it keeps a
- *                    name that says so.
+ *   pierre  225 — Lieux de culte 125, Musée 65, Mairie d'arrondissement 19,
+ *                 Bibliothèque 16. Thermal mass you go INSIDE. The BIGGEST
+ *                 family, and the one nobody would have guessed: 125 of the
+ *                 city's 535 official cool spots are churches.
+ *   ombre   156 — Ombrière pérenne 127, Ombrière temporaire 12, Terrain de
+ *                 boules 13, Découverte et Initiation 4. Outdoors, no door and
+ *                 no opening hours. The 12 temporary ombrières are the same
+ *                 object with a shorter lease; the 17 the register listed as
+ *                 its own residual are open ground, which is this and not a
+ *                 cold room.
+ *   eau     154 — Brumisateur 87, Piscine 39, Bains-douches 17, Baignade
+ *                 extérieure 11. Water, whether it is sprayed at you or you get
+ *                 into it. The bains-douches are here rather than with the cold
+ *                 stone because the point of them is the water.
  *
  * Order is legend order, biggest family first.
  */
-export const FRAICHEUR_FAMILIES = Object.freeze(['pierre', 'ombre', 'brume', 'bain', 'plein-air']);
+export const FRAICHEUR_FAMILIES = Object.freeze(['pierre', 'ombre', 'eau']);
 
 export const FRAICHEUR_FAMILY_LABELS = Object.freeze({
-  pierre: 'Masse froide (pierre)',
-  ombre: 'Ombrière',
-  brume: 'Brumisateur',
-  bain: 'Bain & baignade',
-  'plein-air': 'Plein air',
+  pierre: 'Intérieur frais',
+  ombre: 'Ombre et plein air',
+  eau: 'Eau',
 });
 
 export const FRAICHEUR_FAMILY_BLURBS = Object.freeze({
-  pierre: 'Lieux de culte (125), musées (65), mairies (19), bibliothèques (16). Ils sont sur la liste parce que la pierre est froide.',
-  ombre: 'Ombrières pérennes (127) et temporaires (12) — de l’ombre sur un trottoir, sans porte ni horaire.',
-  brume: 'Brumisateurs (87). Aucun ne publie d’horaire hebdomadaire.',
-  bain: 'Piscines (39), bains-douches (17), baignades extérieures (11). La famille qui publie ses horaires : 64 des 67.',
-  'plein-air': 'Terrains de boules (13) et sites Découverte & Initiation (4).',
+  pierre: 'Lieux de culte (125), musées (65), mairies (19), bibliothèques (16). Ils sont sur la liste parce que la pierre est froide, et on y entre.',
+  ombre: 'Ombrières pérennes (127) et temporaires (12), terrains de boules (13), sites Découverte & Initiation (4). Dehors, sans porte ni horaire.',
+  eau: 'Brumisateurs (87), piscines (39), bains-douches (17), baignades extérieures (11). Les 67 bassins où l’on entre sont ce que ce registre publie de plus fiable : 64 sur 67 donnent un horaire lisible. Aucun brumisateur n’en donne.',
 });
 
 /** Published `type` → family. All 12 values are named; nothing falls through. */
@@ -264,26 +271,31 @@ const TYPE_TO_FAMILY = Object.freeze({
   'Bibliothèque': 'pierre',
   'Ombrière pérenne': 'ombre',
   'Ombrière temporaire': 'ombre',
-  'Brumisateur': 'brume',
-  'Piscine': 'bain',
-  'Bains-douches': 'bain',
-  'Baignade extérieure': 'bain',
-  'Terrain de boules': 'plein-air',
-  'Découverte et Initiation': 'plein-air',
+  'Brumisateur': 'eau',
+  'Piscine': 'eau',
+  'Bains-douches': 'eau',
+  'Baignade extérieure': 'eau',
+  'Terrain de boules': 'ombre',
+  'Découverte et Initiation': 'ombre',
 });
 
 /**
- * The family for one published type. An unmapped type lands in `plein-air`,
- * which is the register's own residual category rather than a flattering one.
+ * The family for one published type.
+ *
+ * An unmapped type lands in `ombre`, which is where the register's own residual
+ * bucket went when the five families became three: "outdoors, no door" is the
+ * weakest of the three claims and therefore the right home for a type this file
+ * has never seen. It is still a claim, so the card prints the published `type`
+ * verbatim beside it rather than letting the family stand for it.
  * @param {unknown} type
  * @returns {string}
  */
 export function fraicheurFamily(type) {
-  return TYPE_TO_FAMILY[String(type ?? '').trim()] || 'plein-air';
+  return TYPE_TO_FAMILY[String(type ?? '').trim()] || 'ombre';
 }
 
 /**
- * The canopy ladder: six bands on `indice_veget_sup8m_2024`, plus one for the
+ * The canopy ladder: TWO bands on `indice_veget_sup8m_2024`, plus one for the
  * space that does not carry it.
  *
  * The metric is the share of the space covered by vegetation TALLER THAN 8 m,
@@ -291,49 +303,49 @@ export function fraicheurFamily(type) {
  * something over it that casts shade at three in the afternoon, which is the
  * only kind of green that matters to a heatwave.
  *
- * Thresholds are FIXED rather than quantiled per payload, because the survey is
- * a single 2024 edition and a bin that meant one thing in the 12e and another
- * in the 1er would make two viewports incomparable. They are set on the measured
- * distribution across all 983 spaces that carry the metric (p25 0.1083,
- * p50 0.3197, p75 0.5366), and the counts below are the whole register:
+ * ── Why two, where there were six ──────────────────────────────────────────
  *
- *   nue          66 — EXACTLY zero. Its own band and not the bottom of the ramp:
- *                     "no tall vegetation was found here" is a different
- *                     statement from "a little was", and 66 of Paris's cool
- *                     green spaces are in the first group.
- *   rare        169 — 0 < v < 0.10
- *   clairsemee  166 — 0.10 ≤ v < 0.25
- *   moyenne     186 — 0.25 ≤ v < 0.40
- *   dense       164 — 0.40 ≤ v < 0.55
- *   couverte    232 — v ≥ 0.55
- *   inconnue      1 — the metric is null. Grey, never folded into `nue`.
+ * Six steps of one hue is a ramp, and a ramp is read by COMPARING swatches to
+ * each other. These fills are drawn at alpha 0.34 over a photorealistic city
+ * (`FRAICHEUR_FILL_ALPHA`, and the number is not negotiable — a cadastre
+ * boundary underneath has to survive) so no two adjacent steps of a six-step
+ * ramp are separable on the map at all: the reader gets six key rows and three
+ * distinguishable greens. Six rows were being spent to answer a question that
+ * has two answers — is there shade over this park or is there not.
  *
- * 66 + 169 + 166 + 186 + 164 + 232 + 1 = 984.
+ * The cut is at 0.25 and not at the median (0.3197) because the median is a
+ * property of the payload and the question is not: a quarter of the ground
+ * under something taller than a bus is the point at which a park stops being
+ * a lawn. FIXED rather than quantiled per payload for the same reason it always
+ * was — a bin that meant one thing in the 12e and another in the 1er would make
+ * two viewports incomparable.
+ *
+ * Measured across all 983 spaces that carry the metric (p25 0.1083, p50 0.3197,
+ * p75 0.5366), the fold is:
+ *
+ *   clair    401 — v < 0.25. Was nue 66 + rare 169 + clairsemee 166.
+ *   ombrage  582 — v ≥ 0.25. Was moyenne 186 + dense 164 + couverte 232.
+ *   inconnue   1 — the metric is null. Grey, and never folded into `clair`.
+ *
+ * 401 + 582 + 1 = 984.
+ *
+ * WHAT THE FOLD COSTS, and it is one thing. `nue` was its OWN band and not the
+ * bottom of the ramp, because "no tall vegetation was found here" — EXACTLY
+ * zero, on 66 spaces — is a different statement from "a little was". Those 66
+ * are now inside `clair`. The statement is not lost: it is in this band's own
+ * blurb, it is on the card of every one of the 66, and it is the number the
+ * heatwave row quotes against itself (11 of the 23 declared heatwave spaces
+ * have exactly zero). What is gone is a swatch nobody could tell from the one
+ * beside it.
  */
 export const FRAICHEUR_CANOPY_BANDS = Object.freeze([
   Object.freeze({
-    id: 'nue', label: 'Aucune canopée mesurée', color: '#d9c8a3', min: 0, max: 0,
-    blurb: 'indice_veget_sup8m_2024 exactement 0 — 66 espaces sur 984. Rien de plus haut que 8 m au relevé 2024.',
+    id: 'clair', label: 'Parc peu ombragé', color: '#96c66b', min: 0, max: 0.25,
+    blurb: 'Moins d’un quart du sol sous un arbre de plus de 8 m — 401 espaces sur 984, dont 66 à EXACTEMENT zéro : rien de plus haut que 8 m au relevé 2024.',
   }),
   Object.freeze({
-    id: 'rare', label: 'Canopée < 10 %', color: '#c8d98f', min: 0, max: 0.10,
-    blurb: 'Moins d’un dixième du sol sous un arbre de plus de 8 m.',
-  }),
-  Object.freeze({
-    id: 'clairsemee', label: 'Canopée 10–25 %', color: '#96c66b', min: 0.10, max: 0.25,
-    blurb: 'Le quart inférieur du registre : sous 0,1083, un espace vert sur quatre.',
-  }),
-  Object.freeze({
-    id: 'moyenne', label: 'Canopée 25–40 %', color: '#5aab52', min: 0.25, max: 0.40,
-    blurb: 'La médiane parisienne est à 0,3197 — la moitié des espaces sont sous cette barre.',
-  }),
-  Object.freeze({
-    id: 'dense', label: 'Canopée 40–55 %', color: '#2f8b43', min: 0.40, max: 0.55,
-    blurb: 'Le quart supérieur commence à 0,5366.',
-  }),
-  Object.freeze({
-    id: 'couverte', label: 'Canopée ≥ 55 %', color: '#12622f', min: 0.55, max: Infinity,
-    blurb: '232 espaces. Les bois en tiennent l’essentiel : 6 159 289 m² des 8 734 377 m² de canopée mesurée à Paris.',
+    id: 'ombrage', label: 'Parc ombragé', color: '#2f8b43', min: 0.25, max: Infinity,
+    blurb: 'Au moins un quart du sol sous une canopée de plus de 8 m — 582 espaces. Les bois en tiennent l’essentiel : 6 159 289 m² des 8 734 377 m² de canopée mesurée à Paris.',
   }),
 ]);
 
@@ -357,9 +369,7 @@ export const FRAICHEUR_CANOPY_BAND_IDS = Object.freeze([
 export function fraicheurCanopyBand(indice) {
   const value = finiteOrNull(indice);
   if (value === null || value < 0) return FRAICHEUR_CANOPY_UNKNOWN;
-  if (value === 0) return FRAICHEUR_CANOPY_BANDS[0];
   for (const band of FRAICHEUR_CANOPY_BANDS) {
-    if (band.max === 0) continue;
     if (value < band.max) return band;
   }
   return FRAICHEUR_CANOPY_BANDS[FRAICHEUR_CANOPY_BANDS.length - 1];
@@ -1346,7 +1356,8 @@ export function fraicheurLoadingLabel({
   if (unknown > 0) parts.push(`${fr(unknown)} sans horaire lisible`);
   if (summary.spacesExpired > 0) parts.push(`${fr(summary.spacesExpired)} horaires expirés`);
   if (Number.isFinite(drawn)) parts.push(`${fr(drawn)} objets tracés`);
-  if (treeStatus === 'too-high') parts.push('arbres : descends pour les charger');
+  if (treeStatus === 'off') parts.push('arbres masqués');
+  else if (treeStatus === 'too-high') parts.push('arbres : descends pour les charger');
   else if (treeStatus === 'too-dense' && Number.isFinite(treeTotal)) {
     parts.push(`${fr(treeTotal)} arbres ici — zoome`);
   } else if (Number.isFinite(trees) && trees > 0) parts.push(`${fr(trees)} arbres`);
