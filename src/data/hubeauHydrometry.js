@@ -1262,7 +1262,7 @@ export function createHubeauHydrometryLayer({
     if (_status === 'zoom-in') {
       return _records.length > 0
         ? `vue trop large pour mesurer — ${_summary.total.toLocaleString('fr-FR')} stations conservées`
-        : `rapproche la vue sous ${HUBEAU_MAX_VIEWPORT_DEGREES}° pour charger les stations`;
+        : `Zoome sous ${HUBEAU_MAX_VIEWPORT_DEGREES}° pour charger les stations`;
     }
     if (_status === 'empty') {
       const hours = Math.round(_windowMs / 3600000);

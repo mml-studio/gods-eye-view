@@ -709,7 +709,7 @@ const comparablesLayer = {
     };
     if (stats.dormant) {
       result.status = 'ok';
-      result.loadingLabel = `Descends sous ${Math.round(MAX_ALTITUDE_M / 1000)} km, `
+      result.loadingLabel = `Zoome sous ${Math.round(MAX_ALTITUDE_M / 1000)} km, `
         + 'ou pose le bien pour épingler le dossier';
     } else if (!stats.subjectLabel) {
       result.loadingLabel = 'Aucun bien posé — ouvre le dossier pour en poser un';

@@ -1355,7 +1355,7 @@ function kindFilterChipTitle(filter, kept, total, active) {
 }
 
 function buildLoadingLabel() {
-  if (_status === 'zoom-in') return 'zoomer pour charger les véhicules partagés';
+  if (_status === 'zoom-in') return 'Zoome pour charger les véhicules partagés';
   if (_loading) return _records.size ? 'actualisation des opérateurs…' : 'recherche des opérateurs…';
   if (_status === 'empty') {
     // A chip that hides everything has to own it: « aucun véhicule ne se

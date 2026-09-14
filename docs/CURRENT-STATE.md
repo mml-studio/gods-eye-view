@@ -2456,11 +2456,19 @@ Two rules keep that ceiling from reading as a broken layer:
   torn back down on enable, the toggle flipped to OFF, and the operator got
   `<layer> could not start cleanly` over a healthy feed.
 - **The zoom a layer needs is applied, not announced.** A layer may expose
-  `ensureViewGate(viewer, { signal })`; the manager awaits it after `enable()`
-  and before the first `update()`, for **explicit intent only** (`user`,
-  `voice`, `tool`) — a share link or a Context restore carries a camera of its
-  own. A gate that throws or cannot be satisfied is not a failure: the layer
-  stays ON with its own guidance text.
+  `ensureViewGate(viewer, { signal })`. Three do: `powerGrid`,
+  `bdtopoBuildings`, `cadastreParcels`. It is reached from the **zoom card**
+  (`src/zoomPrompt.js`) — the reader presses « Zoomer ici » and the layer solves
+  and flies. A gate that throws or cannot be satisfied is not a failure: the
+  layer stays ON with its own guidance text.
+
+  It used to run automatically, awaited by the manager after `enable()` for
+  explicit intent only (`user`, `voice`, `tool`). **That call no longer exists
+  in `manager.js`** — it was lost somewhere between #35 and today's `main`, and
+  for a while the three solvers were dead code nothing called. Which is also
+  why `npm run qa:view-gate` was a baseline failure. Restoring the automatic
+  flight is a separate decision from offering the button: switching a layer on
+  is not, on its own, permission to move somebody's camera.
 
 `src/data/viewGate.js` solves the camera: it sizes the metre budget off
 **longitude** (the tighter axis off the equator — sizing off latitude overshoots
@@ -2482,6 +2490,43 @@ France, buildings drawn, no lifecycle failure published) and by
 model of what a camera sees and asserts the box lands under the ceiling —
 including non-cardinal headings, where the axis-aligned rectangle has to contain
 a rotated trapezoid.
+
+#### The zoom card (September 2026)
+
+**Thirteen layers refuse to draw above a ceiling of their own, and at a
+continental camera twelve of them are outside it at once.** Every one says so
+honestly — a guidance status, a sentence in `loadingLabel`, a chip that stays
+green because a zoom gate is not a fault — and all of it lands in a sub-line of
+a panel row, in small type, in a panel that can be collapsed to a 0×0 box. The
+reader watching an empty globe at 1 000 km never saw it.
+
+`src/zoomPrompt.js` states it at **42% of the viewport height** — above centre,
+so the card does not cover the subject it is talking about — as one card for all
+the waiting layers: up to three rows, then "+N autres". The words are the
+LAYER'S own `loadingLabel`, never a second sentence written in the card that
+could drift from the row. Where the layer exposes `ensureViewGate()`, the row
+carries **« Zoomer ici »**, which is what finally calls the three solvers.
+
+The ceilings, measured from the source: `road-status-fr` 2 000 km · `transit-fr`
+300 km · `bruit-fr` 250 km · `power-grid` 120 km · `shared-mobility-fr` 80 km ·
+`idfm-network` 20 km · `sitadel-fr` 12 km · `cadastre-fr` and the `fraicheur-fr`
+trees 1,5 km; and by view span rather than altitude, `hubeau-hydro` 20° ·
+`military-installations` 10° · `filosofi-fr` 0,9° · `bdtopo-buildings` 0,08°.
+
+Three details that are not obvious:
+
+- **The card is `pointer-events: none`; only its buttons are not.** It sits over
+  the middle of a globe people drag.
+- **It is repainted twice after a camera stop, at 600 ms and 1 600 ms.** The
+  panel repaints on `moveEnd` (`setCoverageView`), but a gated layer's verdict
+  about that camera does not exist yet at that instant — the layers debounce
+  their own viewport read.
+- **A dismissal is remembered against the SET of waiting layers**, not for the
+  session: the same situation stays closed, a different one is news again.
+
+Every prompt is in French and says **zoome**, which two layers already did and
+eleven did not — three were still in English, the rest said "descends",
+"descendez" or "rapprochez-vous" for the same act.
 
 #### French address layers (September 2026)
 

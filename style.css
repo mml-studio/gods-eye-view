@@ -11716,3 +11716,171 @@ body.scene-playback-mode #coverage-briefing {
   /* No ESC key on a phone, so the hint that names it goes. */
   .coverage-briefing-footer > span:last-child { display: none; }
 }
+
+/* ── Zoom prompt ──────────────────────────────────────────────────────────────
+   Which switched-on layers are waiting for a closer camera (`src/zoomPrompt.js`).
+
+   AT 42% OF THE HEIGHT, not at 50%. The centre of the viewport is where the
+   reader's subject is; a card pinned there covers the thing the card is talking
+   about. Just above it is close enough to be read without looking away, and
+   clear of both the HUD at the bottom and the top-centre actions.
+
+   POINTER-EVENTS NONE ON THE CARD, AUTO ON ITS BUTTONS. This sits over the
+   middle of a globe people drag. A transparent 24-rem rectangle that ate every
+   click at the centre of the screen would be a worse bug than the one the card
+   fixes. */
+#zoom-prompt {
+  position: fixed;
+  z-index: 145;
+  top: 42%;
+  left: 50%;
+  width: min(24rem, calc(100vw - 2rem));
+  padding: 0.85rem 0.95rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  color: var(--text-primary);
+  background:
+    linear-gradient(145deg, rgba(10, 27, 37, 0.94), rgba(7, 13, 22, 0.92)),
+    rgba(7, 17, 25, 0.93);
+  border: 1px solid rgba(54, 220, 255, 0.34);
+  border-radius: 0.65rem;
+  box-shadow:
+    0 1rem 3.2rem rgba(0, 0, 0, 0.62),
+    0 0 2rem rgba(0, 212, 255, 0.08),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(24px) saturate(1.2);
+  -webkit-backdrop-filter: blur(24px) saturate(1.2);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  animation: zoom-prompt-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* An author `display` on this id beats the UA's `[hidden] { display: none }`,
+   exactly as it does on the briefing card, so the attribute's meaning has to be
+   restored explicitly or the card sits in the accessibility tree from parse. */
+#zoom-prompt[hidden] {
+  display: none;
+}
+
+@keyframes zoom-prompt-in {
+  from { opacity: 0; transform: translate(-50%, calc(-50% + 0.6rem)) scale(0.98); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+.zoom-prompt-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.zoom-prompt-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.zoom-prompt-close {
+  pointer-events: auto;
+  padding: 0 0.2rem;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.zoom-prompt-close:hover { color: var(--text-primary); }
+
+.zoom-prompt-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.zoom-prompt-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.zoom-prompt-row + .zoom-prompt-row {
+  padding-top: 0.55rem;
+  border-top: 1px solid rgba(126, 176, 204, 0.16);
+}
+
+.zoom-prompt-layer {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.zoom-prompt-message {
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.zoom-prompt-fly {
+  pointer-events: auto;
+  align-self: flex-start;
+  margin-top: 0.3rem;
+  padding: 0.32rem 0.7rem;
+  border: 1px solid rgba(54, 220, 255, 0.45);
+  border-radius: var(--btn-radius);
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.zoom-prompt-fly:hover:not(:disabled) {
+  background: rgba(0, 212, 255, 0.24);
+  border-color: var(--accent);
+}
+
+.zoom-prompt-fly:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.zoom-prompt-more {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+/* Same arbitration as the briefing card: a surface that claims the screen hides
+   this one. `zoomPromptVisible()` makes the same call in JS — this is the belt
+   that holds if a class is added without a repaint following it. */
+body.ui-clean-view #zoom-prompt,
+body.recording-mode #zoom-prompt,
+body.cockpit-mode #zoom-prompt,
+body.scene-playback-mode #zoom-prompt {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #zoom-prompt { animation-duration: 1ms; }
+}
+
+@media (max-width: 620px) {
+  #zoom-prompt {
+    top: auto;
+    bottom: 5.8rem;
+    transform: translate(-50%, 0);
+    animation-name: none;
+  }
+}

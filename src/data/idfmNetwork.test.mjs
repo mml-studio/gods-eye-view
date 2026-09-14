@@ -813,7 +813,7 @@ test('a box the proxy refused is guidance with a number, not an empty map', () =
   });
   const label = norm(buildLoadingLabel());
   assert.ok(label.includes('au moins 1 197 arrêts dans cette vue'));
-  assert.ok(label.includes('rapprochez-vous'));
+  assert.ok(label.endsWith('zoome'), label);
   const stats = _idfmNetworkStatsForTest();
   assert.equal(stats.regime, 'arrets');
   assert.equal(stats.error, null);

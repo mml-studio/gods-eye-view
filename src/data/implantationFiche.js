@@ -895,7 +895,7 @@ const implantationFicheLayer = {
     };
     if (stats.dormant) {
       result.status = 'ok';
-      result.loadingLabel = `Descends sous ${Math.round(MAX_ALTITUDE_M / 1000)} km `
+      result.loadingLabel = `Zoome sous ${Math.round(MAX_ALTITUDE_M / 1000)} km `
         + 'pour composer une fiche';
     } else if (Array.isArray(stats.missing) && stats.missing.length) {
       // DEGRADED, not an error: a fiche short of its market half is still a

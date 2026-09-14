@@ -641,7 +641,7 @@ test('the zoom gate asks for a zoom — it does not fail the lifecycle or raise 
   assert.ok(!stats.error, `a zoom prompt must not reach the fault slot, got ${stats.error}`);
   assert.match(
     stats.loadingLabel,
-    /descend below \d+ km/i,
+    /Zoome sous \d+ km/i,
     'the prompt travels in the guidance slot, where the row can print it',
   );
   // The threshold the prompt names is the one the gate actually enforces, and

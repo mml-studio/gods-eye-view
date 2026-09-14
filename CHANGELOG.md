@@ -472,6 +472,41 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   quatre entrées d'atlas, pas 4 000.
 
 ### Added
+- **Treize couches refusent de se dessiner au-dessus d'un plafond, et elles le
+  disaient dans une sous-ligne d'un panneau qui peut être replié à 0×0.** Le
+  lecteur regardait la France depuis 1 000 km avec « Réseau électrique »
+  allumé : rien à l'écran, et la raison — « visible sous 120 km » — écrite en
+  petit, à gauche, hors du regard. À cette altitude **douze des treize couches
+  sont hors de leur plafond en même temps**.
+
+  Une carte unique s'affiche désormais **à 42 % de la hauteur de la fenêtre** —
+  au-dessus du centre, pour ne pas couvrir ce dont elle parle — et nomme les
+  couches qui attendent : trois lignes au plus, puis « +N autres ». Les mots
+  sont **ceux de la couche elle-même**, jamais une seconde phrase qui pourrait
+  diverger de la ligne du panneau.
+
+  Et là où la couche sait résoudre sa propre vue, la carte porte
+  **« Zoomer ici »** : un clic, un vol de 1,6 s, la couche charge en arrivant.
+  Trois couches savent le faire (Réseau électrique, Bâti 3D, Parcelles
+  cadastrales) — `ensureViewGate()`, écrit en septembre, testé, documenté, et
+  **que plus rien n'appelait** : l'appel automatique du gestionnaire a disparu
+  du code quelque part entre la #35 et aujourd'hui. C'est ce qui rendait
+  `npm run qa:view-gate` rouge par défaut. La carte est son premier appelant
+  réel. Le rétablir au moment d'allumer une couche reste une décision à part :
+  allumer une couche n'est pas, en soi, l'autorisation de déplacer la caméra de
+  quelqu'un.
+
+  Trois détails qui ne se voient pas : la carte **ne prend aucun clic** (seuls
+  ses boutons en prennent — elle est posée au milieu d'un globe qu'on fait
+  tourner à la souris) ; elle est **relue 600 ms et 1 600 ms après l'arrêt de la
+  caméra**, parce qu'à l'instant du `moveEnd` la couche n'a pas encore conclu ;
+  et la fermer vaut **pour la situation**, pas pour la session.
+
+  Au passage, **tous les messages de zoom passent au français et au même
+  verbe** : onze couches sur treize disaient autre chose — trois en anglais
+  (« descend below 120 km »), les autres « descends », « descendez » ou
+  « rapprochez-vous » pour le même geste. C'est **zoome** partout.
+
 - **Une vue sans aérien le DIT, au lieu de simplement ne rien dessiner.** Le
   lecteur a regardé le Trocadéro depuis 856 m et a demandé : « on est d'accord
   que les pylônes ne s'affichent pas ? » Il avait raison — zéro pylône dessiné —

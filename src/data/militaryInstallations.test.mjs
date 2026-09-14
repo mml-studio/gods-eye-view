@@ -766,7 +766,7 @@ test('the zoom prompt travels as guidance, never as an error', () => {
     'no string may be passed as the error argument of the zoom gate');
   // And the prompt still has somewhere to be seen.
   assert.match(installationsSource,
-    /function installationLoadingLabel\(\)[^]*?status === 'zoom-in'[^]*?return '[^']*zoom in/i,
+    /function installationLoadingLabel\(\)[^]*?status === 'zoom-in'[^]*?return '[^']*Zoome/i,
     'the prompt lives in the guidance slot the row reads');
 });
 

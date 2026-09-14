@@ -69,6 +69,7 @@
     "qa:power-grid": "node scripts/qa-power-grid.mjs",
     "qa:bdtopo": "node scripts/qa-bdtopo-buildings.mjs",
     "qa:view-gate": "node scripts/qa-view-gate.mjs",
+    "qa:zoom-prompt": "node scripts/qa-zoom-prompt.mjs",
     "qa:power-grid-coverage": "node scripts/grid-audit/audit-substations.mjs",
     "qa:power-grid-coverage:lines": "node scripts/grid-audit/audit-lines.mjs",
     "qa:rte-generation": "node scripts/qa-rte-generation.mjs",

@@ -448,7 +448,7 @@ export function installationResponseSaturated(payload) {
  */
 function installationLoadingLabel() {
   if (state.loading) return 'loading mapped installation context';
-  if (state.status === 'zoom-in') return 'zoom in to load mapped installation context';
+  if (state.status === 'zoom-in') return 'Zoome pour charger le contexte des sites cartographiés';
   // Past the live gate the map is not waiting for anything, and saying "zoom
   // in" there was the layer asking for a zoom it no longer needs.
   if (state.wideView && state.records.length) return 'wide view — bundled France pack';

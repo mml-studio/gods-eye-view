@@ -589,7 +589,7 @@ test('percentage precision scales so a strong agreement never prints as −0,0 %
 test('each refusal explains itself in its own terms', () => {
   assert.match(
     flat(cadastreLoadingLabel({ status: 'too-high' })),
-    new RegExp(`Descends sous ${CADASTRE_MAX_ALTITUDE_M.toLocaleString('en-US').replace(',', ' ')} m`),
+    new RegExp(`Zoome sous ${CADASTRE_MAX_ALTITUDE_M.toLocaleString('en-US').replace(',', ' ')} m`),
   );
   assert.match(cadastreLoadingLabel({ status: 'off-coverage' }), /Hors couverture PCI vecteur/);
   const dense = flat(cadastreLoadingLabel({ status: 'too-dense', totalInBox: 15977 }));

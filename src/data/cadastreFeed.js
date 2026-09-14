@@ -1055,7 +1055,7 @@ export function cadastreAreaLines(parcel) {
  */
 export function cadastreLoadingLabel({ status, totalInBox } = {}) {
   if (status === 'too-high') {
-    return `Descends sous ${CADASTRE_MAX_ALTITUDE_M.toLocaleString('fr-FR')} m pour charger le parcellaire`;
+    return `Zoome sous ${CADASTRE_MAX_ALTITUDE_M.toLocaleString('fr-FR')} m pour charger le parcellaire`;
   }
   if (status === 'off-coverage') return 'Hors couverture PCI vecteur (France et DROM)';
   if (status === 'too-dense') {

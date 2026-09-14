@@ -864,7 +864,7 @@ export function bruitAerodromeDescription(aerodrome, payload, pgs = null) {
     aerodrome?.probed === false
       ? 'renvoyé par la sonde d’un aérodrome voisin — son plan peut être incomplet ici'
       : null,
-    'descendez sous 12 km pour savoir quelle zone s’applique à une adresse',
+    'zoome sous 12 km pour savoir quelle zone s’applique à une adresse',
   ], payload).join(' · ');
 }
 
@@ -1330,7 +1330,7 @@ export function bruitScanParams(point) {
  */
 export function bruitGuidanceLabel(stats) {
   if (stats?.dormant === true) {
-    return `Descendez sous ${(BRUIT_OVERVIEW_CEILING_M / 1000).toLocaleString('fr-FR')} km : au-delà, les zones ne font plus une forme à l’écran`;
+    return `Zoome sous ${(BRUIT_OVERVIEW_CEILING_M / 1000).toLocaleString('fr-FR')} km : au-delà, les zones ne font plus une forme à l’écran`;
   }
   if (stats?.available?.peb === false) {
     return stats?.area === true

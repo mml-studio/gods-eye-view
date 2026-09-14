@@ -502,7 +502,7 @@ export function mountPulseHud({ onSeek, onTogglePlay, onClearSelection } = {}) {
       const notice = node('[data-pulse-range]');
       notice.hidden = !outOfRange;
       notice.textContent = outOfRange
-        ? `Trop haut pour lire le champ — descendez sous ${ceilingKm} km.`
+        ? `Trop haut pour lire le champ — zoome sous ${ceilingKm} km.`
         : '';
       panel.classList.toggle('is-out-of-range', Boolean(outOfRange));
     },

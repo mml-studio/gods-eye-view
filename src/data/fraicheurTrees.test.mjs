@@ -275,7 +275,7 @@ test('a tree card states each absence rather than printing a zero', () => {
 });
 
 test('the tree status line names the number and the ceiling it is refusing', () => {
-  assert.match(fraicheurTreeLabel({ status: 'too-high' }), /Descends sous/);
+  assert.match(fraicheurTreeLabel({ status: 'too-high' }), /Zoome sous/);
   assert.match(norm(fraicheurTreeLabel({ status: 'too-high' })), /1 500 m/);
   const dense = norm(fraicheurTreeLabel({ status: 'too-dense', totalInBox: 10571 }));
   assert.match(dense, /10 571 arbres/);

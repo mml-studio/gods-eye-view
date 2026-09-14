@@ -481,7 +481,7 @@ test('the row line names the commune first, and the counts it could not place', 
 
   const high = norm(buildSitadelLoadingLabel({ status: 'too-high', payload: null }));
   assert.ok(high.includes('une commune à la fois'), high);
-  assert.ok(high.includes('12 000 m'), high);
+  assert.ok(high.includes('12 km'), high);
   const none = buildSitadelLoadingLabel({ status: 'no-commune', payload: null });
   assert.ok(norm(none).includes('Aucune commune française'), none);
   assert.equal(buildSitadelLoadingLabel({ status: 'idle', payload: null }), null);

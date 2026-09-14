@@ -586,7 +586,7 @@ test('a refused tree box reports the count it refused, and draws nothing short',
   _setFraicheurStateForTest({
     payload: PACK, overlayHost: recordingHost(), treeStatus: 'too-high', now: AFTERNOON,
   });
-  assert.match(norm(_fraicheurStatsForTest().loadingLabel), /arbres : descends pour les charger/);
+  assert.match(norm(_fraicheurStatsForTest().loadingLabel), /arbres : zoome pour les charger/);
   _clearFraicheurSelectionForTest();
 });
 

@@ -520,7 +520,7 @@ export function fraicheurTreeLabel({ status, totalInBox, drawn, budget = FRAICHE
   // to say what the button is rather than sound like something went wrong.
   if (status === 'off') return 'Arbres masqués — bouton ARBRES pour les charger';
   if (status === 'too-high') {
-    return `Descends sous ${FRAICHEUR_TREE_MAX_ALTITUDE_M.toLocaleString('fr-FR')} m pour charger les arbres`;
+    return `Zoome sous ${FRAICHEUR_TREE_MAX_ALTITUDE_M.toLocaleString('fr-FR')} m pour charger les arbres`;
   }
   if (status === 'too-dense') {
     const count = finiteOrNull(totalInBox);
