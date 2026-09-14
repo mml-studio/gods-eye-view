@@ -96,6 +96,28 @@ test('a switched-on layer at its gate is announced in the middle of the screen',
   }
 });
 
+test('a followed contact takes the card off the screen until it is let go', async () => {
+  const host = makeElement();
+  const restore = installDocument(host);
+  const layer = gatedLayer('power-grid');
+  const mgr = await managerWithLayer(layer);
+  try {
+    assert.equal(mgr.refreshZoomPrompt(), true, 'the gate is news while nothing is held');
+    // Clicking a plane assigns the viewer's tracked entity; the card yields to
+    // it rather than talking over the thing the reader just aimed at.
+    mgr.viewer.trackedEntity = { id: 'tracked-aircraft' };
+    assert.equal(mgr.refreshZoomPrompt(), false);
+    assert.equal(host.hidden, true);
+    // Read fresh, never latched: dropping the contact restores the card.
+    mgr.viewer.trackedEntity = undefined;
+    assert.equal(mgr.refreshZoomPrompt(), true);
+    assert.equal(host.hidden, false);
+  } finally {
+    await mgr.destroyAll();
+    restore();
+  }
+});
+
 test('a layer that is not at a gate leaves the screen alone', async () => {
   const host = makeElement();
   const restore = installDocument(host);

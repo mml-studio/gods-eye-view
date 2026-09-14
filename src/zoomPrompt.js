@@ -186,6 +186,14 @@ export function zoomPromptModel(layers = [], { canFly = () => false, epoch = 0 }
  *   failed to reach the gate brings the card straight back. Without it, the
  *   card the press dismissed would reappear on the next scheduled re-read,
  *   mid-flight, while the camera is still moving.
+ * @param {boolean} [subjectFocused] The reader has CLICKED something — a
+ *   followed contact, a selected feature. Not an exclusive surface: the globe
+ *   is still the globe and every other control stays where it was. But the
+ *   card draws in the middle of the screen, which is exactly where a followed
+ *   plane is, and it speaks about layers UNDER that plane which the reader did
+ *   not ask about at that moment. The gate has not gone anywhere — the panel
+ *   row still says so, and the card comes back the moment the subject is let
+ *   go, because this is read fresh on every pass rather than remembered.
  * @returns {boolean}
  */
 export function zoomPromptVisible(
@@ -193,8 +201,9 @@ export function zoomPromptVisible(
   dismissedSignature = '',
   exclusiveSurface = false,
   flyingSignature = '',
+  subjectFocused = false,
 ) {
-  if (!model || exclusiveSurface) return false;
+  if (!model || exclusiveSurface || subjectFocused) return false;
   if (flyingSignature && model.signature === flyingSignature) return false;
   return model.signature !== dismissedSignature;
 }

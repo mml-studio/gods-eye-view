@@ -3,6 +3,7 @@ import { markDetectionSourcesChanged } from './detection.js';
 import { SURFACE_FILL_DRAPE_NOTE, surfaceFillDrapesBuildings } from './surfaceFillNotice.js';
 import { fusionMemberChipFor, fusionPrimaryChipFor } from './layerFusions.js';
 import { exclusiveSurfaceActive } from '../firstRunExperience.js';
+import { getSelectedEntityContext } from './contextStore.js';
 import { renderZoomPrompt, zoomPromptModel, zoomPromptVisible } from '../zoomPrompt.js';
 import {
   coverageNoticeFor,
@@ -3445,6 +3446,36 @@ export class DataLayerManager {
   }
 
   /**
+   * Has the reader got a subject in hand?
+   *
+   * Two slots, because the app has two ways of holding one. A FOLLOWED contact
+   * (an aircraft, a satellite) is `viewer.trackedEntity` and never reaches the
+   * selection event lane; a clicked feature is the shared context slot and
+   * never sets a tracked entity. Either way the click was aimed at one object,
+   * and a card that announces the layers underneath it is answering a question
+   * nobody asked.
+   *
+   * Read fresh each pass rather than latched on an event: the card must return
+   * on its own when the subject is let go, and a missed `cleared` event would
+   * otherwise silence it for the rest of the session.
+   *
+   * NO CESIUM: `trackedEntity` is read as a plain property, exactly as
+   * `ensureLayerViewGate` hands `this.viewer` straight to the layer.
+   * @returns {boolean}
+   */
+  _zoomPromptSubjectFocused() {
+    if (this.viewer?.trackedEntity) return true;
+    // The context store hangs off `window`, and the manager's unit tests run
+    // without one.
+    if (typeof window === 'undefined') return false;
+    try {
+      return Boolean(getSelectedEntityContext({ dataManager: this }));
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * @param {Array<object>} [layers] `getAll()` rows, when a caller already has
    *   them — the panel refresh does, and asking twice would run every layer's
    *   `getStats()` a second time.
@@ -3470,6 +3501,7 @@ export class DataLayerManager {
       this._zoomPromptDismissedSignature,
       exclusiveSurfaceActive(document),
       this._zoomPromptFlyingSignature,
+      this._zoomPromptSubjectFocused(),
     );
     return renderZoomPrompt(host, visible ? model : null, {
       onFly: (layerId) => {

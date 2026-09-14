@@ -111,6 +111,13 @@ test('an exclusive surface keeps the card off the screen', () => {
   assert.equal(zoomPromptVisible(model, '', true), false);
 });
 
+test('a clicked subject keeps the card off the screen, and only while it is held', () => {
+  const model = zoomPromptModel([waitingLayer('power-grid')]);
+  assert.equal(zoomPromptVisible(model, '', false, '', true), false, 'the plane owns the middle');
+  // Not a dismissal: letting the contact go brings the same card back.
+  assert.equal(zoomPromptVisible(model, '', false, '', false), true);
+});
+
 // ── Rendering ───────────────────────────────────────────────────────────────
 
 function makeElement(tag = 'div') {
