@@ -562,9 +562,9 @@ async function main() {
     // graphite plus a hollow ring, which is a shape and not a sixth rung.
     const glyphOf = Object.fromEntries(loaded.legend.map(([label, , , glyph]) => [label, glyph]));
     check('the out-of-envelope band is a RING in the refusal graphite, not a rung',
-      colorOf['Puissance non exploitable'] === '#7a8493'
-      && String(glyphOf['Puissance non exploitable'] || '').startsWith('data:image/svg+xml'),
-      `${colorOf['Puissance non exploitable']} / ${String(glyphOf['Puissance non exploitable']).slice(0, 30)}`);
+      colorOf['Puissance inconnue'] === '#7a8493'
+      && String(glyphOf['Puissance inconnue'] || '').startsWith('data:image/svg+xml'),
+      `${colorOf['Puissance inconnue']} / ${String(glyphOf['Puissance inconnue']).slice(0, 30)}`);
     // AND IT CLIMBS IN THE LIGHT HALF. The first version ran from L* 30.6, and
     // a reader called those plates too dark to pick out on imagery — 46 % of a
     // French city's sites sat on the two bottom rungs.
@@ -576,24 +576,28 @@ async function main() {
     console.log('[qa] iv. row legend');
     check('the legend counts CHARGE POINTS, not dots',
       byLabel['Lente (≤ 7,4 kW)'] === 226, JSON.stringify(loaded.legend.map(([l, c]) => [l, c])));
-    // TWO TIERS since the key was rebuilt: the height and its ruler, then the
-    // colour and its classes. The band rows are the ones with a count.
-    const bandRows = loaded.legend.filter(([label]) => /kW\)$|^Puissance non/.test(label));
+    // The band rows are the ones with a count; the header carries none.
+    const bandRows = loaded.legend.filter(([label]) => /kW\)$|^Puissance inconnue$/.test(label));
     check('every band in view is listed exactly once',
       bandRows.length === 6, JSON.stringify(bandRows.map(([l]) => l)));
     check('with no zero-count entries', bandRows.every(([, count]) => count > 0), JSON.stringify(bandRows));
     check('read low power to high',
-      bandRows[0][0].startsWith('Lente') && bandRows.at(-1)[0].startsWith('Puissance non'),
+      bandRows[0][0].startsWith('Lente') && bandRows.at(-1)[0] === 'Puissance inconnue',
       JSON.stringify(bandRows.map(([l]) => l)));
-    // F7 a — the height names its register, and D1 gives it numbered marks.
-    check('the height declares its register and carries a ruler',
-      loaded.legend[0][0].startsWith('Hauteur — points de charge')
-      && loaded.legend.filter(([label]) => /^\d+ points de charge$/.test(label)).length >= 3,
+    // ONE QUESTION, ONE HEADER, SIX CLASSES. The key was 13 rows and 301 words
+    // over a city on 2026-09-14 — a block taller than the viewport, carrying a
+    // beam ruler quoted in PIXELS, two paragraphs of method and a provenance
+    // line the attribution surface already published. It answers the colour
+    // and nothing else now, and this check is what keeps it there.
+    check('the key is the colour channel and stays under seven rows',
+      loaded.legend[0][0] === 'Vitesse de charge'
+      && loaded.legend.length === bandRows.length + 1
+      && loaded.legend.length <= 7,
       JSON.stringify(loaded.legend.map(([l]) => l)));
-    // E1 — the operators' clock, printed with the key, never the proxy's.
-    check('the key carries the operators\u2019 own clock',
-      /d\u00e9p\u00f4t op\u00e9rateur le \d{2}\/\d{2}\/\d{4}/.test(String(loaded.legendNote || '')),
-      String(loaded.legendNote || ''));
+    check('and no row quotes a pixel, a ruler mark or a provenance sentence',
+      !loaded.legend.some(([label]) => /px|Hauteur|Couleur/.test(label))
+      && !String(loaded.legendNote || '').trim(),
+      `${JSON.stringify(loaded.legend.map(([l]) => l))} / ${String(loaded.legendNote || '')}`);
     // G1 — the filter, on the row strip.
     check('the row offers a power floor rather than only a toggle',
       loaded.chips.length === 4 && loaded.chips[0] === 'TOUT',

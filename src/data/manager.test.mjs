@@ -4445,6 +4445,24 @@ test('an ordered key draws one bar and lays its classes side by side', async () 
     assert.equal(collectByClass(items, 'map-legend-blurb').length, 0);
     assert.equal(collectByClass(items, 'map-legend-entry').filter((n) => n.title === 'teinte dérivée').length, 1);
 
+    // A HEADING captions the classes under it and takes NO swatch. An empty
+    // slot in front of « Vitesse de charge » reads as one more class drawn in
+    // nothing — and as the same hollow disc a refused class uses (D3). The
+    // entries under it stay stacked: a caption is not a `channel`.
+    layer.module.getRowControls = () => ({
+      chips: [],
+      legend: [
+        { label: 'Vitesse de charge', color: null, heading: true },
+        { label: 'Lente', color: '#0482ed', count: 226, blurb: 'une charge de nuit' },
+      ],
+    });
+    mgr._refreshTogglePanel();
+    assert.deepEqual(collectByClass(items, 'map-legend-channel').map((node) => node.textContent),
+      ['Vitesse de charge']);
+    assert.equal(collectByClass(items, 'map-legend-swatch').length, 1, 'the caption takes no swatch');
+    assert.equal(collectByClass(items, 'map-legend-inline').length, 0, 'a caption is not a channel');
+    assert.equal(collectByClass(items, 'map-legend-blurb').length, 1);
+
     // A key with neither flag renders exactly as it always has.
     layer.module.getRowControls = () => ({
       chips: [], legend: [{ label: 'NAV', color: '#4fd8ff', count: 2, blurb: 'stacked' }],

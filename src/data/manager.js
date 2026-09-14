@@ -3218,8 +3218,8 @@ export class DataLayerManager {
 
   /**
    * Paint the on-map legend block — THE mount point for the
-   * `{color, glyph, label, count, blurb}` entries each enabled layer publishes
-   * through `getRowControls()`.
+   * `{color, glyph, label, count, blurb, heading}` entries each enabled layer
+   * publishes through `getRowControls()`.
    *
    * WHY HERE AND NOWHERE ELSE (CARTOGRAPHIE, "a map without a key is a
    * picture"). The entries used to render in the layer row as well, inside
@@ -3456,6 +3456,23 @@ export class DataLayerManager {
         } else {
           channelList = null;
           channelName = null;
+        }
+
+        // A CAPTION IS NOT A CLASS. An entry flagged `heading` names the
+        // channel the classes under it belong to, and it takes no swatch: an
+        // empty slot before « Vitesse de charge » reads as a seventh class
+        // drawn in nothing — and worse, it is the same hollow disc a layer
+        // uses for its refused class (D3), so the caption and « puissance
+        // inconnue » were two hollow rings one above the other. Same node and
+        // same styling as a `channel` name, without forcing the entries under
+        // it side by side.
+        if (item.heading === true) {
+          const caption = document.createElement('div');
+          caption.className = 'map-legend-channel';
+          caption.textContent = item.label;
+          if (item.blurb) caption.title = item.blurb;
+          entryHost().appendChild(caption);
+          continue;
         }
 
         const entry = document.createElement('div');

@@ -29,9 +29,7 @@ import irveFranceLayer, {
   IRVE_MARK_DENSE_PX,
   irveBandClearsFloor,
   irveFilingDate,
-  irveFutureFilings,
   irveFloorBandIndex,
-  irveLatestFiling,
   selectIrveLabelCohort,
   _clearIrveSelectionForTest,
   _irveDepartementOverlayForTest,
@@ -236,14 +234,15 @@ test('an unverified position says so instead of being silently trusted', () => {
 
 test('the card dates the DECLARATION, and shows a span when there is one', () => {
   // A tenth of this file has not been touched since 2023, and the poll time
-  // would hide that completely.
+  // would hide that completely. In French, because since 2026-09-14 this card
+  // is the ONLY surface carrying this layer's clock.
   assert.match(
     buildIrveSelectionLabel(siteRecord({ updatedFrom: '2023-07-06', updatedTo: '2025-06-30' })),
-    /déclaré 2023-07-06 → 2025-06-30/,
+    /déclaré 06\/07\/2023 → 30\/06\/2025/,
   );
   assert.match(
     buildIrveSelectionLabel(siteRecord({ updatedFrom: '2026-07-30', updatedTo: '2026-07-30' })),
-    /déclaré 2026-07-30$/m,
+    /déclaré 30\/07\/2026$/m,
   );
 });
 
@@ -611,7 +610,7 @@ test('the legend counts charge points, not dots, and drops empty bands', () => {
   assert.equal(byLabel['Lente (≤ 7,4 kW)'], 15);
   assert.equal(byLabel['Normale (≤ 22 kW)'], 2);
   assert.equal(byLabel['Haute puissance (> 150 kW)'], 3);
-  assert.equal(byLabel['Puissance non exploitable'], 1);
+  assert.equal(byLabel['Puissance inconnue'], 1);
   assert.ok(!('Rapide (≤ 150 kW)' in byLabel), 'an empty band must be omitted, not listed as zero');
   _clearIrveSelectionForTest();
 });
@@ -623,44 +622,66 @@ test('the legend reads low power to high, so the ramp is legible in order', () =
   });
   const { legend, note, legendNote } = _irveRowControlsForTest();
   const labels = legend.map((row) => row.label);
-  // Two tiers, in this order: the height and its ruler, then the colour and
-  // its classes. A prism-shaped key for a beam-shaped mark, deliberately —
-  // the two regimes now read the same way (F7 a).
-  assert.ok(labels[0].startsWith('Hauteur —'), labels.join(' | '));
-  assert.ok(labels.some((label) => label.startsWith('Couleur —')), labels.join(' | '));
+  // ONE TIER, and one question: what does the colour mean. The header names
+  // the channel in the words of somebody looking for a charge point, and the
+  // six classes follow it, low to high.
+  assert.equal(labels[0], 'Vitesse de charge');
   const bands = labels.filter((label) => IRVE_BAND_KEYS.map(irveBandLabel).includes(label));
   assert.deepEqual(bands, IRVE_BAND_KEYS.map(irveBandLabel));
+  assert.equal(legend.length, bands.length + 1, labels.join(' | '));
   // D3 — the refused class is a MOTIF, not a step of the ramp.
   const refused = legend.find((row) => row.label === irveBandLabel('inconnue'));
   assert.ok(refused.glyph, 'the unreadable band must carry a shape, not just a tint');
+  // Six blurbs a reader can take in at a glance, rather than six paragraphs.
+  assert.ok(legend.every((row) => !row.blurb || row.blurb.split(/\s+/).length <= 6),
+    JSON.stringify(legend.map((row) => row.blurb)));
 
-  // A5's slot, once, instead of the same 19 words on all six classes.
-  assert.match(note, /POINTS DE CHARGE/);
-  assert.match(note, /par SITE/);
-  // E1 — the operators' clock, never the proxy's.
-  assert.match(legendNote, /transport\.data\.gouv\.fr/);
-  assert.match(legendNote, /dépôt opérateur le 30\/07\/2026/);
-  assert.match(legendNote, /jamais la disponibilité/);
+  // A5 speaks only when there is something to declare: nothing is sampled
+  // here and no floor is set, so the key says nothing rather than padding.
+  assert.equal(note, '');
+  // The provenance sentence is gone from the block — `dataCredits.js` names
+  // the publisher in the attribution surface and the card carries the filing
+  // date, so the key was spending its three scarcest lines on a duplicate.
+  assert.equal(legendNote, undefined);
   _clearIrveSelectionForTest();
 });
 
-test('the key never dates itself from a filing that has not happened', () => {
-  // Measured on the live register 2026-09-10: 56 rows of 227 007 are stamped
-  // 2026-12-30. One typo would otherwise date a whole viewport.
-  const records = [
-    { site: { updatedTo: '2026-07-30' } },
-    { site: { updatedTo: '2026-12-30' } },
-    { site: { updatedTo: null } },
-  ];
-  assert.equal(irveLatestFiling(records, '2026-09-10'), '2026-07-30');
-  // Excluded, and COUNTED — a date that cannot have happened is a finding
-  // about the file, and the key states it beside the clock it protected.
-  assert.equal(irveFutureFilings(records, '2026-09-10'), 1);
-  assert.equal(irveFutureFilings([], '2026-09-10'), 0);
-  assert.equal(irveLatestFiling([{ site: { updatedTo: '2026-12-30' } }], '2026-09-10'), null);
-  assert.equal(irveLatestFiling([], '2026-09-10'), null);
+test('a key with no class left keeps no header over the void', () => {
+  // A floor of « > 150 kW » over a town that publishes none: the classes go,
+  // and a title over an empty list would be chrome. The count still speaks.
+  _setIrveStateForTest({
+    viewer: viewerWithView(),
+    records: [siteRecord({ topBand: 'lente', bands: { lente: 3, normale: 0, accelere: 0, rapide: 0, hpc: 0, inconnue: 0 } })],
+  });
+  assert.equal(irveFranceLayer.setParams({ powerFloor: 'kw150' }), true);
+  const { legend, note } = _irveRowControlsForTest();
+  assert.deepEqual(legend, []);
+  assert.match(note, /1 site masqué par le filtre/);
+  assert.equal(irveFranceLayer.setParams({ powerFloor: 'all' }), true);
+  _clearIrveSelectionForTest();
+});
+
+test('the clock is on the card, per site, and written in French', () => {
+  // E1, moved from the key on 2026-09-14. Per SITE it is also the stronger
+  // statement: a tenth of this register has not been touched since 2023, and
+  // the newest filing in view said nothing about the station just clicked.
   assert.equal(irveFilingDate('2026-08-31'), '31/08/2026');
   assert.equal(irveFilingDate(null), null);
+  assert.equal(irveFilingDate('pas une date'), null);
+  const card = buildIrveSelectionLabel(siteRecord({
+    updatedFrom: '2025-11-15', updatedTo: '2026-07-30',
+  }));
+  assert.match(card, /🗓 déclaré 15\/11\/2025 → 30\/07\/2026/);
+  assert.match(card, /Capacité installée/);
+});
+
+test('the card decodes the beam the key no longer rules (F7 a, A5)', () => {
+  // The register and its ceiling are declared beside the exact figure they
+  // decode, rather than as a four-rung ruler quoted in PIXELS in the key.
+  const small = buildIrveSelectionLabel(siteRecord({ pdcDistinct: 6, pdcPublished: 6 }));
+  assert.match(small, /Le trait mesure les points de charge \(24 au maximum\)/);
+  const clipped = buildIrveSelectionLabel(siteRecord({ pdcDistinct: 224, pdcPublished: 224 }));
+  assert.match(clipped, /au-delà de 24, il plafonne/);
 });
 
 test('a power floor hides marks without touching the collection (G2)', () => {
@@ -706,9 +727,12 @@ test('every legend row carries the sentence that explains its band', () => {
     viewer: viewerWithView(),
     records: [siteRecord({ bands: { lente: 1, normale: 0, accelere: 0, rapide: 0, hpc: 0, inconnue: 2 } })],
   });
-  // The class rows carry a sentence; the height TICKS carry a measurement,
-  // which is shorter on purpose — a ruler mark is a number, not a paragraph.
-  for (const row of _irveRowControlsForTest().legend) {
+  // The CLASS rows carry a sentence; the channel header carries none, because
+  // what it had to say — ordered lightness, frozen bounds — was a property of
+  // the ramp argued to a reader who came here to find a charge point.
+  const [header, ...classes] = _irveRowControlsForTest().legend;
+  assert.equal(header.blurb, undefined, header.label);
+  for (const row of classes) {
     assert.ok(row.blurb && row.blurb.length > 8, row.label);
   }
   _clearIrveSelectionForTest();
