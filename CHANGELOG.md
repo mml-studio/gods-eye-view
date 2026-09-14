@@ -6,6 +6,49 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-14
 
 ### Changed
+- **Allumer les caméras publiques prenait une demi-minute pour refuser
+  d'afficher plus de 14 vignettes, et l'essentiel de cette attente ne servait
+  personne.** Mesuré sur Austin, catalogue de 815 caméras, serveur chaud, fond
+  de carte `osm` : **8,1 s** avant que la couche rende la main, **33,5 s** de
+  raffinement de géométrie derrière, **54 requêtes** vers le calculateur
+  d'altitude, et une vignette peinte par seconde. La couche était complète vers
+  **40 s**.
+
+  Le raffinement visitait **les 815 caméras**, à 4 toutes les 120 ms. Il était
+  borné par sa propre cadence, pas par son travail : 30,6 caméras par seconde
+  contre un plafond théorique de 33,3. Et pour environ 800 d'entre elles, tout
+  ce qu'il produisait était une correction d'altitude de quelques mètres sur une
+  icône située sur un autre continent — les cônes de couverture n'existent que
+  pour les 14 voisines de la caméra active, et l'anneau de vignettes plafonne à
+  40. Il ne parcourt plus que **les caméras à l'écran**, plafonnées à 96, et
+  `moveEnd` complète l'ensemble quand l'opérateur se déplace. Résultat :
+  **4,7 s**.
+
+  Deux garde-fous existaient uniquement parce que ce raffinement durait
+  longtemps : l'anneau de vignettes se bridait à 16 cartes, et la rafale de
+  premier remplissage (4 en parallèle) attendait la fin. Les deux tombent, et
+  l'anneau affiche désormais son budget entier — **18 vignettes au lieu de 14**,
+  toutes peintes en **8,7 s au lieu de ~40 s**.
+
+  Le préchauffage des altitudes de sol se demandait caméra par caméra, au fil de
+  la file. La garde de vol unique ne transmettait alors que les cellules
+  accumulées pendant un aller-retour, si bien que le découpage en lots de 200
+  points n'avait jamais rien à découper : mesuré à 30 ms d'aller-retour,
+  815 points demandés un par un coûtent **408 requêtes**, la même liste demandée
+  en une fois en coûte **5**. L'ensemble part maintenant en un appel :
+  **54 → 11 requêtes** sur un vrai chargement.
+
+  Côté serveur, `/api/cctv/sources` bloquait sur 7,6 Mo de catalogues amont
+  (Caltrans en pèse 6 à lui seul) **à chaque démarrage** — 12,6 s mesurées. Le
+  catalogue est désormais gardé sur disque et servi même périmé, le
+  rafraîchissement tournant derrière : **0,06 s** après un redémarrage. Seul le
+  tout premier démarrage paie encore l'amont.
+
+  Enfin, une vignette de 192×108 px téléchargeait et décodait l'image amont
+  entière (~190 Ko, ~1280×720) avant de la réduire. Elle est maintenant décodée
+  à la taille demandée, et un démontage annule le téléchargement au lieu de
+  laisser les octets arriver.
+
 - **Les étiquettes DPE glissaient quand on bougeait la carte, et on ne voyait
   pas de quel bien elles parlaient.** Les deux venaient de la même cause, et ce
   n'était pas l'ancrage au sol.

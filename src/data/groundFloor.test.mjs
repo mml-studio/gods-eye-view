@@ -13,6 +13,7 @@ import {
   reportMeshFloorCell, cachedMeshFloor, cachedGroundFloor,
   setMeshFloorPreferred, meshFloorPreferred, _clearMeshFloorCellsForTest,
   neighborFloorM,
+  warmGroundFloor,
 } from './groundFloor.js';
 import {
   corridorPathLatLon, projectGroundArcLatLon,
@@ -625,4 +626,63 @@ test('neighborFloorM never counts the cell itself — it exists because that one
   setMeshFloorPreferred(true);
   reportMeshFloorCell(30.2, -97.66, 500);
   assert.equal(neighborFloorM({ lat: 30.2, lon: -97.66 }), null);
+});
+
+test('warmGroundFloor: one call for the whole set costs a handful of requests, per point costs hundreds', async () => {
+  // What the CCTV geometry drain used to do, and why it was slow (measured
+  // 2026-09-14): it called warmGroundFloor([point]) once per record as the
+  // staggered queue reached it. The single-flight guard then only ever
+  // carried the cells that piled up during ONE round trip into the next
+  // request, so the 200-point chunking downstream never got anything to
+  // chunk — ~815 cells went out as hundreds of tiny requests, stretched far
+  // past the drain itself.
+  const originalFetch = globalThis.fetch;
+  const ROUND_TRIP_MS = 5;
+  let requests = 0;
+
+  globalThis.fetch = async (url) => {
+    const points = new URL(String(url), 'http://localhost').searchParams.get('points') || '';
+    const coords = points.split(';').filter(Boolean);
+    requests += 1;
+    await new Promise((resolve) => setTimeout(resolve, ROUND_TRIP_MS));
+    return { ok: true, json: async () => ({ results: coords.map(() => ({ ellipsoid: 100 })) }) };
+  };
+
+  // Distinct cells per scenario so neither warms the other's cache.
+  const cellsAt = (baseLat, count) => Array.from({ length: count }, (_, index) => ({
+    lat: baseLat + index * 0.01,
+    lon: 120 + index * 0.01,
+  }));
+  const settle = async () => {
+    for (let i = 0; i < 40; i += 1) await new Promise((resolve) => setTimeout(resolve, ROUND_TRIP_MS));
+  };
+
+  try {
+    const COUNT = 240;
+
+    // Paced like the drain: a few points, a yield, a few more. Warming in
+    // one synchronous loop would NOT reproduce it — the pending map would
+    // absorb the whole loop into the second batch and look almost free.
+    requests = 0;
+    const paced = cellsAt(-80, COUNT);
+    for (let i = 0; i < paced.length; i += 4) {
+      for (const cell of paced.slice(i, i + 4)) warmGroundFloor([cell]);
+      await new Promise((resolve) => setTimeout(resolve, 2));
+    }
+    await settle();
+    const perPoint = requests;
+
+    requests = 0;
+    warmGroundFloor(cellsAt(-40, COUNT));
+    await settle();
+    const oneCall = requests;
+
+    assert.equal(oneCall, Math.ceil(COUNT / 200), 'one call chunks at 200 points per request');
+    assert.ok(
+      perPoint > oneCall * 5,
+      `per-point warming must be visibly worse than one call (per-point ${perPoint}, one call ${oneCall})`,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

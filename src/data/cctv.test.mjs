@@ -47,7 +47,11 @@ import cctvLayer, {
   surfaceRegimeKey,
   calibrationPatchMovesAnchor,
   cctvGeometryDrainPacing,
+  cctvNearestCatalogIndices,
   createGeometryProgressNotifier,
+  GEO_DRAIN_VISIBLE_LIMIT,
+  GROUND_PRIOR_INIT_NEAR_COUNT,
+  selectCctvDrainSet,
   normalizeCoverageMode,
   frameSignatureFromPixels,
   focusCctvRecord,
@@ -71,6 +75,10 @@ import {
 
 const UI_SOURCE = fs.readFileSync(
   path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'ui.js'),
+  'utf8',
+);
+const CCTV_SOURCE = fs.readFileSync(
+  path.join(path.dirname(fileURLToPath(import.meta.url)), 'cctv.js'),
   'utf8',
 );
 
@@ -312,6 +320,134 @@ test('geometry drain pacing yields to tracked and cockpit camera ownership', () 
   const queue = [{ id: 'near' }, { id: 'far' }, active];
   assert.equal(prioritizeActiveCctvGeometryRecord(queue, active), true);
   assert.equal(queue[0], active);
+});
+
+test('the drain takes the cameras on screen, nearest first, and leaves the rest', () => {
+  const candidates = [
+    { id: 'far-in-view', inView: true, distanceKm: 9 },
+    { id: 'offscreen-next-door', inView: false, distanceKm: 0.1 },
+    { id: 'near-in-view', inView: true, distanceKm: 1 },
+    { id: 'offscreen-abroad', inView: false, distanceKm: 8000 },
+  ];
+  assert.deepEqual(
+    selectCctvDrainSet(candidates),
+    ['near-in-view', 'far-in-view'],
+    'proximity never buys a slot for a camera the operator cannot see',
+  );
+});
+
+test('the drain pass is capped, so a dense city cannot re-create the whole-catalog drain', () => {
+  const candidates = Array.from({ length: 400 }, (_, index) => ({
+    id: `cam-${String(index).padStart(3, '0')}`,
+    inView: true,
+    distanceKm: index,
+  }));
+  const selected = selectCctvDrainSet(candidates);
+  assert.equal(selected.length, GEO_DRAIN_VISIBLE_LIMIT);
+  assert.equal(selected[0], 'cam-000', 'the cap keeps the nearest, not an arbitrary prefix');
+  assert.deepEqual(selectCctvDrainSet(candidates, { limit: 3 }), ['cam-000', 'cam-001', 'cam-002']);
+});
+
+test('a view that answers nothing still refines the nearest cameras', () => {
+  // Zero-sized canvas, camera under the ellipsoid, the frame before first
+  // render: "nothing in view" there means the projection could not answer,
+  // not that the operator is looking away.
+  const candidates = [
+    { id: 'b', inView: false, distanceKm: 40 },
+    { id: 'a', inView: false, distanceKm: 2 },
+  ];
+  assert.deepEqual(selectCctvDrainSet(candidates, { limit: 1 }), ['a']);
+  assert.deepEqual(selectCctvDrainSet([]), []);
+  assert.deepEqual(selectCctvDrainSet(null), []);
+});
+
+test('an unrankable candidate sorts last instead of poisoning the order', () => {
+  const selected = selectCctvDrainSet([
+    { id: 'no-distance', inView: true, distanceKm: NaN },
+    { id: 'ranked', inView: true, distanceKm: 5 },
+  ]);
+  assert.deepEqual(selected, ['ranked', 'no-distance']);
+});
+
+test('init awaits ground priors for the nearest cameras only, ordered by distance', () => {
+  const catalog = [
+    { id: 'london', lat: 51.5074, lon: -0.1278 },
+    { id: 'austin', lat: 30.2672, lon: -97.7431 },
+    { id: 'lyon', lat: 45.7578, lon: 4.832 },
+    { id: 'broken', lat: NaN, lon: 4.832 },
+  ];
+  // Viewer over Paris: London (~344 km), then Lyon (~392 km), then Austin.
+  assert.deepEqual(
+    cctvNearestCatalogIndices(catalog, 48.8566, 2.3522, 3),
+    [0, 2, 1],
+  );
+  assert.deepEqual(
+    cctvNearestCatalogIndices(catalog, 48.8566, 2.3522, 1),
+    [0],
+    'the awaited set is a bounded prefix, not the catalog',
+  );
+  assert.deepEqual(cctvNearestCatalogIndices(catalog, 48.8566, 2.3522, 99).length, 3,
+    'a camera without usable coordinates is never awaited');
+  assert.deepEqual(cctvNearestCatalogIndices([], 0, 0, 5), []);
+  assert.ok(
+    GROUND_PRIOR_INIT_NEAR_COUNT <= 200,
+    'the awaited prior batch must stay inside one 200-point terrain chunk — one request',
+  );
+  assert.ok(
+    GROUND_PRIOR_INIT_NEAR_COUNT > GEO_DRAIN_VISIBLE_LIMIT,
+    'every camera a drain pass can refine must already hold its prior',
+  );
+});
+
+test('the ambient card tier no longer defers to the geometry drain', () => {
+  // `_geoLoading` is the drain's own progress flag and still drives the panel
+  // readout. What it must no longer do is throttle the card ring: the two
+  // couplings it used to carry (a 16-card budget cap and a blocked cold-fill
+  // burst) existed only because a pass visited the whole catalog.
+  // Comments stripped: both regions still EXPLAIN the coupling they dropped,
+  // and an assertion that reads prose would fail on the explanation.
+  const region = (from, to) => {
+    const start = CCTV_SOURCE.indexOf(from);
+    const end = CCTV_SOURCE.indexOf(to);
+    assert.ok(start >= 0 && end > start, `region ${from} not found — retarget this assertion`);
+    return CCTV_SOURCE.slice(start, end)
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+  };
+  const budgetRegion = region('function refreshAmbientCards(', 'function pushAmbientCardEntries(');
+  const burstRegion = region('function cardFrameTick(', 'async function paintCardFrameCanvas(');
+  for (const [name, body] of [['card budget', budgetRegion], ['cold-fill burst', burstRegion]]) {
+    assert.ok(
+      !/_geoLoading/.test(body),
+      `${name} must not read the drain flag — GEO_DRAIN_VISIBLE_LIMIT bounds the pass instead`,
+    );
+  }
+
+  // The narrowing this depends on: both drain entry points select through
+  // selectCctvDrainSet, and both warm their whole set in one call.
+  assert.match(CCTV_SOURCE, /function startGeometryLoadQueue\(\)[\s\S]{0,900}visibleDrainRecords\(\)/);
+  assert.match(CCTV_SOURCE, /function startGeometryLoadQueue\(\)[\s\S]{0,900}warmGroundFloor\(/);
+  assert.match(CCTV_SOURCE, /function enqueueGeometryRefresh\([\s\S]{0,600}warmGroundFloor\(/);
+  assert.match(
+    CCTV_SOURCE,
+    /_horizonCullListener = \(\) => \{[\s\S]{0,1400}scheduleVisibleGeometryDrain\(/,
+    'moveEnd must top the drain up, or travelling never refines anything new',
+  );
+});
+
+test('a card frame is decoded at thumbnail size, and a teardown cancels the download', () => {
+  const fetchRegion = CCTV_SOURCE.slice(
+    CCTV_SOURCE.indexOf('async function paintCardFrameCanvas('),
+    CCTV_SOURCE.indexOf('function startCardFrameLoop('),
+  );
+  assert.ok(fetchRegion.length > 0, 'card fetch region not found — retarget this assertion');
+  assert.match(
+    fetchRegion,
+    /createImageBitmap\(blob, \{[\s\S]{0,200}resizeWidth: CCTV_FRAME_CANVAS_W/,
+    'the decoder must be asked for the thumbnail size, not handed a 1280x720 still',
+  );
+  assert.match(fetchRegion, /new AbortController\(\)/);
+  assert.match(fetchRegion, /signal: aborter\.signal/);
 });
 
 test('geometry drain rechecks pacing when tracking releases between batches', () => {
