@@ -3149,7 +3149,7 @@ test('list_layers answers from the registry, and a lookup finds the French name'
   assert.equal(one.matched, 1);
   assert.deepEqual(one.layers[0], {
     id: 'medecins-fr',
-    label: 'Médecins',
+    label: 'Santé & secours',
     group: 'BÂTI & TERRITOIRE',
     coverage: 'fr',
     enabled: true,

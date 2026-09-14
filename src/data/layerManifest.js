@@ -398,7 +398,7 @@ export const LAYER_MANIFEST = Object.freeze([
     icon: '🌳',
     source: 'Îlots de fraîcheur, espaces verts frais et fontaines — Ville de Paris & Eau de Paris (opendata.paris.fr)',
     capabilities: Object.freeze(['destroy', 'getStats', 'setParams', 'getParams']),
-    defaultParams: Object.freeze({ spaces: true, equipment: true, fountains: true, trees: false }),
+    defaultParams: Object.freeze({ spaces: true, equipment: true, fountains: true, trees: false, remarkable: false }),
     load: () => import('./fraicheurParis.js').then((module) => module.default),
   }),
   Object.freeze({

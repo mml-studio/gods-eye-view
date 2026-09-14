@@ -204,6 +204,34 @@ function treesPayload() {
   };
 }
 
+/**
+ * The whole-city remarkable register, as the proxy returns it: no box, and
+ * every row `remarquable = OUI`. Deliberately placed AWAY from the tree box
+ * above, so a dot drawn here cannot be one of those.
+ */
+function remarkablePayload() {
+  const trees = Array.from({ length: 4 }, (_, i) => ({
+    id: `rq-${i}`,
+    name: `Cèdre remarquable ${i}`,
+    height: 22 + i,
+    girth: 320,
+    remarquable: true,
+    stage: 'Adulte',
+    p: [
+      Number((CITY.lon + 0.006 + i * 0.0012).toFixed(5)),
+      Number((CITY.lat - 0.0035).toFixed(5)),
+    ],
+  }));
+  return {
+    box: null,
+    trees,
+    truncated: false,
+    totalInBox: trees.length,
+    budget: 12500,
+    summary: summarizeFraicheurTrees(trees),
+  };
+}
+
 const failures = [];
 function check(label, condition, detail = '') {
   const ok = Boolean(condition);
@@ -336,8 +364,10 @@ async function main() {
 
     const refuges = refugesPayload();
     const trees = treesPayload();
+    const remarkable = remarkablePayload();
     let refugeRequests = 0;
     let treeRequests = 0;
+    let remarkableRequests = 0;
     await page.setRequestInterception(true);
     page.on('request', (request) => {
       const url = new URL(request.url());
@@ -349,6 +379,11 @@ async function main() {
       if (url.origin === APP_ORIGIN && url.pathname === '/api/fraicheur-fr/arbres') {
         treeRequests += 1;
         void request.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(trees) });
+        return;
+      }
+      if (url.origin === APP_ORIGIN && url.pathname === '/api/fraicheur-fr/remarquables') {
+        remarkableRequests += 1;
+        void request.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(remarkable) });
         return;
       }
       void request.continue();
@@ -374,11 +409,14 @@ async function main() {
       if (refugeRequests >= 1 && !loaded.stats.loading && loaded.stats.count > 0) break;
     }
     check('the city pack is fetched', refugeRequests >= 1, `${refugeRequests} request(s)`);
-    check('one chip per register', loaded.chips.length === 4,
+    // FIVE since 2026-09-14: the 183 remarkable trees became a register of
+    // their own when their plugged manifest was withdrawn — same source as
+    // ARBRES, but read whole for the city and free of the 1 500 m gate.
+    check('one chip per register', loaded.chips.length === 5,
       loaded.chips.map((chip) => chip.label).join(' '));
-    check('parks, refuges and taps are on; the trees are not',
+    check('parks, refuges and taps are on; neither tree register is',
       loaded.params.spaces && loaded.params.equipment && loaded.params.fountains
-        && loaded.params.trees === false,
+        && loaded.params.trees === false && loaded.params.remarkable === false,
       JSON.stringify(loaded.params));
     // iv. the chip gates the REQUEST, not just the paint.
     check('and the tree box is never asked for while its chip is off',
@@ -492,6 +530,50 @@ async function main() {
       treeRequests === treeRequestsBefore, `${treeRequests - treeRequestsBefore} extra`);
     check('the key is back to its default height', off.legend.length === defaultRows,
       `${off.legend.length} rows against ${defaultRows}`);
+
+    // ── vi. the REMARQUABLES chip reaches where the ARBRES chip cannot ─────
+    //
+    // The point of the register: `FRAICHEUR_TREE_MAX_ALTITUDE_M` refuses a tree
+    // box above 1 500 m, and these 183 are read whole for the city, so they are
+    // the only canopy a reader looking at Paris entire can ask for. Proved at
+    // 4 000 m, where the ordinary register is dormant by contract.
+    console.log('[qa] vi. the REMARQUABLES chip, from a view the ARBRES chip refuses');
+    await setView(page, CITY.lon, CITY.lat, 4000);
+    await sleep(900);
+    await pump(page, 6, 80);
+    const treeRequestsAtAltitude = treeRequests;
+    await page.evaluate(() => window.__godsEyeView.dataManager
+      .setLayerParams('fraicheur-fr', { remarkable: true }, { origin: 'user' }));
+    let withRemarkable = null;
+    for (let attempt = 0; attempt < 30; attempt++) {
+      await pump(page, 3, 60);
+      await sleep(400);
+      withRemarkable = await probe(page);
+      if (remarkableRequests >= 1
+        && withRemarkable.dots.some((dot) => dot.id.startsWith('fraicheur-fr:rq:'))) break;
+    }
+    check('the chip asks the whole-city register, with no box',
+      remarkableRequests >= 1, `${remarkableRequests}`);
+    const remarkableDots = withRemarkable.dots
+      .filter((dot) => dot.id.startsWith('fraicheur-fr:rq:'));
+    check('and the remarkable trees are drawn from 4 000 m',
+      remarkableDots.length === remarkable.trees.length,
+      `${remarkableDots.length} of ${remarkable.trees.length}`);
+    check('while the ordinary tree register stays dormant up here',
+      treeRequests === treeRequestsAtAltitude,
+      `${treeRequests - treeRequestsAtAltitude} tree request(s) at 4 000 m`);
+    check('the band joins the key with the count the city published',
+      withRemarkable.legend.some(([label, count]) => /^Arbre remarquable/.test(label)
+        && Number(count) === remarkable.trees.length),
+      withRemarkable.legend.map(([label, count]) => `${label} ${count}`).join(' · '));
+
+    // Asked for ONCE: the register is frozen, and a camera move must not re-buy it.
+    const remarkableRequestsBefore = remarkableRequests;
+    await setView(page, CITY.lon + 0.01, CITY.lat, 4000);
+    await sleep(900);
+    await pump(page, 6, 80);
+    check('and never asked for twice', remarkableRequests === remarkableRequestsBefore,
+      `${remarkableRequests - remarkableRequestsBefore} extra`);
 
     // The 403 is the Google photorealistic tileset's `root.json` refused inside
     // the EEA, and it is NOMINAL on this machine — the app falls back to the

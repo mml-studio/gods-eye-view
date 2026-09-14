@@ -6,6 +6,11 @@
   "color": "#ff5c7a",
   "category": "built-environment",
   "coverage": "fr",
+  "fusion": {
+    "into": "medecins-fr",
+    "chip": "Défibrillateurs",
+    "title": "Base nationale GeoDAE — ce qu'un passant peut décrocher, et à quelles heures"
+  },
   "source": {
     "kind": "datagouv",
     "resourceId": "edb6a9e1-2f16-4bbf-99e7-c3eb6b90794c",

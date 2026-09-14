@@ -52,9 +52,22 @@ import { mapIconMask } from './mapIcons.js';
  * correctly, but a plain `Energie` would render as a typo forever.
  */
 export const LAYER_CATEGORIES = Object.freeze([
-  Object.freeze({ id: 'air-space', label: 'AIR & ESPACE', icon: '✈️' }),
-  Object.freeze({ id: 'defence', label: 'DÉFENSE', icon: '🎖️' }),
-  Object.freeze({ id: 'maritime', label: 'MARITIME', icon: '⚓' }),
+  // ONE group for the sky and the sea, and not three. DÉFENSE and MARITIME each
+  // held a single visible row after the fusions — military flights became a chip
+  // on « Vols en direct », ports became a chip on « Navires et ports » — and a
+  // group header over one row is a header for nothing: it costs a line of
+  // uppercase, a disclosure triangle and a collapsed state to say what the row
+  // already says. The id stays `air-space` so stored collapsed-state keys and
+  // any test fixture keyed on it survive the rename.
+  Object.freeze({ id: 'air-space', label: 'CIEL & MER', icon: '✈️' }),
+  // SECOND, and not last. This is the group that makes the fork: prices, DPE,
+  // urbanism, buildings, population, health, schools, shops, parcels. It used to
+  // close the panel as "base reference data", which is true of the DATA and
+  // false of the READER — three screens of scrolling from the top is where a
+  // visitor concludes the app has nothing for their street. What opens the panel
+  // is still the live tracking (the reason anyone stays for the first minute);
+  // what comes immediately after is France.
+  Object.freeze({ id: 'built-environment', label: 'BÂTI & TERRITOIRE', icon: '▤' }),
   Object.freeze({ id: 'ground-mobility', label: 'MOBILITÉ TERRESTRE', icon: '🚗' }),
   // Deliberately "ÉNERGIE" and not "ÉNERGIE & RÉSEAUX": `comms-sensors` below is
   // "RÉSEAUX & CAPTEURS", and two categories whose labels both lead with the same
@@ -64,21 +77,13 @@ export const LAYER_CATEGORIES = Object.freeze([
   Object.freeze({ id: 'energy', label: 'ÉNERGIE', icon: '⚡' }),
   Object.freeze({ id: 'hazards', label: 'RISQUES & ENVIRONNEMENT', icon: '⚠' }),
   Object.freeze({ id: 'comms-sensors', label: 'RÉSEAUX & CAPTEURS', icon: '≋' }),
-  // An EIGHTH group, added rather than forcing the building stock into one of
-  // the seven. It fits none of them: a building is not energy, not a hazard,
-  // not mobility, and putting it in "RÉSEAUX & CAPTEURS" beside CCTV and radio
-  // would say it is a network, which it is not. It closes the panel because it
-  // is base reference data — the ground everything else stands on. The cadastre
-  // this comment reserved a place for has since joined it; a land-use or a
-  // population layer would land here too.
-  Object.freeze({ id: 'built-environment', label: 'BÂTI & TERRITOIRE', icon: '▤' }),
-  // A NINTH group, and the only one that is empty at boot. It is where a
+  // The LAST group, and the only one that is empty at boot. It is where a
   // dataset lands when its manifest names no category — plugged from the
   // panel, or shipped in `datasets/*.json` without a stated home. Empty, it
   // draws no header (`_renderToggles` skips a group with no rows), so it
   // costs nothing until the first dataset is plugged. A manifest MAY name
-  // any of the eight groups above instead; this one says "the reader added
-  // this", which is a fact about provenance the other eight cannot carry.
+  // any of the six groups above instead; this one says "the reader added
+  // this", which is a fact about provenance the other six cannot carry.
   Object.freeze({ id: 'plugged', label: 'JEUX BRANCHÉS', icon: '🔌' }),
 ]);
 
@@ -96,6 +101,30 @@ const VALID_KINDS = new Set(['dataset', 'coordinator']);
 
 /** Where the layer has data at all. Drives the per-row scope chip. */
 const VALID_COVERAGE = new Set(['global', 'fr', 'us', 'cities']);
+
+/**
+ * `closeRange: true` — this layer draws NOTHING from a wide view.
+ *
+ * WHY IT IS A FACET AND NOT A SENTENCE EACH LAYER WRITES. Twelve layers here
+ * go dormant above an altitude or a box width, and every one of them says so
+ * clearly once it is SWITCHED ON: « Zoome sous 12 km », « descendre sous 600 m
+ * pour retrouver chaque vente ». None of them could say it before, because a
+ * row that is off has no module loaded to speak for it — so the default
+ * experience was: switch on over a country, see nothing, conclude it is
+ * broken. The row now carries the warning while it is dark.
+ *
+ * DELIBERATELY NO NUMBER. The ceilings differ — 12 000 m for the address
+ * scans, 1 500 m for the cadastre and the PLU box, 0.08° for the buildings —
+ * and printing one per row would be twelve numbers a reader cannot act on
+ * before switching anything on. The precise threshold is the layer's to state,
+ * and it states it the moment it is on and out of range.
+ *
+ * WHO CARRIES IT IS TESTED, NOT TRUSTED: `layerTaxonomy.test.mjs` cross-checks
+ * this flag against the modules that call `createAddressScanLayer()`, plus the
+ * two that gate on their own — `cadastre-fr` (1 500 m) and `bdtopo-buildings`
+ * (a 0.08° box). A new address layer that forgets the facet fails there.
+ */
+
 
 /**
  * The scope chip text for each coverage value — and the reason the `(FR)`
@@ -157,7 +186,9 @@ const VALID_CATEGORY_IDS = new Set(LAYER_CATEGORIES.map((entry) => entry.id));
  * ("Groupes de production" rather than "Groupes de prod (FR)").
  */
 const LAYER_TAXONOMY_TABLE = Object.freeze([
-  // ── AIR & ESPACE ──────────────────────────────────────────────────────────
+  // ── CIEL & MER ────────────────────────────────────────────────────────────
+  // The order INSIDE a group is this table's order; the order OF the groups is
+  // `LAYER_CATEGORIES` above. The sky comes first here because it is what moves.
   Object.freeze({
     id: 'flights',
     category: 'air-space',
@@ -203,10 +234,10 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     cadence: 'periodic',
   }),
 
-  // ── DÉFENSE ───────────────────────────────────────────────────────────────
+  // ── CIEL & MER · le militaire ─────────────────────────────────────────────
   Object.freeze({
     id: 'military',
-    category: 'defence',
+    category: 'air-space',
     label: 'Vols militaires',
     kind: 'dataset',
     coverage: 'global',
@@ -221,7 +252,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   // and the name says what the things are.
   Object.freeze({
     id: 'military-installations',
-    category: 'defence',
+    category: 'air-space',
     label: 'Sites militaires',
     kind: 'dataset',
     coverage: 'global',
@@ -230,7 +261,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   }),
   Object.freeze({
     id: 'military-awareness',
-    category: 'defence',
+    category: 'air-space',
     label: 'Contexte global',
     kind: 'coordinator',
     coverage: 'global',
@@ -238,13 +269,13 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     cadence: 'live',
   }),
 
-  // ── MARITIME ──────────────────────────────────────────────────────────────
+  // ── CIEL & MER · la mer ───────────────────────────────────────────────────
   // "Navires en direct" rather than "Navires AIS": the acronym means nothing to
   // a first-time visitor, it is already on the source line, and this phrasing
   // makes a matched pair with "Vols en direct" at the top of AIR & ESPACE.
   Object.freeze({
     id: 'ais-live-vessels',
-    category: 'maritime',
+    category: 'air-space',
     label: 'Navires et ports',
     kind: 'dataset',
     coverage: 'global',
@@ -267,7 +298,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   // an absence is false here.
   Object.freeze({
     id: 'marine-buoys',
-    category: 'maritime',
+    category: 'air-space',
     label: 'Bouées marines',
     kind: 'dataset',
     coverage: 'global',
@@ -276,7 +307,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   }),
   Object.freeze({
     id: 'local-ports',
-    category: 'maritime',
+    category: 'air-space',
     label: 'Ports',
     kind: 'dataset',
     coverage: 'global',
@@ -585,6 +616,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     // `periodic` and not `static`: the register moves in weeks, but the layer
     // refetches because it is keyed on a POINT, not on a bundle it could hold.
     cadence: 'periodic',
+    closeRange: true,
   }),
   Object.freeze({
     id: 'meteofrance-vigilance',
@@ -619,6 +651,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     coverage: 'fr',
     auth: 'none',
     cadence: 'periodic',
+    closeRange: true,
   }),
 
   Object.freeze({
@@ -742,6 +775,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     coverage: 'fr',
     auth: 'none',
     cadence: 'periodic',
+    closeRange: true,
   }),
   // Beside DVF because it reads the very same editions, and `dataset` although
   // the number on the card is COMPUTED here: the facet describes where the
@@ -756,6 +790,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     coverage: 'fr',
     auth: 'none',
     cadence: 'periodic',
+    closeRange: true,
   }),
   Object.freeze({
     id: 'dpe-fr',
@@ -765,15 +800,21 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     coverage: 'fr',
     auth: 'none',
     cadence: 'periodic',
+    closeRange: true,
   }),
+  // « Urbanisme » flat, and no longer "Urbanisme (PLU & servitudes)": since the
+  // second round of fusions this row carries the permits as well, and a name
+  // that listed only the zoning would have described one chip out of three.
+  // What the row holds is said on the strip, where each half can be switched.
   Object.freeze({
     id: 'urbanisme-gpu',
     category: 'built-environment',
-    label: 'Urbanisme (PLU & servitudes)',
+    label: 'Urbanisme',
     kind: 'dataset',
     coverage: 'fr',
     auth: 'none',
     cadence: 'periodic',
+    closeRange: true,
   }),
   // Beside the PLU rather than beside DVF, and `periodic` although a Paris
   // dossier can be a week old: the layer's floor is Sitadel, republished
@@ -788,6 +829,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     coverage: 'fr',
     auth: 'none',
     cadence: 'periodic',
+    closeRange: true,
   }),
   // The one row in this group that is not a REGISTER. Every neighbour reports
   // something the State has written down about a place; this one MEASURES a
@@ -804,6 +846,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     coverage: 'fr',
     auth: 'none',
     cadence: 'periodic',
+    closeRange: true,
   }),
   // The only row in the whole taxonomy that is not a SOURCE. It fetches nothing
   // of its own: it joins four layers that are already here — the reachable
@@ -819,6 +862,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     coverage: 'fr',
     auth: 'none',
     cadence: 'periodic',
+    closeRange: true,
   }),
   // The second row in the whole taxonomy that is not a source, and the first
   // whose data the READER supplies. It sits beside the fiche because it asks
@@ -838,6 +882,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     coverage: 'fr',
     auth: 'none',
     cadence: 'periodic',
+    closeRange: true,
   }),
   Object.freeze({
     id: 'bdtopo-buildings',
@@ -847,6 +892,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     coverage: 'fr',
     auth: 'none',
     cadence: 'periodic',
+    closeRange: true,
   }),
   // The population layer the group header above reserved a place for, and the
   // first row here that is not an inventory of THINGS. Every neighbour answers
@@ -877,10 +923,20 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   // base reference data about the territory. It is not a hazard — a shortage
   // of doctors is a durable structural fact, not an event — and it is not a
   // sensor network.
+  // « Santé & secours » and no longer « Médecins », because since 2026-09-14 the
+  // row carries more than the practices: the GeoDAE defibrillator register is a
+  // chip on it, plugged from `datasets/defibrillateurs-geodae.json`. The two
+  // answer one question — where care is, and what a passer-by can reach without
+  // waiting for it — and 186 118 wall boxes were never going to earn a row of
+  // their own beside the prices and the PLU.
+  //
+  // The pharmacies and the hospitals are NOT here. They are two of the fourteen
+  // families of `amenities-fr`, they are drawn by that pack, and moving them
+  // would mean rebuilding it to leave a hole in « Équipements du quotidien ».
   Object.freeze({
     id: 'medecins-fr',
     category: 'built-environment',
-    label: 'Médecins',
+    label: 'Santé & secours',
     kind: 'dataset',
     coverage: 'fr',
     auth: 'none',
@@ -967,6 +1023,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     coverage: 'fr',
     auth: 'none',
     cadence: 'periodic',
+    closeRange: true,
   }),
 ]);
 
@@ -989,6 +1046,9 @@ export const LAYER_TAXONOMY = Object.freeze(LAYER_TAXONOMY_TABLE.map((entry) => 
   // 30-odd layers that are neither a fused row nor folded into one.
   companions: fusionCompanionsFor(entry.id),
   fusedInto: fusedIntoFor(entry.id),
+  // Normalized to a boolean HERE rather than left undefined, so every consumer
+  // reads one shape. The table still writes it only where it is true.
+  closeRange: entry.closeRange === true,
 })));
 
 const TAXONOMY_BY_ID = new Map(LAYER_TAXONOMY.map((entry) => [entry.id, entry]));
@@ -1047,6 +1107,14 @@ export function validateLayerTaxonomy(
     if (!VALID_COVERAGE.has(entry.coverage)) throw new Error(`Invalid layer coverage: ${entry.id}`);
     if (!VALID_AUTH.has(entry.auth)) throw new Error(`Invalid layer auth: ${entry.id}`);
     if (!VALID_CADENCE.has(entry.cadence)) throw new Error(`Invalid layer cadence: ${entry.id}`);
+    // A boolean by the time anything validates: the TABLE writes `true` or
+    // nothing — `closeRange: false` on the 48 layers that are not close-range
+    // would be 48 lines saying nothing — and the projection below fills the
+    // rest in. Typed rather than truthy, for the reason the fusion flags are:
+    // a string `'false'` reads as off to a reviewer and as on to JavaScript.
+    if (entry.closeRange !== undefined && typeof entry.closeRange !== 'boolean') {
+      throw new Error(`Invalid layer closeRange (boolean): ${entry.id}`);
+    }
     // Optional, and a DATA URI when present: the panel masks it, and a bare
     // icon name or a raw `<svg>` string would render as an empty 16 px box with
     // nothing thrown. `mapIconMask` returns null for a glyph it does not carry,

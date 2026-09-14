@@ -300,6 +300,30 @@ export function fraicheurTreeWhere(box) {
 }
 
 /**
+ * The `where` clause for the remarkable trees, and the one query in this module
+ * that asks for no box at all.
+ *
+ * The whole point of the register is that 183 rows out of 219 432 fit in one
+ * document — 183 × ~250 B of selected fields is under 50 KB, against the
+ * 1,7 MB a single central VIEWPORT of ordinary trees costs. That ratio is what
+ * lets this half of the canopy escape {@link FRAICHEUR_TREE_MAX_ALTITUDE_M}:
+ * the altitude gate exists because 111 MB cannot be bought to draw a few dots,
+ * and it does not apply to a set that is already a few dots.
+ *
+ * `= 'OUI'` and not `!= 'NON'`, because the field is THREE-state: 13 523 rows
+ * publish null, and a null is not a yes. See the header's field notes.
+ */
+export const FRAICHEUR_REMARKABLE_WHERE = "remarquable = 'OUI'";
+
+/**
+ * How many rows that clause is expected to return, as published.
+ *
+ * Pinned so a silent portal change is visible: the layer draws whatever comes
+ * back, and this number is only ever used to SAY what came back was unusual.
+ */
+export const FRAICHEUR_REMARKABLE_COUNT = 183;
+
+/**
  * Dot size for one tree, by published height.
  *
  * Square-rooted and capped at {@link FRAICHEUR_TREE_HEIGHT_CEILING_M}. A null

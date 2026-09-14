@@ -130,14 +130,36 @@ import { REGISTERED_LAYER_IDS } from './layerState.js';
  * reversible form of the same decision — take it out to give the chip back.
  */
 export const LAYER_FUSIONS = Object.freeze([
-  // ── 1. Autorisations d'urbanisme ─────────────────────────────────────────
-  // The two rows read the SAME four Sitadel files through the same shared
-  // module. What differed was placement — `ads-fr` geocodes through the BAN
-  // and lands within ~400 m, `sitadel-fr` lands on the cadastral parcel — and
-  // that is a precision fact about one subject, not two subjects.
+  // ── 1. Urbanisme ─────────────────────────────────────────────────────────
+  // ONE question in two tenses: what MAY be built on this ground, and what HAS
+  // been allowed on it. The PLU zoning draws the rule, Sitadel draws the
+  // permits granted under it, and a reader looking at a plot needs both or
+  // neither — reading a permit without the zoning is reading an answer with
+  // the question torn off.
+  //
+  // `ads-fr` and `sitadel-fr` were already one row before this, for a narrower
+  // reason that still holds: they read the SAME four Sitadel files through the
+  // same shared module, and what differed was placement — `ads-fr` geocodes
+  // through the BAN and lands within ~400 m, `sitadel-fr` lands on the
+  // cadastral parcel. That is a precision fact about one subject. This entry
+  // keeps that pair intact and puts the zoning above it.
+  //
+  // THREE PEERS, SO THE PRIMARY GETS A CHIP TOO (`primaryToggle`), like
+  // « Infrastructure numérique ». A zoning polygon is not "the subject the
+  // permits qualify": it comes from another register (the Géoportail de
+  // l'urbanisme, not Sitadel), it is drawn as ground polygons rather than
+  // points, and a reader who came for the permits must be able to switch the
+  // zoning off without losing the row.
   Object.freeze({
-    primary: 'ads-fr',
+    primary: 'urbanisme-gpu',
+    primaryChip: 'PLU & servitudes',
+    primaryToggle: true,
     companions: Object.freeze([
+      Object.freeze({
+        id: 'ads-fr',
+        chip: 'Autorisations',
+        title: 'Permis et déclarations déposés — Sitadel, plus les portails métropolitains',
+      }),
       Object.freeze({
         id: 'sitadel-fr',
         chip: 'Sur parcelle',
@@ -197,6 +219,12 @@ export const LAYER_FUSIONS = Object.freeze([
   // A port is where the vessels stop. The two rows shared nothing in code and
   // everything in subject; the destination field of an AIS message is a port
   // name, unresolved to this day.
+  //
+  // THE BUOYS JOIN THEM, and the join is already written: `layerJoins.js`
+  // carries vessel → sea state, so a ship's card reads the nearest mooring's
+  // wave height today while the mooring sat in a group of its own. What a buoy
+  // reports — swell, wind, water temperature — is a fact about the water a
+  // vessel is in, and it has no reader outside that question.
   Object.freeze({
     primary: 'ais-live-vessels',
     companions: Object.freeze([
@@ -204,6 +232,11 @@ export const LAYER_FUSIONS = Object.freeze([
         id: 'local-ports',
         chip: 'Ports',
         title: 'World Port Index — les escales que les navires déclarent',
+      }),
+      Object.freeze({
+        id: 'marine-buoys',
+        chip: 'Bouées',
+        title: "État de la mer mesuré — houle, vent, température de l'eau (NDBC)",
       }),
     ]),
   }),
@@ -452,6 +485,41 @@ export const LAYER_FUSIONS = Object.freeze([
         id: 'military',
         chip: 'Militaires',
         title: 'Aéronefs militaires identifiés — même source, même rendu',
+      }),
+    ]),
+  }),
+
+  // ── 16. Feux actifs ──────────────────────────────────────────────────────
+  // The README already says what these two rows are: "what burns now / what
+  // burnt". Same sensor (VIIRS through FIRMS), same subject, two tenses — and
+  // the past tense was holding a row of its own for an event that ended on
+  // 1 August 2026 and cannot change again.
+  //
+  // NO SEPARATOR IN THE CHIP LABEL, unlike « Comptages · Paris » on the traffic
+  // row. Since 2026-09-14 a dark row prints its chips' names as TEXT on the meta
+  // line, joined by that same ` · `, so a label carrying one reads there as two
+  // entries — measured on this very row.
+  //
+  // `optIn`, for the reason `comptages-fr` is: the archive is 2,6 MB of frozen
+  // detections over ONE department, and a row toggle pressed over California
+  // used to be able to fetch it. Its cost is real and its value is
+  // geographic — exactly the case the flag was written for.
+  //
+  // THE KEY ASYMMETRY IS WORTH KNOWING BEFORE READING THE ROW. The row's auth
+  // facet comes from the primary, so it will say a FIRMS key is needed; the
+  // archive underneath needs none and draws from the repo. That is the honest
+  // reading of a row whose live half is gated and whose historical half is
+  // not, and the chip title says so rather than leaving a reader to discover
+  // that the greyed row still has something to show.
+  Object.freeze({
+    primary: 'local-firms',
+    primaryChip: 'Feux en cours',
+    companions: Object.freeze([
+      Object.freeze({
+        id: 'gironde-megafire-2026',
+        chip: 'Archive Gironde 2026',
+        optIn: true,
+        title: 'Mégafeu de juillet 2026 — reconstitution jour par jour, sans clé FIRMS',
       }),
     ]),
   }),

@@ -102,6 +102,14 @@ export const DATASET_DETAIL_FORMATS = Object.freeze(['list', 'days']);
 export const DATASET_OTHER_GROUP_KEY = '__other__';
 /** Most row chips a manifest may declare — a strip, not a menu. */
 export const DATASET_MAX_FILTERS = 5;
+/**
+ * Longest chip label a manifest may give itself on somebody else's row.
+ *
+ * The strip is a control strip, not a second list of names — the same rule
+ * `layerFusions.js` states for the core fusions, where the longest shipped chip
+ * is « Archive · Gironde 2026 » at 22 characters.
+ */
+export const DATASET_MAX_CHIP_LENGTH = 24;
 export const DATASET_ID_PATTERN = /^[a-z0-9][a-z0-9-]{1,62}$/;
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 const CRS_PATTERN = /^EPSG:\d{4,6}$/;
@@ -365,6 +373,30 @@ export function datasetManifestFaults(candidate) {
     faults.push('`refreshMs` : entier ≥ 0 (0 = jamais)');
   }
 
+  // ── fusion ───────────────────────────────────────────────────────────────
+  // A manifest MAY say it is a chip on an existing row rather than a row of its
+  // own. It names the row and the chip; whether that row exists is checked
+  // where the layers are — `registerDataset()` — because this module knows
+  // nothing about which layers a given build registers, and must not.
+  if (m.fusion !== undefined) {
+    if (!isPlainObject(m.fusion)) {
+      faults.push('`fusion` : objet { into, chip }');
+    } else {
+      if (!isNonEmptyString(m.fusion.into)) faults.push('`fusion.into` : identifiant de la couche hôte');
+      if (!isNonEmptyString(m.fusion.chip)) faults.push('`fusion.chip` : libellé de la puce');
+      else if (m.fusion.chip.trim().length > DATASET_MAX_CHIP_LENGTH) {
+        faults.push(`\`fusion.chip\` : ${DATASET_MAX_CHIP_LENGTH} caractères au plus`);
+      }
+      if (m.fusion.title !== undefined && !isNonEmptyString(m.fusion.title)) {
+        faults.push('`fusion.title` : chaîne non vide si présent');
+      }
+      if (m.fusion.optIn !== undefined && typeof m.fusion.optIn !== 'boolean') {
+        faults.push('`fusion.optIn` : booléen');
+      }
+      if (m.fusion.into === m.id) faults.push('`fusion.into` : une couche ne peut pas se fusionner dans elle-même');
+    }
+  }
+
   // ── source ───────────────────────────────────────────────────────────────
   const source = m.source;
   if (!isPlainObject(source)) {
@@ -608,6 +640,17 @@ export function normalizeDatasetManifest(candidate) {
     coverage: m.coverage || 'fr',
     cadence: m.cadence || (scope === 'viewport' ? 'periodic' : 'static'),
     refreshMs: Number.isInteger(m.refreshMs) ? m.refreshMs : 0,
+    // Null on the manifests that are their own row, which is almost all of
+    // them. `category` is still carried and still validated when a manifest is
+    // fused: it is what the row falls back to if the host ever goes away.
+    fusion: isPlainObject(m.fusion)
+      ? Object.freeze({
+        into: m.fusion.into.trim(),
+        chip: m.fusion.chip.trim(),
+        title: isNonEmptyString(m.fusion.title) ? m.fusion.title.trim() : null,
+        optIn: m.fusion.optIn === true,
+      })
+      : null,
     source: Object.freeze({
       kind,
       url: isNonEmptyString(source.url) ? source.url.trim() : null,
@@ -680,8 +723,9 @@ export function isDatasetLayerId(layerId) {
  * @returns {object}
  */
 export function datasetTaxonomyEntry(manifest, chipOf = () => null) {
+  const id = datasetLayerId(manifest);
   return Object.freeze({
-    id: datasetLayerId(manifest),
+    id,
     category: manifest.category,
     label: manifest.label,
     kind: 'dataset',
@@ -689,6 +733,21 @@ export function datasetTaxonomyEntry(manifest, chipOf = () => null) {
     auth: 'none',
     cadence: manifest.cadence,
     scopeChip: chipOf(manifest.coverage),
+    // The two fusion facets, in the same shape `layerTaxonomy.js` produces for
+    // a core layer: `fusedInto` is what keeps this dataset OFF the panel as a
+    // row, and `companion` is the entry the manager splices into the host row's
+    // strip. A core layer needs neither — its half of the pair is a line in
+    // `layerFusions.js`, which is validated at import against a layer set a
+    // plugged dataset is not in.
+    fusedInto: manifest.fusion?.into || null,
+    companion: manifest.fusion
+      ? Object.freeze({
+        id,
+        chip: manifest.fusion.chip,
+        title: manifest.fusion.title || null,
+        optIn: manifest.fusion.optIn === true,
+      })
+      : null,
   });
 }
 

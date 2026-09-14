@@ -6,6 +6,47 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-14
 
 ### Changed
+- **Le panneau Data Layers demandait 39 arbitrages avant de montrer la France,
+  et le fork était le dernier des huit groupes.** Second tour de fusions :
+  **39 lignes → 34**, huit groupes → six, et rien n'est supprimé.
+
+  Trois sujets étaient dessinés par deux lignes. **« Urbanisme »** porte
+  désormais la question dans ses deux temps — ce qui PEUT se construire (le
+  zonage du GPU) et ce qui a ÉTÉ autorisé (Sitadel, au point et sur la
+  parcelle) : lire un permis sans le zonage, c'est lire une réponse dont la
+  question a été arrachée. **Les bouées** rejoignent « Navires et ports », dont
+  les fiches lisaient déjà leur houle par `layerJoins.js`. **Le mégafeu de
+  Gironde** devient le passé de « Feux actifs » — « what burns now / what
+  burnt », comme le README l'écrivait déjà — en puce `optIn`, parce que 2,6 Mo
+  de détections figées sur un département ne se paient pas depuis la Californie.
+
+  **DÉFENSE et MARITIME ne tenaient plus qu'une ligne visible chacune** depuis
+  les fusions précédentes : un en-tête majuscule, un triangle et un état plié
+  pour dire ce que la ligne disait déjà. Les deux groupes sont fondus dans
+  **CIEL & MER**, six lignes.
+
+  **BÂTI & TERRITOIRE passe en deuxième position.** Il fermait le panneau comme
+  « donnée de référence » — vrai de la DONNÉE, faux du LECTEUR : trois écrans
+  de défilement, c'est là où un visiteur conclut que l'app n'a rien pour sa rue.
+  Ce qui ouvre reste le direct ; ce qui suit immédiatement est la France.
+
+- **Une ligne éteinte ne disait ni ce qu'elle contient, ni si elle dessinerait
+  quelque chose.** Les puces n'existent que ligne allumée, donc une fusion était
+  invisible jusqu'à ce que quelqu'un allume la ligne hôte par hasard. Elles ne
+  sont pas devenues grises pour autant — un panneau qui peint 25 boutons ternes
+  sur 33 lignes est un panneau que personne ne lit : **les noms des puces sont
+  écrits en TEXTE** sur la ligne de méta qui existait déjà, trois puis « +N ».
+
+  Et douze couches s'éteignent au-dessus d'une altitude ou d'une largeur de
+  boîte — les dix qui partagent `createAddressScanLayer`, plus le cadastre
+  (1 500 m) et le bâti 3D (0,08°). Chacune le dit très bien UNE FOIS ALLUMÉE
+  (« Zoome sous 12 km ») ; aucune ne pouvait le dire avant, faute de module
+  chargé. La ligne porte maintenant **« vue rapprochée »** pendant qu'elle est
+  noire. Sans chiffre, délibérément : douze seuils différents sur douze lignes
+  ne sont pas actionnables, et le seuil exact appartient à la couche, qui le
+  donne au moment où il mord. Qui porte la facette est **croisé avec les
+  modules** dans `layerTaxonomy.test.mjs`, jamais déclaré à la main tout seul.
+
 - **Les cabinets de la couche Médecins étaient posés à un quart de kilomètre
   sous la rue qu'ils décrivent, et on n'en voyait que la moitié.** Deux pannes
   sur le même point, et chacune ressemble à autre chose.
@@ -778,6 +819,38 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   quatre entrées d'atlas, pas 4 000.
 
 ### Added
+- **Les 183 arbres remarquables de Paris avaient une ligne à eux, pour des
+  données que la couche Îlots de fraîcheur dessinait déjà.** Le manifeste
+  branché est retiré — même registre `les-arbres`, même colonne `remarquable`,
+  même palier de légende. Ce qu'il avait et que la couche n'avait pas, c'est la
+  PORTÉE : le registre des arbres est fermé au-dessus de **1 500 m** parce que
+  219 432 points ne s'achètent pas par vue, si bien que depuis toute vue tenant
+  Paris entier les arbres remarquables étaient invisibles ici et visibles
+  là-bas.
+
+  La portée passe donc dans une **cinquième puce, REMARQUABLES** : 183 lignes
+  tiennent dans un seul document, la limite d'altitude ne les concerne pas, et
+  ce sont les seuls arbres qu'un lecteur peut chercher depuis le ciel. Prouvé à
+  **4 000 m** dans `qa:fraicheur-fr`, où le registre ordinaire reste dormant.
+
+- **Un manifeste peut désormais être une PUCE plutôt qu'une ligne.** Un bloc
+  `fusion: { into, chip }` dans `datasets/*.json` pose le jeu branché sur la
+  ligne d'une couche du cœur. Cette moitié-là ne pouvait pas vivre dans
+  `layerFusions.js`, validé à l'import contre l'ensemble scellé des couches du
+  cœur : elle se fait dans `registerDataset()`, au seul moment où les deux
+  côtés sont connus, et elle est RÉVERSIBLE — débrancher rend à la ligne hôte
+  exactement ce qu'elle avait. Un hôte inconnu, ou un hôte qui est lui-même une
+  puce, est refusé AVANT l'enregistrement : la couche n'aurait de commande nulle
+  part.
+
+  Premier usage : **les 186 434 défibrillateurs de la base GeoDAE**, qui seuls
+  répondaient « où est le plus proche », question qu'on ne pose pas à un globe.
+  La ligne « Médecins » devient **« Santé & secours »** et porte les deux — où
+  sont les soins, et ce qu'un passant peut décrocher sans les attendre. Les
+  pharmacies et les hôpitaux restent où ils sont, deux des quatorze familles
+  d'« Équipements du quotidien » : les en sortir voudrait dire reconstruire le
+  pack pour y laisser un trou.
+
 - **Treize couches refusent de se dessiner au-dessus d'un plafond, et elles le
   disaient dans une sous-ligne d'un panneau qui peut être replié à 0×0.** Le
   lecteur regardait la France depuis 1 000 km avec « Réseau électrique »

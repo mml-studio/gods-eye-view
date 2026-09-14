@@ -188,7 +188,10 @@ const SPOKEN_ALIASES = Object.freeze({
   'local-airports': ['aéroports', 'aeroports', 'aérodromes', 'aerodromes', 'pistes'],
   'power-grid': ['réseau électrique', 'reseau electrique', 'lignes haute tension', 'postes électriques', 'postes electriques', 'pylônes', 'pylones'],
   'irve-fr': ['bornes de recharge', 'bornes', 'borne de recharge', 'recharge', 'points de charge', 'irve', 'recharge électrique', 'recharge electrique'],
-  'medecins-fr': ['médecins', 'medecins', 'médecin', 'medecin', 'docteurs', 'docteur', 'généralistes', 'generalistes', 'médecine de ville', 'medecine de ville', 'déserts médicaux', 'deserts medicaux'],
+  // Labelled « Santé & secours » since the GeoDAE defibrillators became a chip
+  // on it. The doctors keep every word they had — the row is still mostly
+  // practices — and the register that joined brings its own.
+  'medecins-fr': ['médecins', 'medecins', 'médecin', 'medecin', 'docteurs', 'docteur', 'généralistes', 'generalistes', 'médecine de ville', 'medecine de ville', 'déserts médicaux', 'deserts medicaux', 'santé et secours', 'sante et secours', 'défibrillateurs', 'defibrillateurs', 'défibrillateur', 'defibrillateur'],
   'schools-fr': ['écoles', 'ecoles', 'établissements scolaires', 'etablissements scolaires', 'collèges', 'colleges', 'lycées', 'lycees'],
   'petite-enfance-fr': ['crèches', 'creches', 'petite enfance', 'garde d’enfants', 'garde d enfants'],
   'sup-fr': ['universités', 'universites', 'enseignement supérieur', 'enseignement superieur', 'facs'],

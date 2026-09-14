@@ -3749,6 +3749,111 @@ test('a fused companion has no row of its own, and never inflates a group count'
   }
 });
 
+test('a dark row says what it holds and whether it needs a close camera', async () => {
+  const panel = makeFusedPanel();
+  try {
+    // OFF, with companions: the strip is empty by design, so the names are
+    // printed as text on the line that is already there.
+    // The PRIMARY's own name is absent on purpose: this row has no
+    // `primaryToggle`, so the primary has no chip on the strip either, and the
+    // row is already named after it.
+    const meta = () => panel.row('flights').querySelector('.data-toggle-meta').textContent;
+    assert.match(meta(), /Militaires, Missions$/);
+
+    // ON, the line goes back to being the layer's: source, freshness, faults.
+    const toggle = panel.row('flights').querySelector('.data-toggle-btn');
+    await toggle.listeners.get('click')[0]();
+    assert.doesNotMatch(meta(), /Militaires, Missions/);
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('a close-range layer warns before it is switched on, not after', async () => {
+  const panel = makeFusedPanel();
+  try {
+    const row = panel.row('ais-live-vessels');
+    assert.doesNotMatch(row.querySelector('.data-toggle-meta').textContent, /vue rapprochée/);
+
+    // The facet travels on the taxonomy, so a layer that declares it says so
+    // while it is dark — which is the only moment it can, having no module
+    // loaded to speak for it.
+    const entry = panel.mgr._registrationTaxonomy.get('ais-live-vessels');
+    panel.mgr._registrationTaxonomy.set('ais-live-vessels', { ...entry, closeRange: true });
+    panel.mgr._refreshTogglePanel();
+    assert.match(
+      panel.row('ais-live-vessels').querySelector('.data-toggle-meta').textContent,
+      /vue rapprochée$/,
+    );
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('a plugged dataset can join a row as a chip, and take its chip back with it', async () => {
+  const panel = makeFusedPanel();
+  try {
+    // The host is a row with no strip at all before this — which is the case
+    // that matters: a dataset must be able to CREATE a strip, not only join one.
+    assert.deepEqual(panel.rows(), ['flights', 'ais-live-vessels']);
+
+    const dataset = makeSlowLayer('ds-bouees-test', { updateInterval: -1 });
+    panel.mgr.registerDataset(dataset.module, {
+      id: 'ds-bouees-test',
+      category: 'maritime',
+      label: 'Bouées de test',
+      kind: 'dataset',
+      coverage: 'global',
+      scopeChip: null,
+      fusedInto: 'ais-live-vessels',
+      companion: { id: 'ds-bouees-test', chip: 'Bouées', title: null, optIn: false },
+    });
+
+    // No row of its own, and the host now carries it.
+    assert.deepEqual(panel.rows(), ['flights', 'ais-live-vessels']);
+    const toggle = panel.row('ais-live-vessels').querySelector('.data-toggle-btn');
+    await toggle.listeners.get('click')[0]();
+    assert.deepEqual(panel.chips('ais-live-vessels').map((chip) => chip.textContent), ['Bouées']);
+    assert.equal(panel.mgr.isEnabled('ds-bouees-test'), true, 'a follower follows the row');
+
+    // Unplugging gives the host row back exactly what it had.
+    assert.equal(await panel.mgr.unregisterDataset('ds-bouees-test'), true);
+    assert.deepEqual(panel.rows(), ['flights', 'ais-live-vessels']);
+    assert.deepEqual(panel.chips('ais-live-vessels').map((chip) => chip.textContent), []);
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('a fused dataset whose host cannot carry it is refused, not registered', async () => {
+  const panel = makeFusedPanel();
+  try {
+    const orphan = makeSlowLayer('ds-orphelin-test', { updateInterval: -1 });
+    assert.throws(() => panel.mgr.registerDataset(orphan.module, {
+      id: 'ds-orphelin-test', category: 'maritime', label: 'Orphelin', kind: 'dataset',
+      coverage: 'global', scopeChip: null,
+      fusedInto: 'pas-une-couche',
+      companion: { id: 'ds-orphelin-test', chip: 'Orphelin', title: null, optIn: false },
+    }), /Unknown fusion host/);
+    // Refused BEFORE registration: a half-registered layer with no row and no
+    // chip would be unreachable from the panel entirely.
+    assert.equal(panel.mgr.layers.has('ds-orphelin-test'), false);
+
+    // A host that is itself a chip cannot carry one: the panel draws no strip
+    // inside a strip.
+    const nested = makeSlowLayer('ds-imbrique-test', { updateInterval: -1 });
+    assert.throws(() => panel.mgr.registerDataset(nested.module, {
+      id: 'ds-imbrique-test', category: 'air-space', label: 'Imbriqué', kind: 'dataset',
+      coverage: 'global', scopeChip: null,
+      fusedInto: 'military',
+      companion: { id: 'ds-imbrique-test', chip: 'Imbriqué', title: null, optIn: false },
+    }), /is itself a companion/);
+    assert.equal(panel.mgr.layers.has('ds-imbrique-test'), false);
+  } finally {
+    await panel.restore();
+  }
+});
+
 test('the row toggle carries its followers, and leaves the opt-in companion off', async () => {
   const panel = makeFusedPanel();
   try {
