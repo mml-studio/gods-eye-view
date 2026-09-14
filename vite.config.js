@@ -15395,6 +15395,40 @@ let _cctvSourceCacheAt = 0;
 /** @type {Promise<Array<object>>|null} In-flight refresh, shared by concurrent
  * callers so a post-TTL burst launches ONE refetch, not one per request. */
 let _cctvSourceInflight = null;
+/**
+ * Disk copy of the merged catalog, so a server restart does not re-pay the
+ * upstream pull. Measured 2026-09-14: a cold `/api/cctv/sources` took 11.4 s
+ * for 7.6 MB across the four providers (Caltrans alone is 6 MB and 9.2 s), and
+ * because the CCTV layer awaits that response before it builds a single
+ * record, every one of those seconds sat in front of the operator.
+ */
+const CCTV_SOURCE_CACHE_DIR = path.join(process.cwd(), '.gev-cache');
+const CCTV_SOURCE_CACHE_PATH = path.join(CCTV_SOURCE_CACHE_DIR, 'cctv-sources.json');
+/** @type {boolean} The disk read is attempted once per process, not per call. */
+let _cctvSourceDiskChecked = false;
+
+/** Loads the persisted catalog into memory, once. Never throws. */
+async function readCctvSourceDiskCache() {
+  if (_cctvSourceDiskChecked) return;
+  _cctvSourceDiskChecked = true;
+  try {
+    const parsed = JSON.parse(await fsp.readFile(CCTV_SOURCE_CACHE_PATH, 'utf8'));
+    if (Number.isFinite(parsed?.at) && Array.isArray(parsed?.sources) && parsed.sources.length) {
+      _cctvSourceCache = parsed.sources;
+      _cctvSourceCacheAt = parsed.at;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+/** Persists the merged catalog. Best-effort — a failed write only costs a refetch. */
+async function writeCctvSourceDiskCache(sources, at) {
+  try {
+    await fsp.mkdir(CCTV_SOURCE_CACHE_DIR, { recursive: true });
+    await fsp.writeFile(CCTV_SOURCE_CACHE_PATH, JSON.stringify({ at, sources }), 'utf8');
+  } catch (err) {
+    console.warn('[CCTV] source cache write failed:', err?.message || err);
+  }
+}
 
 /**
  * Coerce a value to a finite number, returning fallback if NaN/Infinity.
@@ -16610,6 +16644,7 @@ function normalizeSourceItem(item) {
  * @returns {Promise<Array<object>>} Deduplicated, capped source list.
  */
 async function getCctvSources() {
+  await readCctvSourceDiskCache();
   const now = Date.now();
   if (_cctvSourceCache.length && now - _cctvSourceCacheAt <= CCTV_SOURCE_CACHE_MS) {
     return _cctvSourceCache;
@@ -16617,8 +16652,19 @@ async function getCctvSources() {
   // Single-flight: a burst of requests arriving past the TTL shares ONE refresh
   // instead of each launching the full multi-provider refetch. The `.finally`
   // clears the ref so the next post-TTL cycle starts fresh.
-  if (_cctvSourceInflight) return _cctvSourceInflight;
-  _cctvSourceInflight = refreshCctvSources().finally(() => { _cctvSourceInflight = null; });
+  if (!_cctvSourceInflight) {
+    _cctvSourceInflight = refreshCctvSources().finally(() => { _cctvSourceInflight = null; });
+  }
+  // Stale-while-revalidate. Waiting on the refresh used to mean the first
+  // request past the TTL — usually an operator switching the layer on — paid
+  // the full 11.4 s multi-provider pull before a single camera appeared, even
+  // though a perfectly serviceable catalog was sitting in memory. Camera
+  // catalogs change on the order of weeks; a list up to a TTL old is the right
+  // answer to return NOW, with the refresh running behind it.
+  //
+  // Only a cold process with nothing cached (first ever boot, or a wiped disk
+  // cache) still awaits — there is genuinely nothing else to say.
+  if (_cctvSourceCache.length) return _cctvSourceCache;
   return _cctvSourceInflight;
 }
 
@@ -16684,6 +16730,14 @@ async function refreshCctvSources() {
   const capped = mergedSources.length > maxCount ? mergedSources.slice(0, maxCount) : mergedSources;
   if (capped.length > 0 || _cctvSourceCache.length === 0) {
     _cctvSourceCache = capped;
+    // Persist only a REAL catalog: an empty refresh must never overwrite a
+    // good disk copy with nothing, which would turn one upstream outage into
+    // a cold start on every later restart.
+    if (capped.length > 0) {
+      // Not awaited — the caller is answering a request, and a slow disk must
+      // not add latency to a catalog that is already in memory.
+      writeCctvSourceDiskCache(capped, Date.now());
+    }
   } else {
     // Every source came back empty (all live packs timed out / upstream outage)
     // but a good catalog is already cached — serve it stale rather than blanking

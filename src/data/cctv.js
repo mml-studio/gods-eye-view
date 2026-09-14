@@ -144,6 +144,30 @@ const COVERAGE_NEIGHBOR_RADIUS_KM = 1.8;
 // enabling the layer never raycasts every camera in a single frame.
 const GEO_LOAD_BATCH_SIZE = 4;
 const GEO_LOAD_BATCH_DELAY_MS = 120;
+/**
+ * Hard ceiling on ONE drain pass, and the reason the ambient tier no longer
+ * has to defend itself against the drain.
+ *
+ * Measured 2026-09-14 (Austin, 815-camera catalog, warm server): the drain
+ * visited every record at 4 per 120 ms and took 26.5 s — 30.6 records/s
+ * against a theoretical 33.3, i.e. it was bound by its own pacing, not by the
+ * work. For ~800 of those records the entire product was a few-metre altitude
+ * correction on a billboard nobody was looking at: coverage entities are
+ * created lazily for at most COVERAGE_NEIGHBOR_LIMIT records around the
+ * active camera, and the card ring tops out at CCTV_AMBIENT_CARD_MAX.
+ *
+ * So the drain now takes the records that are actually ON SCREEN
+ * (selectCctvDrainSet), capped here, and `moveEnd` tops the set up when the
+ * operator travels — the same event that already drives horizon culling, card
+ * reselection and the OSM viewport cohort. Records outside the set keep their
+ * Re:Earth ground prior, which the catalog path already treats as a correct
+ * first paint in every regime.
+ *
+ * 96 is generous against a 40-card ring and bounds a pass at 2.9 s, which is
+ * what lets the ambient tier drop its two drain defences (the cold-fill burst
+ * gate and the 16-card budget cap) instead of tuning them.
+ */
+export const GEO_DRAIN_VISIBLE_LIMIT = 96;
 const GEO_TRACKING_BATCH_SIZE = 2;
 const GEO_TRACKING_BATCH_DELAY_MS = 250;
 const GEO_PROGRESS_NOTIFY_INTERVAL_MS = 300;
@@ -184,7 +208,22 @@ const PROBE_MIN_RANGE_M = 12;
 // resolves in milliseconds; a cold/slow upstream must never hang layer init,
 // so past this budget init proceeds on catalog fallbacks and the batch applies
 // post-hoc (applyLateGroundPriors) when it lands.
-const GROUND_PRIOR_INIT_WAIT_MS = 8000;
+//
+// Cut from 8 s on 2026-09-14. Init awaited priors for the WHOLE catalog, and
+// on a cold proxy 815 points is five sequential 200-point chunks: measured
+// 7.2 s, right at the old ceiling, all of it in front of the operator. Only
+// the cameras about to be drawn need their prior before the first paint, so
+// init now awaits GROUND_PRIOR_INIT_NEAR_COUNT of them — one chunk — and the
+// rest ride the background batch into applyLateGroundPriors, which is the
+// path a lost race already used.
+const GROUND_PRIOR_INIT_WAIT_MS = 2500;
+/**
+ * How many cameras (nearest to the viewer) get their ground prior resolved
+ * BEFORE init returns. One 200-point chunk is one request; 160 keeps the
+ * awaited batch to a single round trip while covering more than twice the
+ * 40-card ring and well past GEO_DRAIN_VISIBLE_LIMIT.
+ */
+export const GROUND_PRIOR_INIT_NEAR_COUNT = 160;
 /** Default calibration offsets — all zeroed, range scale 1x. */
 const DEFAULT_CAMERA_CALIBRATION = Object.freeze({
   offsetNorthM: 0,
@@ -459,8 +498,8 @@ let _cardFrameSlots = new Map();
 let _cardFetchTimer = 0;
 /** In-flight card-frame fetch count (burst allows up to 4, steady is 1). */
 let _cardFetchInFlightCount = 0;
-/** @type {Set<HTMLImageElement>} in-flight fetches, detached on teardown. */
-const _cardFetchImages = new Set();
+/** @type {Set<AbortController>} in-flight card-frame fetches, aborted on teardown. */
+const _cardFetchAborters = new Set();
 /** @type {Set<string>} camera ids with an in-flight fetch (no double-fetch). */
 const _cardFetchPendingIds = new Set();
 let _cardFetchCount = 0;
@@ -468,11 +507,6 @@ let _cardLastFetchAt = 0;
 let _cardMinFetchSpacingMs = null;
 /** Pacer mode telemetry: 'burst' during cold fill, 'steady' after. */
 let _cardFetchMode = 'steady';
-/**
- * Card budget while the staggered geometry drain is running — the raised
- * 20/28/40 tiers resume when loading completes (see refreshAmbientCards).
- */
-const CCTV_AMBIENT_CARD_DRAIN_CAP = 16;
 // Global static-frame pacing (field finding 3): the pacer ticks at the burst
 // spacing (250 ms) but cardFetchPolicy gates launches — cold fill (selected
 // cards still missing their FIRST frame) allows up to 4 in-flight fetches at
@@ -2369,6 +2403,31 @@ function resolveCommittedGroundAnchor(record) {
  * @param {Object[]} catalog - Camera objects (post-ensureCameraPose).
  * @returns {Promise<Array<{ellipsoid:number, source:string}>|null>}
  */
+/**
+ * Indices of the `count` catalog entries nearest a reference point, nearest
+ * first. Indices rather than cameras because the caller has to map the
+ * resolver's positionally-aligned answer back onto the full catalog.
+ *
+ * @param {Object[]} catalog - Camera objects carrying lat/lon.
+ * @param {number} refLat
+ * @param {number} refLon
+ * @param {number} count
+ * @returns {number[]} Catalog indices, nearest first.
+ */
+export function cctvNearestCatalogIndices(catalog, refLat, refLon, count) {
+  const rows = (Array.isArray(catalog) ? catalog : [])
+    .map((camera, index) => ({ index, camera }))
+    .filter(({ camera }) => Number.isFinite(camera?.lat) && Number.isFinite(camera?.lon));
+  const lat = Number.isFinite(refLat) ? refLat : 0;
+  const lon = Number.isFinite(refLon) ? refLon : 0;
+  const cap = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : rows.length;
+  return rows
+    .map((row) => ({ ...row, distKm: haversineKm(lat, lon, row.camera.lat, row.camera.lon) }))
+    .sort((a, b) => a.distKm - b.distKm || a.index - b.index)
+    .slice(0, cap)
+    .map((row) => row.index);
+}
+
 async function resolveGroundPriors(catalog) {
   try {
     const coords = catalog.map((camera) => {
@@ -2635,6 +2694,42 @@ export function prioritizeActiveCctvGeometryRecord(queue, activeRecord) {
 }
 
 /**
+ * Chooses which cameras one geometry-drain pass refines: the ones ON SCREEN,
+ * nearest first, capped (see GEO_DRAIN_VISIBLE_LIMIT for the measurement that
+ * made this a subset rather than the whole catalog).
+ *
+ * The empty-view fallback is deliberate and is not a cap-filler. When NOTHING
+ * is in view the pass refines the nearest cameras anyway, because that case is
+ * not "the operator is looking away" — it is a viewport the projection could
+ * not answer for (a zero-sized canvas in a harness, a camera under the
+ * ellipsoid, the frame before the first render). Resolving the nearest few
+ * there is the same answer the old whole-catalog drain would have reached
+ * first, at a bounded cost. When the view DOES answer, out-of-view cameras are
+ * left on their prior — they are what this change exists to stop paying for.
+ *
+ * @param {Array<{id:string, inView:boolean, distanceKm:number}>} candidates
+ * @param {Object} [options]
+ * @param {number} [options.limit] Ceiling on the returned set.
+ * @returns {string[]} Camera ids, nearest first.
+ */
+export function selectCctvDrainSet(candidates, { limit = GEO_DRAIN_VISIBLE_LIMIT } = {}) {
+  const rows = (Array.isArray(candidates) ? candidates : [])
+    .filter((candidate) => candidate && typeof candidate.id === 'string' && candidate.id)
+    .map((candidate) => ({
+      id: candidate.id,
+      inView: candidate.inView === true,
+      distanceKm: Number.isFinite(candidate.distanceKm)
+        ? Math.max(0, candidate.distanceKm)
+        : Infinity,
+    }));
+  const cap = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : rows.length;
+  const nearestFirst = (a, b) => a.distanceKm - b.distanceKm || a.id.localeCompare(b.id);
+  const inView = rows.filter((row) => row.inView);
+  const pool = inView.length ? inView : rows;
+  return pool.sort(nearestFirst).slice(0, cap).map((row) => row.id);
+}
+
+/**
  * Processes one batch (GEO_LOAD_BATCH_SIZE records) of the geometry queue:
  * full ground-sampled coverage geometry per record, then yields back to the
  * event loop before the next batch so tile rendering never stalls. When the
@@ -2696,15 +2791,27 @@ export function processGeometryBatch() {
  * Appends records to the geometry queue (no progress tracking) and starts
  * the batch timer if idle. Used by update()'s ONE-SHOT tiles-ready completion
  * pass (records left `!groundResolved` by an enable-time drain that ran while
- * tiles were still streaming) so it shares the same stagger machinery as the
- * initial load. Fires at most once per enable — never on a recurring timer.
+ * tiles were still streaming) and by the moveEnd top-up, so both share the
+ * same stagger machinery as the initial load.
+ *
+ * The whole incoming set is warmed in one call before the first batch — see
+ * startGeometryLoadQueue for why arriving at those cells one record at a time
+ * is the expensive way to ask the same question.
  * @param {Object[]} records - Camera records needing geometry refresh.
  */
 function enqueueGeometryRefresh(records) {
+  const added = [];
   for (const record of records) {
     if (!_geoQueue.includes(record)) {
       _geoQueue.push(record);
+      added.push(record);
     }
+  }
+  if (added.length) {
+    warmGroundFloor(added.map((record) => ({
+      lat: record.camera.lat,
+      lon: record.camera.lon,
+    })));
   }
   if (!_geoQueueTimer && _geoQueue.length) {
     _geoProgressNotifier = createGeometryProgressNotifier(notifyListeners);
@@ -2713,10 +2820,14 @@ function enqueueGeometryRefresh(records) {
 }
 
 /**
- * Starts the initial staggered load: orders all records active-camera-first,
- * then by distance from the current viewer position (nearest first, so
- * cameras likely in view refine before off-screen ones), and exposes
- * loaded/total progress through uiState()/getStats() while running.
+ * Starts the enable-time staggered load over the cameras that are ON SCREEN
+ * (selectCctvDrainSet), active-camera-first and then nearest-first, and
+ * exposes loaded/total progress through uiState()/getStats() while running.
+ *
+ * `_geoLoadTotal` is the size of THIS pass, not the catalog: a progress
+ * readout of "40 of 815" for a drain that will stop at 40 would be a lie to
+ * the panel and to every harness reading it. Cameras the operator travels to
+ * later are picked up by scheduleVisibleGeometryDrain on moveEnd.
  */
 function startGeometryLoadQueue() {
   stopGeometryLoadQueue();
@@ -2725,18 +2836,19 @@ function startGeometryLoadQueue() {
   _tilesReadyReenqueued = false;
   if (!_records.length) return;
   const active = getActiveRecord();
-  const carto = _viewer?.camera?.positionCartographic;
-  const refLat = carto ? Cesium.Math.toDegrees(carto.latitude) : (active?.camera.lat ?? 0);
-  const refLon = carto ? Cesium.Math.toDegrees(carto.longitude) : (active?.camera.lon ?? 0);
-  const pending = _records
-    .filter((record) => record !== active)
-    .map((record) => ({
-      record,
-      distKm: haversineKm(refLat, refLon, record.camera.lat, record.camera.lon),
-    }))
-    .sort((a, b) => a.distKm - b.distKm)
-    .map((entry) => entry.record);
+  const visible = visibleDrainRecords();
+  const pending = visible.filter((record) => record !== active);
   _geoQueue = active ? [active, ...pending] : pending;
+  if (!_geoQueue.length) return;
+  // One warm for the whole pass, before the first batch. updateRecordGeometry
+  // warms its own point too, but arriving there one record at a time is what
+  // turned ~700 distinct floor cells into ~190 `/api/terrain/heights` requests
+  // spread over 70 s (measured 2026-09-14). Handing groundFloor the whole set
+  // up front lets it dedupe to unique cells and chunk them at 200 per request.
+  warmGroundFloor(_geoQueue.map((record) => ({
+    lat: record.camera.lat,
+    lon: record.camera.lon,
+  })));
   _geoLoadTotal = _geoQueue.length;
   _geoLoadDone = 0;
   _geoLoading = true;
@@ -2892,30 +3004,33 @@ function ensureCardFrameSlot(cameraId) {
 }
 
 /**
- * Rebuilds the ambient card selection: horizon + in-view projection of the
- * catalog (pure math — no scene queries), the zoom-budgeted nearest-first
- * LOD pick, greedy screen-space declutter, and the eviction-grace pass that
- * keeps budget-edge cards alive across small camera moves (zero-flicker).
- * Runs on camera.moveEnd, enable, activation change, and the one-shot
- * geometry-drain completion — NEVER per frame. The active camera is excluded
- * from the ambient selection/quota. By default its monitor plane is the sole
- * active representation; the optional protected-card path is applied only by
- * `pushAmbientCardEntries`. Camera icons are never touched here (cards
- * annotate markers, they don't replace them).
+ * Projects every catalog record against the live view once: horizon
+ * occlusion, canvas coordinates, and great-circle distance from the viewer.
+ * Pure math — no scene queries, no picking.
+ *
+ * ONE definition of "in view", shared by the two consumers that must agree on
+ * it: the ambient card ring (which cameras get a thumbnail) and the geometry
+ * drain (which cameras get their ground refined). A drain that disagreed with
+ * the ring about what is on screen would refine cameras the ring never draws
+ * and starve the ones it does.
+ *
+ * It is also ONE pass. Both consumers run back to back on the same `moveEnd`,
+ * so the result is computed there and handed to each of them rather than
+ * recomputed — a second sweep of the catalog per settle would be the cost this
+ * change exists to remove, paid back in a different place.
+ *
+ * The active camera is NOT excluded here; the card ring drops it from its own
+ * copy, because the drain must never skip it.
+ *
+ * @returns {?{candidates:Array, screenById:Map, width:number, height:number,
+ *   carto:*}} Null when there is no live scene to project against.
  */
-function refreshAmbientCards() {
-  if (!_enabled || !_viewer || _viewer.isDestroyed() || !_records.length) {
-    _cctvOverlayHost.setEntries(CCTV_OVERLAY_SOURCE_ID, [], CCTV_OVERLAY_SOURCE_OPTIONS);
-    return;
-  }
+function projectCctvRecords() {
+  if (!_viewer || _viewer.isDestroyed?.() || !_records.length) return null;
   const scene = _viewer.scene;
   const carto = _viewer.camera.positionCartographic;
   const viewerLat = carto ? Cesium.Math.toDegrees(carto.latitude) : 0;
   const viewerLon = carto ? Cesium.Math.toDegrees(carto.longitude) : 0;
-  // The active camera is excluded from ambient selection ALWAYS (not just
-  // after its async activation settles). It is published separately in the
-  // protected lane below, and grace never applies to it.
-  const activeId = _activeCameraId;
   const occluder = horizonOccluder(_viewer.camera);
   const width = scene.canvas.clientWidth || scene.canvas.width || 0;
   const height = scene.canvas.clientHeight || scene.canvas.height || 0;
@@ -2926,7 +3041,7 @@ function refreshAmbientCards() {
   const screenById = new Map();
   for (const record of _records) {
     const id = record.camera.id;
-    if (id === activeId || !record.position) continue;
+    if (!record.position) continue;
     let inView = false;
     let sx = NaN;
     let sy = NaN;
@@ -2950,6 +3065,73 @@ function refreshAmbientCards() {
       sy,
     });
   }
+  return { candidates, screenById, width, height, carto };
+}
+
+/**
+ * The records one drain pass should refine, in order: on-screen first and
+ * nearest first, capped at GEO_DRAIN_VISIBLE_LIMIT. The active camera is
+ * included here (it is the one record the drain must never skip) and
+ * `prioritizeActiveCctvGeometryRecord` re-floats it to the head every batch.
+ * @param {?Object} [projection] A `projectCctvRecords()` result to reuse.
+ * @returns {Object[]} Camera records.
+ */
+function visibleDrainRecords(projection = null) {
+  const projected = projection || projectCctvRecords();
+  if (!projected) return _records.slice(0, GEO_DRAIN_VISIBLE_LIMIT);
+  return selectCctvDrainSet(projected.candidates)
+    .map((id) => _recordById.get(id))
+    .filter(Boolean);
+}
+
+/**
+ * Tops the drain up for a view the operator just travelled to: any on-screen
+ * record still unresolved for the CURRENT surface regime is enqueued through
+ * the same stagger machinery as the enable-time pass.
+ *
+ * This is the other half of narrowing the drain to the visible set. It rides
+ * `camera.moveEnd` beside horizon culling, card reselection and the OSM
+ * viewport cohort — event-driven, never a timer — and it deliberately goes
+ * through `enqueueGeometryRefresh`, which carries no progress counters, so
+ * arriving somewhere new does not re-raise the layer's "loading" state.
+ */
+function scheduleVisibleGeometryDrain(projection = null) {
+  if (!_enabled || !_viewer) return;
+  const pending = visibleDrainRecords(projection).filter((record) => !isGroundResolved(record));
+  if (pending.length) enqueueGeometryRefresh(pending);
+}
+
+/**
+ * Rebuilds the ambient card selection: horizon + in-view projection of the
+ * catalog (pure math — no scene queries), the zoom-budgeted nearest-first
+ * LOD pick, greedy screen-space declutter, and the eviction-grace pass that
+ * keeps budget-edge cards alive across small camera moves (zero-flicker).
+ * Runs on camera.moveEnd, enable, activation change, and the one-shot
+ * geometry-drain completion — NEVER per frame. The active camera is excluded
+ * from the ambient selection/quota. By default its monitor plane is the sole
+ * active representation; the optional protected-card path is applied only by
+ * `pushAmbientCardEntries`. Camera icons are never touched here (cards
+ * annotate markers, they don't replace them).
+ */
+function refreshAmbientCards(projection = null) {
+  if (!_enabled || !_viewer || _viewer.isDestroyed() || !_records.length) {
+    _cctvOverlayHost.setEntries(CCTV_OVERLAY_SOURCE_ID, [], CCTV_OVERLAY_SOURCE_OPTIONS);
+    return;
+  }
+  const projected = projection || projectCctvRecords();
+  if (!projected) {
+    _cctvOverlayHost.setEntries(CCTV_OVERLAY_SOURCE_ID, [], CCTV_OVERLAY_SOURCE_OPTIONS);
+    return;
+  }
+  const { screenById, width, height, carto } = projected;
+  // The active camera is excluded from ambient selection ALWAYS (not just
+  // after its async activation settles). It is published separately in the
+  // protected lane below, and grace never applies to it. The shared projection
+  // keeps it (the drain needs it), so the exclusion happens here.
+  const activeId = _activeCameraId;
+  const candidates = activeId
+    ? projected.candidates.filter((candidate) => candidate.id !== activeId)
+    : projected.candidates;
 
   // Field finding 4: current card holders rank with the 20% incumbency
   // distance discount, so a small camera move never batch-swaps the ring.
@@ -2962,15 +3144,15 @@ function refreshAmbientCards() {
     viewW: width,
     viewH: height,
   });
-  // Like the cold-fill burst, card density yields to the staggered geometry
-  // drain: painting the raised 20/28/40 budget per frame starves the
-  // frame-paced mesh-floor queue on weak GPUs (qa-cctv-v2 N=800 drain-budget
-  // regression). During the initial load the budget holds at the low tier;
-  // full density arrives the moment the drain completes (which triggers its
-  // own refreshAmbientCards pass).
-  const cardLimit = _geoLoading
-    ? Math.min(budgets.cardLimit, CCTV_AMBIENT_CARD_DRAIN_CAP)
-    : budgets.cardLimit;
+  // The budget no longer yields to the geometry drain. It used to hold at 16
+  // while `_geoLoading` was true, because a drain that visited all 815
+  // catalog records ran for 26.5 s and painting the full 20/28/40 ring
+  // alongside it starved the frame-paced mesh-floor queue on weak GPUs
+  // (qa-cctv-v2 N=800 drain-budget regression). GEO_DRAIN_VISIBLE_LIMIT
+  // removes the premise: a pass is now bounded at 96 records (~2.9 s), so the
+  // ring reaches full density immediately instead of waiting out a drain that
+  // was mostly refining cameras on other continents.
+  const cardLimit = budgets.cardLimit;
   const decluttered = declutterCctvCards(
     cardIds
       .filter((id) => screenById.has(id))
@@ -3198,11 +3380,14 @@ function cardFrameTick() {
   if (_activeCameraCardEnabled && _activeCameraId) consider(_activeCameraId);
   for (const id of _cardIds) consider(id);
   const policy = cardFetchPolicy({
-    // The cold-fill burst yields to the staggered geometry drain: 4 concurrent
-    // image fetch+decodes mid-drain starve the mesh-floor queue on weak GPUs
-    // (qa-cctv-v2 drain-budget regression). Steady 1/s trickle still runs;
-    // the burst fires the moment the drain completes.
-    coldFill: coldFill && !_geoLoading,
+    // The cold-fill burst no longer waits for the geometry drain. It used to
+    // (`coldFill && !_geoLoading`) because 4 concurrent image fetch+decodes
+    // mid-drain starved the mesh-floor queue on weak GPUs (qa-cctv-v2
+    // drain-budget regression) — and with a 26.5 s whole-catalog drain that
+    // meant the first ring filled at the steady 1/s trickle, 14 s for 14
+    // cards. GEO_DRAIN_VISIBLE_LIMIT bounds a pass at 96 records, so the
+    // burst and the drain no longer contend for a meaningful window.
+    coldFill,
     inFlight: _cardFetchInFlightCount,
     sinceLastLaunchMs: _cardLastFetchAt > 0 ? now - _cardLastFetchAt : Infinity,
   });
@@ -3213,10 +3398,81 @@ function cardFrameTick() {
 }
 
 /**
+ * Paints a fetched frame body into a fresh thumbnail canvas, decoding it
+ * AT thumbnail size where the engine can.
+ *
+ * The card canvas is 192x108. The upstream frames behind it are full traffic
+ * stills — measured 2026-09-14 on the Austin/Caltrans/TfL packs at ~190 KB
+ * and roughly 1280x720 each. The old path handed that to an `<img>`, which
+ * decodes at full resolution (about 3.7 MB of RGBA per frame) and only then
+ * let `drawImage` scale it down. `createImageBitmap` with `resizeWidth` /
+ * `resizeHeight` asks the decoder for the size actually wanted, so a ring of
+ * 18 cards stops materialising ~66 MB of full-size bitmaps it immediately
+ * throws away.
+ *
+ * Engines that lack `createImageBitmap`, or refuse a particular blob, fall
+ * back to the original object-URL `<img>` decode — same pixels, same cost as
+ * before, never a blank card.
+ *
+ * @param {Blob} blob - Frame body.
+ * @param {AbortSignal} signal - Aborted on teardown / document hide.
+ * @returns {Promise<?HTMLCanvasElement>} Thumbnail canvas, or null.
+ */
+async function paintCardFrameCanvas(blob, signal) {
+  const canvas = document.createElement('canvas');
+  canvas.width = CCTV_FRAME_CANVAS_W;
+  canvas.height = CCTV_FRAME_CANVAS_H;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  if (typeof createImageBitmap === 'function') {
+    let bitmap = null;
+    try {
+      bitmap = await createImageBitmap(blob, {
+        resizeWidth: CCTV_FRAME_CANVAS_W,
+        resizeHeight: CCTV_FRAME_CANVAS_H,
+        resizeQuality: 'medium',
+      });
+    } catch {
+      bitmap = null;
+    }
+    if (bitmap) {
+      if (signal.aborted) {
+        bitmap.close?.();
+        return null;
+      }
+      // Still a sized drawImage: an engine that ignores the resize hints
+      // (older Safari) hands back a full-size bitmap, and this is what makes
+      // that case render identically instead of cropping.
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close?.();
+      return canvas;
+    }
+  }
+
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const image = await new Promise((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error('decode failed'));
+      element.src = objectUrl;
+    });
+    if (signal.aborted) return null;
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return canvas;
+  } catch {
+    return null;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+/**
  * Fetches one paced static frame and settles it into the stable slot via the
  * pure persistence rule (applyFrameResult): success replaces the thumbnail,
- * failure leaves the drawn frame untouched. The frame is downscaled once
- * into a 2x-thumb offscreen canvas; the renderer reads the slot live.
+ * failure leaves the drawn frame untouched. The frame is decoded once into a
+ * thumbnail-sized offscreen canvas; the renderer reads the slot live.
  * @param {Object} record - Camera record.
  * @param {Object} slot - The camera's stable frame slot.
  * @param {number} refreshMs - Source cadence (also keys the frame-URL tick).
@@ -3243,39 +3499,52 @@ function fetchCardFrame(record, slot, refreshMs, { userGesture = false } = {}) {
   _cardLastFetchAt = now;
   _cardFetchCount += 1;
 
-  const image = new Image();
-  _cardFetchImages.add(image);
-  const settle = (ok) => {
-    image.onload = null;
-    image.onerror = null;
-    if (_cardFetchImages.delete(image)) {
-      _cardFetchInFlightCount = Math.max(0, _cardFetchInFlightCount - 1);
-      _cardFetchPendingIds.delete(cameraId);
-    }
-    let frame = null;
-    if (ok) {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = CCTV_FRAME_CANVAS_W;
-        canvas.height = CCTV_FRAME_CANVAS_H;
-        canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
-        frame = canvas;
-      } catch {
-        frame = null;
-      }
-    }
+  const aborter = new AbortController();
+  _cardFetchAborters.add(aborter);
+  const settle = (frame) => {
+    // The in-flight bookkeeping is released exactly once: an abort that
+    // already removed this handle must not double-decrement the counter.
+    if (!_cardFetchAborters.delete(aborter)) return;
+    _cardFetchInFlightCount = Math.max(0, _cardFetchInFlightCount - 1);
+    _cardFetchPendingIds.delete(cameraId);
     Object.assign(slot, applyFrameResult(slot, { ok: !!frame, frame }, Date.now()));
     _viewer?.scene?.requestRender?.();
   };
-  image.onload = () => settle(true);
-  image.onerror = () => settle(false);
-  image.src = frameUrlFor(record.camera, refreshMs);
+
+  fetch(frameUrlFor(record.camera, refreshMs), {
+    signal: aborter.signal,
+    cache: 'no-store',
+  })
+    .then(async (response) => {
+      if (!response.ok) return null;
+      const blob = await response.blob();
+      if (aborter.signal.aborted) return null;
+      return paintCardFrameCanvas(blob, aborter.signal);
+    })
+    .catch(() => null)
+    .then((frame) => {
+      if (aborter.signal.aborted) return;
+      settle(frame);
+    });
 }
 
 /** Starts the card-frame pacer (idempotent; policy-gated per tick). */
 function startCardFrameLoop() {
   if (_cardFetchTimer) return;
   _cardFetchTimer = setInterval(cardFrameTick, CARD_FETCH_TICK_MS);
+}
+
+/**
+ * Aborts every in-flight card-frame fetch and clears the pacer's in-flight
+ * bookkeeping. The abort now cancels the DOWNLOAD as well as the decode:
+ * detaching an `<img>` handler left the bytes arriving, an AbortController
+ * stops them.
+ */
+function abortInFlightCardFrames() {
+  for (const aborter of _cardFetchAborters) aborter.abort();
+  _cardFetchAborters.clear();
+  _cardFetchPendingIds.clear();
+  _cardFetchInFlightCount = 0;
 }
 
 /**
@@ -3287,14 +3556,7 @@ function startCardFrameLoop() {
 if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) return;
-    for (const image of _cardFetchImages) {
-      image.onload = null;
-      image.onerror = null;
-      image.removeAttribute('src');
-    }
-    _cardFetchImages.clear();
-    _cardFetchPendingIds.clear();
-    _cardFetchInFlightCount = 0;
+    abortInFlightCardFrames();
   });
 }
 
@@ -3304,14 +3566,7 @@ function stopCardFrameLoop() {
     clearInterval(_cardFetchTimer);
     _cardFetchTimer = 0;
   }
-  for (const image of _cardFetchImages) {
-    image.onload = null;
-    image.onerror = null;
-    image.removeAttribute('src');
-  }
-  _cardFetchImages.clear();
-  _cardFetchPendingIds.clear();
-  _cardFetchInFlightCount = 0;
+  abortInFlightCardFrames();
   _cardFetchMode = 'steady';
 }
 
@@ -4706,27 +4961,46 @@ const cctvLayer = {
 
     for (const camera of catalog) prepareCameraForCatalog(camera);
 
-    // Task 5 (height-datum fix): batch ALL camera coords through the Re:Earth
+    // Task 5 (height-datum fix): camera coords go through the Re:Earth
     // ellipsoidal ground-prior resolver (network-cached — NOT a scene query;
     // the catalog's orthometric groundElevationM feeds the geoid fallback
-    // chain). Bounded wait: a warm proxy cache resolves in milliseconds, so
-    // records are normally built WITH their prior (correct first paint in
-    // every regime); a cold/slow upstream loses the race and the batch
-    // applies post-hoc via applyLateGroundPriors instead of hanging init.
-    const priorsPromise = resolveGroundPriors(catalog);
-    const priors = await Promise.race([
-      priorsPromise,
+    // chain) so records are built WITH their prior, which is a correct first
+    // paint in every regime.
+    //
+    // Only the NEAREST cameras are awaited (see GROUND_PRIOR_INIT_WAIT_MS):
+    // they are the ones about to be drawn, and one chunk is one request. The
+    // rest resolve in the background and land through applyLateGroundPriors —
+    // the same post-hoc path a lost race has always used, so a far camera is
+    // never worse off than it was when the whole batch timed out.
+    const initCarto = _viewer?.camera?.positionCartographic;
+    const nearIndices = cctvNearestCatalogIndices(
+      catalog,
+      initCarto ? Cesium.Math.toDegrees(initCarto.latitude) : 0,
+      initCarto ? Cesium.Math.toDegrees(initCarto.longitude) : 0,
+      GROUND_PRIOR_INIT_NEAR_COUNT,
+    );
+    const nearPriorsPromise = resolveGroundPriors(nearIndices.map((index) => catalog[index]));
+    const nearPriors = await Promise.race([
+      nearPriorsPromise,
       new Promise((resolve) => setTimeout(() => resolve(null), GROUND_PRIOR_INIT_WAIT_MS)),
     ]);
+    const priorByIndex = new Map();
+    if (nearPriors) {
+      nearIndices.forEach((catalogIndex, slot) => {
+        const prior = nearPriors[slot];
+        if (prior) priorByIndex.set(catalogIndex, prior);
+      });
+    }
 
     for (let i = 0; i < catalog.length; i++) {
       const camera = catalog[i];
       createCameraRecord(camera, {
         hueIndex: hueIndexById.get(camera.id) ?? 0,
-        // Ellipsoidal ground prior (or null while the batch is still in
-        // flight). Geometry falls back to the catalog value only until the
-        // batch lands.
-        groundPrior: priors?.[i] || null,
+        // Ellipsoidal ground prior, or null for a camera outside the awaited
+        // near set (and for the whole catalog when even that lost its race).
+        // Geometry falls back to the catalog value until the background batch
+        // lands.
+        groundPrior: priorByIndex.get(i) || null,
       });
     }
 
@@ -4737,15 +5011,15 @@ const cctvLayer = {
       _activeCameraId = _records[0].camera.id;
     }
 
-    // Task 5: if the prior batch lost init's bounded race, apply it post-hoc
-    // when it lands (pure recomputes — applyLateGroundPriors guards against
-    // a torn-down/re-inited catalog).
-    if (!priors) {
-      const initRecords = _records.slice();
-      priorsPromise.then((late) => {
-        if (late) applyLateGroundPriors(initRecords, late);
-      }).catch(() => {});
-    }
+    // Task 5: the rest of the catalog's priors apply post-hoc when they land
+    // (pure recomputes — applyLateGroundPriors guards against a torn-down or
+    // re-inited catalog, and leaves records that already hold a resolved
+    // floor untouched). Points the near batch already resolved are served
+    // from the resolver's in-memory cache, so this re-asks nothing.
+    const initRecords = _records.slice();
+    resolveGroundPriors(catalog).then((late) => {
+      if (late) applyLateGroundPriors(initRecords, late);
+    }).catch(() => {});
 
     // Task 5: track the surface regime the initial geometry was computed for
     // and listen for map-stack changes (main.js re-dispatches
@@ -4768,7 +5042,14 @@ const cctvLayer = {
       _horizonCullListener = () => {
         _cameraMoving = false;
         refreshHorizonCulling();
-        refreshAmbientCards();
+        // One catalog projection for both consumers of "what is on screen".
+        const projection = _enabled ? projectCctvRecords() : null;
+        refreshAmbientCards(projection);
+        // The drain only ever refines what was on screen, so the view the
+        // operator just travelled to is where its next work comes from.
+        // Unresolved-only and progress-free, so settling somewhere already
+        // refined costs nothing beyond the projection just taken.
+        scheduleVisibleGeometryDrain(projection);
         // Viewport-loaded OSM camera positions ride the same settle event:
         // debounced, never per frame, and a no-op while the layer is disabled.
         scheduleOsmCameraLoad();
@@ -4922,7 +5203,12 @@ const cctvLayer = {
       // projectionTilesReady() is false while a (hidden) Google tileset
       // exists, so this latch effectively fires for the google-3d regime —
       // terrain-globe records resolve from the prior in their drain pass.
-      const unresolved = _records.filter((record) => !isGroundResolved(record));
+      //
+      // Scoped to the on-screen set for the same reason the enable-time drain
+      // is: re-enqueuing every unresolved record would hand the whole catalog
+      // back to the queue and undo the narrowing. Cameras elsewhere are
+      // unresolved on purpose and get their pass when the operator goes there.
+      const unresolved = visibleDrainRecords().filter((record) => !isGroundResolved(record));
       if (unresolved.length) enqueueGeometryRefresh(unresolved);
     }
     await syncHealthState();

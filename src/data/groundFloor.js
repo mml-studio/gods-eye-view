@@ -558,6 +558,14 @@ function _resolveFloorCells(cells) {
  * throws into the caller. Contending calls QUEUE (never drop): their cells
  * ride the next batch as soon as the in-flight one completes. Results are
  * picked up by later `cachedGroundFloor` reads.
+ *
+ * CALL IT ONCE WITH THE WHOLE POINT SET you are about to work through, not
+ * per point as you reach it. The single-flight guard means a per-point caller
+ * only ever gets the cells that piled up during one round trip into the next
+ * request, so the batching downstream never happens: measured 2026-09-14 with
+ * a 30 ms round trip, 815 points warmed one at a time behind a 4-per-120 ms
+ * queue cost 408 requests, where one call with all 815 costs 5 (the resolver
+ * chunks at 200). That is the shape the CCTV geometry drain was in.
  * @param {Array<{lat: number, lon: number}>} points
  */
 export function warmGroundFloor(points) {

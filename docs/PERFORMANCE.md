@@ -69,6 +69,45 @@ used the most heap, followed by datacenters. Completed single-layer samples
 generally reached 60 FPS, so activation time and heap separate these cases more
 clearly than steady-state frame rate.
 
+### CCTV activation, re-measured 2026-09-14
+
+The CCTV row above is superseded. It was captured against a 48-camera catalog;
+the live catalog is 815 (Austin, Caltrans, TfL, Grand Lyon), which is the size
+the layer actually has to answer for. Re-measured at that size — Austin,
+`map=osm` (so no photoreal mesh sampling on either side), warm source cache,
+same share link, before and after on the same machine:
+
+| Milestone | Before | After |
+| --- | ---: | ---: |
+| `dataManager.toggle('cctv')` resolves | 8,120 ms | 120 ms |
+| Geometry drain complete | 33,500 ms (815 records) | 4,700 ms (96 records) |
+| Ambient cards selected | 14 (held at the drain cap) | 18 (full budget) |
+| All selected cards painted | ~40,000 ms | 8,700 ms |
+| `/api/terrain/heights` requests | 54 | 11 |
+| `/api/cctv/sources`, cold process | 12,560 ms | 64 ms (disk cache) |
+
+Four things moved, and all four were structural rather than tuning:
+
+1. The drain visited the whole catalog at 4 records per 120 ms — 30.6
+   records/s against a 33.3 ceiling, so it was bound by its own pacing and not
+   by its work. It now visits the cameras on screen, capped
+   (`GEO_DRAIN_VISIBLE_LIMIT`), with `moveEnd` topping the set up.
+2. The ambient tier's two defences against that long drain (a 16-card budget
+   cap, a blocked cold-fill burst) were removed once the pass was bounded.
+3. Ground-floor cells were warmed one camera at a time as the queue reached
+   them, which defeats the 200-point chunking downstream: at a 30 ms round
+   trip, 815 points warmed per-point cost 408 requests where one call with all
+   815 costs 5. The drain now warms its whole set up front.
+4. The source catalog (7.6 MB of upstream JSON, Caltrans 6 MB of it) is cached
+   to disk and served stale-while-revalidate, so only a first-ever boot pays
+   the upstream pull.
+
+Under photoreal (`map=photoreal`) the drain is dominated by a different and
+pre-existing cost: one real mesh-floor sample per camera, ~800 ms each under
+headless SwiftShader. Narrowing the drain reduces how many of those run, but a
+headless photoreal capture measures the software rasteriser, not this layer —
+compare on a globe stack, or on real hardware.
+
 ## Aircraft, detection, and Cockpit
 
 | Scene | Motion / rest |
