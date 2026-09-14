@@ -25,6 +25,7 @@
  */
 
 import { ANALYST_LAYERS } from '../data/analystEngine.js';
+import { isLayerDisabled } from '../data/layerState.js';
 import { LAYER_CATEGORIES, LAYER_TAXONOMY } from '../data/layerTaxonomy.js';
 
 /**
@@ -50,16 +51,25 @@ export function normalizeVocabularyKey(value) {
 /**
  * Every layer the voice surface may name.
  *
- * `military-awareness` is excluded and is the only exclusion: it is a
- * `coordinator`, not a dataset — it loads nothing of its own and is entered
- * through the Contacts tab, never through a toggle. Offering it as a
- * `set_layer_visibility` target would hand the model a switch for something
- * that is not a source of data.
+ * TWO exclusions, and they are different in kind.
+ *
+ * `military-awareness` is a `coordinator`, not a dataset — it loads nothing of
+ * its own and is entered through the Contacts tab, never through a toggle.
+ * Offering it as a `set_layer_visibility` target would hand the model a switch
+ * for something that is not a source of data.
+ *
+ * `DISABLED_LAYER_IDS` are datasets WITHDRAWN FROM THE INTERFACE
+ * (`layerState.js`). The voice surface is an interface: leaving one speakable
+ * would let "montre le pouls vélo" put on the globe a layer the panel has no
+ * chip for and the reader cannot switch back off by hand. A layer nobody can
+ * click on is a layer nobody may say either.
  *
  * @type {ReadonlyArray<string>}
  */
 export const VOICE_LAYER_IDS = Object.freeze(
-  LAYER_TAXONOMY.filter((entry) => entry.kind === 'dataset').map((entry) => entry.id),
+  LAYER_TAXONOMY
+    .filter((entry) => entry.kind === 'dataset' && !isLayerDisabled(entry.id))
+    .map((entry) => entry.id),
 );
 
 /**
@@ -120,6 +130,8 @@ const SPOKEN_ALIASES = Object.freeze({
   // One layer, so one vocabulary: the frequency synonyms moved here on
   // 2026-09-10 when `idfm-frequency` was folded into the network row.
   'idfm-network': ['réseau idfm', 'reseau idfm', 'idfm', 'métro parisien', 'metro parisien', 'réseau parisien', 'reseau parisien', 'ratp', 'lignes de métro', 'lignes de metro', 'fréquence des transports', 'frequence des transports', 'fréquence idfm', 'frequence idfm', 'passages par heure', 'desserte'],
+  // Withdrawn from the interface (`DISABLED_LAYER_IDS`), so `ALIAS_INDEX` skips
+  // this row. Kept, not deleted: it is the vocabulary the layer comes back with.
   'velo-pulse-fr': ['pouls vélo', 'pouls velo', 'semaine type vélo', 'semaine type velo', 'usage vélo', 'usage velo', 'bike pulse'],
   'road-events-fr': ['événements routiers', 'evenements routiers', 'incidents routiers', 'chantiers', 'travaux routiers', 'accidents', 'bouchons signalés', 'road events', 'roadworks'],
   'france-energy': ['mix électrique', 'mix electrique', 'mix énergétique', 'mix energetique', 'production électrique', 'production electrique', 'électricité française', 'electricite francaise', 'electricity mix'],
@@ -206,8 +218,11 @@ const ALIAS_INDEX = (() => {
     for (const alias of aliases) claim(normalizeVocabularyKey(alias), layerId);
   }
   // Labels last, so a deliberate alias outranks a label that happens to collide.
+  // The withdrawn layers are skipped here too: indexing "Pouls vélo (semaine
+  // type)" would give back through the panel label exactly what the enum above
+  // just took away.
   for (const entry of LAYER_TAXONOMY) {
-    if (entry.kind !== 'dataset') continue;
+    if (entry.kind !== 'dataset' || isLayerDisabled(entry.id)) continue;
     claim(normalizeVocabularyKey(entry.label), entry.id);
     // "Vigilance météo (FR)" and "Séismes (24 h)" carry a parenthetical the
     // operator never says; index the bare name too.
@@ -316,7 +331,11 @@ export function describeVoiceLayers({ dataManager = null, query = null } = {}) {
   }
   const rows = [];
   for (const entry of LAYER_TAXONOMY) {
-    if (entry.kind !== 'dataset') continue;
+    // Same two exclusions as `VOICE_LAYER_IDS`, and for the same reason: this
+    // is the list the model reads back when it answers "what layers do you
+    // have", so a withdrawn layer listed here would be offered out loud and
+    // then refused when named.
+    if (entry.kind !== 'dataset' || isLayerDisabled(entry.id)) continue;
     if (matches && !matches.has(entry.id)) continue;
     const state = live.get(entry.id) || null;
     rows.push({

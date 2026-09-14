@@ -3075,7 +3075,9 @@ test('list_layers answers from the registry, and a lookup finds the French name'
   const all = await runner('list_layers', {});
   assert.equal(all.ok, true);
   assert.equal(all.matched, all.total);
-  assert.ok(all.total >= 59, 'the whole registry, not just what is enabled');
+  // 58 since 2026-09-14: `velo-pulse-fr` was withdrawn from the interface, so
+  // it is no longer a layer the model may name (`DISABLED_LAYER_IDS`).
+  assert.ok(all.total >= 58, 'the whole registry, not just what is enabled');
 
   const one = await runner('list_layers', { query: 'docteurs' });
   assert.equal(one.matched, 1);

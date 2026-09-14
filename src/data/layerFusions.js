@@ -99,6 +99,20 @@ import { REGISTERED_LAYER_IDS } from './layerState.js';
  * publishes no live vehicle, and making it opt-in would put the capital back to
  * zero on a row that promises transit. Its territory is declared through
  * `layerCoverage.js` instead, which dims a control without unplugging it.
+ *
+ * `disabled: true` is the third state, and it is NOT a weaker `optIn`. `optIn`
+ * says "the reader asks for this with the chip"; `disabled` says THERE IS NO
+ * CHIP — the companion is withdrawn from the interface entirely, while staying
+ * a registered layer with its module, its share token, its credit line and its
+ * tests intact. `fusionCompanionsFor` drops it, so the row shows no chip for it
+ * and `fusionToggleGroupFor` never switches it on; `fusedIntoFor` deliberately
+ * still returns the primary, which is what keeps the layer OFF the panel
+ * instead of promoting it back to a row of its own. The matching half lives in
+ * `layerState.js` (`DISABLED_LAYER_IDS`), which is what stops a stored session
+ * or an old share link from bringing it back with no control to switch it off.
+ *
+ * Deleting the entry would do the panel half and nothing else; this flag is the
+ * reversible form of the same decision — take it out to give the chip back.
  */
 export const LAYER_FUSIONS = Object.freeze([
   // ── 1. Autorisations d'urbanisme ─────────────────────────────────────────
@@ -294,9 +308,16 @@ export const LAYER_FUSIONS = Object.freeze([
         chip: 'Longue traîne FR',
         title: '135 opérateurs français, tous modes — vélo, trottinette, scooter, voiture',
       }),
+      // WITHDRAWN FROM THE INTERFACE on 2026-09-14, by product decision, and
+      // kept here rather than deleted: the module, the shipped pack, the share
+      // token `vp`, the credit line and `qa-velo-pulse.mjs` all still work, and
+      // this entry is the one line to remove to hand the chip back. While the
+      // flag stands there is no « Semaine type » chip on the row and the row's
+      // toggle no longer carries the layer.
       Object.freeze({
         id: 'velo-pulse-fr',
         chip: 'Semaine type',
+        disabled: true,
         title: 'Remplissage moyen par heure de la semaine — Paris et Lyon',
       }),
     ]),
@@ -453,6 +474,12 @@ export function validateLayerFusions(
       if (companion.chip === fusion.primaryChip) {
         throw new Error(`Fusion companion repeats the primary's chip: ${id}`);
       }
+      // Typed rather than truthy: `disabled: 'false'` reads as "on" to a
+      // reviewer and as "off" to JavaScript, and the whole point of the flag
+      // is that a reader of this table can see which layers are offered.
+      if (companion.disabled !== undefined && typeof companion.disabled !== 'boolean') {
+        throw new Error(`Fusion companion disabled flag must be a boolean: ${id}`);
+      }
       claimed.set(id, primary);
     }
   }
@@ -469,6 +496,13 @@ export function validateLayerFusions(
 validateLayerFusions();
 
 const FUSION_BY_PRIMARY = new Map(LAYER_FUSIONS.map((fusion) => [fusion.primary, fusion]));
+// The offered companions, filtered ONCE at import rather than per call: the
+// table is frozen, so the answer cannot change, and `fusionToggleGroupFor` is a
+// public entry point a caller is free to put in a loop.
+const OFFERED_BY_PRIMARY = new Map(LAYER_FUSIONS.map((fusion) => {
+  const offered = fusion.companions.filter((entry) => entry.disabled !== true);
+  return [fusion.primary, offered.length ? Object.freeze(offered) : null];
+}));
 const PRIMARY_BY_COMPANION = new Map();
 for (const fusion of LAYER_FUSIONS) {
   for (const companion of fusion.companions) {
@@ -477,16 +511,28 @@ for (const fusion of LAYER_FUSIONS) {
 }
 
 /**
- * The companions a row carries.
+ * The companions a row OFFERS — every companion in the table except the ones
+ * withdrawn from the interface with `disabled: true`.
+ *
+ * This is the single filter, and everything the reader can touch is downstream
+ * of it: the chip strip, the row toggle's follower group, and the taxonomy's
+ * `companions` facet. `null` rather than `[]` when a row has nothing left to
+ * offer, so a fusion whose every companion is withdrawn renders exactly like an
+ * unfused row instead of like one with an empty control strip.
  * @param {string} layerId Registered layer id.
  * @returns {ReadonlyArray<object>|null} Companion descriptors, or null.
  */
 export function fusionCompanionsFor(layerId) {
-  return FUSION_BY_PRIMARY.get(layerId)?.companions || null;
+  return OFFERED_BY_PRIMARY.get(layerId) || null;
 }
 
 /**
  * The row a layer disappeared into.
+ *
+ * A `disabled` companion still answers with its primary, and that is the point:
+ * this is the field the panel reads to decide a layer has no row of its own, so
+ * a withdrawn companion that answered `null` here would come BACK as a full row
+ * in its category. Withdrawn means "no control", not "promoted".
  * @param {string} layerId Registered layer id.
  * @returns {string|null} Primary layer id, or null when the layer keeps a row.
  */

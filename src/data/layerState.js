@@ -627,6 +627,49 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
 
 export const REGISTERED_LAYER_IDS = Object.freeze(LAYER_STATE_REGISTRY.map((entry) => entry.id));
 
+/**
+ * Layers that stay REGISTERED but are WITHDRAWN FROM THE INTERFACE.
+ *
+ * A withdrawn layer keeps everything a layer has — its module, its entry in
+ * this registry, its share token, its taxonomy row, its credit line, its QA
+ * harness. What it loses is every way a reader can ASK for it: no row and no
+ * chip in the Data Layers panel (`layerFusions.js` drops it from the row's
+ * offered companions), no name the voice model may speak
+ * (`voice/layerVocabulary.js`), and no resurrection at boot — which is this
+ * file's half of the job.
+ *
+ * THE BOOT HALF IS WHY THIS LIST IS HERE AND NOT ONLY IN THE PANEL. A reader
+ * who had the layer switched on before it was withdrawn carries that ON in
+ * `localStorage`, and an old share link carries it in `l=`. Restoring either
+ * would put a layer on the globe with no control anywhere to switch it off —
+ * the one failure mode that is strictly worse than the layer existing. So the
+ * ingested state is pruned before the restore runs.
+ *
+ * It is pruned on INGESTION ONLY, never in `normalizeLayerState`: an explicit
+ * `setEnabled(id, true, { origin: 'user' })` still records and still encodes,
+ * which is what keeps `scripts/qa-velo-pulse.mjs` and the layer's own tests
+ * able to drive it. Withdrawn is a product decision about the interface, not a
+ * kill switch on the module.
+ *
+ * @type {ReadonlyArray<string>}
+ */
+export const DISABLED_LAYER_IDS = Object.freeze([
+  // « Pouls vélo (semaine type) » — the « Semaine type » chip on the « Vélos et
+  // véhicules partagés » row, withdrawn 2026-09-14. See `layerFusions.js`.
+  'velo-pulse-fr',
+]);
+
+const DISABLED_LAYER_ID_SET = new Set(DISABLED_LAYER_IDS);
+
+/**
+ * Whether a layer is registered but withdrawn from the interface.
+ * @param {string} layerId Registered layer id.
+ * @returns {boolean} True when nothing in the UI may offer it.
+ */
+export function isLayerDisabled(layerId) {
+  return DISABLED_LAYER_ID_SET.has(layerId);
+}
+
 const REGISTRY_BY_ID = new Map(LAYER_STATE_REGISTRY.map((entry) => [entry.id, entry]));
 const REGISTRY_BY_TOKEN = new Map(LAYER_STATE_REGISTRY.map((entry) => [entry.token, entry]));
 const OPTION_OWNER_IDS = Object.freeze([...new Set(
@@ -744,6 +787,25 @@ export function normalizeLayerState(candidate) {
     enabledLayerIds,
     options,
   };
+}
+
+/**
+ * Drop the withdrawn layers from a state's enabled set, keeping their options.
+ *
+ * Options survive on purpose: a layer can come back (the flag in
+ * `layerFusions.js` is one line), and a reader who had it on POINTE should get
+ * POINTE back rather than the default, exactly as a reader who simply switched
+ * it off would.
+ * @param {object} state Already-normalized layer state.
+ * @returns {object} The same object when nothing was withdrawn, a pruned one otherwise.
+ */
+export function pruneDisabledLayers(state) {
+  const enabled = Array.isArray(state?.enabledLayerIds) ? state.enabledLayerIds : [];
+  if (!enabled.some((id) => isLayerDisabled(id))) return state;
+  return normalizeLayerState({
+    ...state,
+    enabledLayerIds: enabled.filter((id) => !isLayerDisabled(id)),
+  });
 }
 
 export function cloneLayerState(state) {
@@ -931,7 +993,11 @@ export class LayerStateCoordinator {
       // unrelated recipient's saved local layer preferences.
       this._source = 'legacy-share';
     }
-    this._durableState = selected || createDefaultLayerState();
+    // Withdrawn layers are dropped HERE, at the one door both sources come
+    // through, and before anything reads the state back: a stored session or an
+    // old `l=` that still carries one would otherwise restore a layer the panel
+    // has no control for. See `DISABLED_LAYER_IDS`.
+    this._durableState = pruneDisabledLayers(selected || createDefaultLayerState());
     this.shareLinkManager?.setLayerStateProvider?.(() => this.getDurableState());
     this.shareLinkManager?.onLayerStateChange?.();
     this._notifyDurableState();
