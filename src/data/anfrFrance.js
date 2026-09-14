@@ -171,9 +171,12 @@
  * and **no 5G row in this edition is ever `En service`**. The 2G/3G/4G rows
  * are `En service` (639 019) or `Projet approuvé`. So "technically operational"
  * is not a fact about one operator's rollout at one mast; it is how ANFR files
- * 5G as a whole. The card says which generations are in which status because
- * that is what the register published, and the legend says why they always
- * come out the same way, so nobody reads a national policy as a local one.
+ * 5G as a whole. The CARD is where that is said — it prints which generations
+ * are in which status, then ANFR's own gloss for `Techniquement opérationnel`
+ * (`ANFR_STATUS_LABELS`), so a reader who asks about one mast is told a
+ * national filing convention is not a local one. It is deliberately NOT in the
+ * legend: a colour swatch answers what the colour means, and this paragraph
+ * qualifies a status the swatch does not carry.
  *
  * ── What this map cannot show, by statute ───────────────────────────────────
  * Quoted from the canonical dataset: *"Installations radioélectriques de plus
@@ -198,19 +201,14 @@ import {
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
-import { prismHatchGlyph, prismHeightGlyph } from './choroplethPrism.js';
+import { prismHatchGlyph } from './choroplethPrism.js';
 import {
   ANFR_BANDS,
   ANFR_BAND_LABELS,
   ANFR_EXPOSURE_RADIUS_M,
   ANFR_GENERATIONS,
   ANFR_HEIGHTLESS_NATURES,
-  ANFR_HEIGHT_MAX_M,
-  ANFR_HEIGHT_MEDIAN_M,
   ANFR_HEIGHT_MISSING,
-  ANFR_HEIGHT_P05_M,
-  ANFR_HEIGHT_P95_M,
-  ANFR_HEIGHT_PUBLISHED,
   ANFR_STATUS_LABELS,
   anfrBand,
   anfrDecodeMask,
@@ -414,37 +412,25 @@ const CARD_SYSTEM_LIMIT = 5;
 const CARD_OPERATOR_LIMIT = 5;
 
 /**
- * The height marks the legend publishes, in metres — FROZEN (C1).
+ * ONE SHORT SENTENCE per band swatch, and no more.
  *
- * Three, because a size channel with no numbered mark says only "taller than
- * that one" (D1), and because the whole distribution is what these three
- * position a reader inside: p05, median and p95 of the 72 149 published
- * heights, counted once over the national register and never recomputed from
- * what is on screen. The swatch bar is drawn against the p95 so the tallest
- * mark fills it; the 343.3 m maximum is named in the blurb rather than given a
- * mark of its own, since a bar 7× the median would flatten the other two.
+ * These used to run to four sentences on `5g` alone, the last three of them
+ * about how ANFR files a status — that `Techniquement opérationnel` appears on
+ * 5G rows and nothing else, so the field describes the GENERATION and not the
+ * mast. That fact is true, it is load-bearing, and it is not a legend's job: it
+ * qualifies ONE CLICKED MAST, and the card already prints ANFR's own gloss for
+ * it (`anfrSupportCard`, via `ANFR_STATUS_LABELS`). The register-wide
+ * cross-tabulation that established it is in this module's header.
+ *
+ * What is left is the one thing a colour swatch has to answer — WHAT DOES THIS
+ * COLOUR MEAN — plus the national count that puts it in proportion.
  */
-const MAST_LEGEND_TICKS_M = Object.freeze([
-  ANFR_HEIGHT_P05_M, ANFR_HEIGHT_MEDIAN_M, ANFR_HEIGHT_P95_M,
-]);
-const MAST_LEGEND_BLURBS = Object.freeze({
-  [ANFR_HEIGHT_P05_M]: '5ᵉ centile du parc : un support sur vingt est plus court. Toiture basse, mât urbain, mobilier.',
-  [ANFR_HEIGHT_MEDIAN_M]: 'Médiane des 72 149 hauteurs publiées. Un pylône autostable français fait 32,1 m de médiane, un immeuble porteur 25,7 m.',
-  [ANFR_HEIGHT_P95_M]: '95ᵉ centile : un support sur vingt est plus haut. Le plus haut du registre est un pylône haubané de 343,3 m.',
-});
-/** The swatch colour of a height mark — the same neutral the prisms use. */
-const MAST_LEGEND_SWATCH = '#c3ccd8';
-
-/** One-line explanations behind each band swatch. */
 const BAND_BLURBS = Object.freeze({
-  '5g': 'Un mât sur lequel la 5G émet : 50 148 des 72 700 supports du registre, la couleur du réseau actuel. '
-    + 'Dans cette édition l’ANFR ne déclare AUCUN émetteur 5G « en service » — les 120 891 lignes 5G qui émettent '
-    + 'sont toutes « techniquement opérationnel », et les 639 019 lignes 2G/3G/4G toutes « en service ». '
-    + 'Le statut décrit la génération, pas ce mât-ci.',
-  '4g': 'La 4G est la génération la plus récente qui émet ici. 18 698 supports : un quart du parc, sans 5G.',
-  '3g': 'La 3G est la plus récente qui émet ici. 127 supports dans toute la France — 54 757 mâts émettent de la 3G, mais 54 630 émettent aussi de la 4G ou de la 5G.',
-  '2g': '2G seule. 89 supports. Le fond du registre, pas une catégorie du réseau.',
-  projet: 'Anneau creux : rien n’émet. Une autorisation ANFR et aucune installation. 3 638 supports, 5,00 % du registre — jamais dessinés comme des mâts en service.',
+  '5g': 'La 5G émet depuis ce mât. 50 148 supports : un sur deux en France.',
+  '4g': 'La 4G est la plus récente qui émet ici : pas de 5G sur ce mât. 18 698 supports.',
+  '3g': 'La 3G est la plus récente qui émet ici. 127 supports dans toute la France.',
+  '2g': '2G seule. 89 supports dans toute la France.',
+  projet: 'Rien n’émet : une autorisation déposée à l’ANFR, aucune installation. 3 638 supports.',
 });
 
 const DEFAULT_OVERLAY_HOST = Object.freeze({
@@ -1959,16 +1945,36 @@ export function buildAnfrLoadingLabel({
 }
 
 /**
- * The size scale, published as legend rows — D1.
+ * WHAT THE MAST CHANNEL STILL OWES THE READER — which is the ABSENCES, and
+ * nothing else.
  *
- * A length channel with no numbered mark is unreadable, and this one is
- * unusual in that its scale is 1:1 — one drawn metre is one metre of support —
- * so what the reader needs is not a conversion but a POSITION in the national
- * distribution. Hence three frozen marks and a fourth row for the shape that
- * means "no measurement", which is hatched rather than tinted (D3).
+ * This used to print five rows: a `Fût` explainer, three numbered height marks
+ * (p05, median, p95 of the register, drawn as graphite bars), and the two
+ * absence rows below. Four of them are gone, under the house rule that
+ * `#map-legend` carries the COLOUR channel and not the FORM channel (PR #138,
+ * which deleted `sizeFootprintGlyph` for the same reason and cut the two mark
+ * rows off `local-airports`).
  *
- * The rows only appear where the channel does. Publishing a height key beside
- * a maillage that draws no shafts would be a legend for a mark that is not on
+ * The three height marks were a SIZE ladder in one flat graphite. Their scale
+ * is 1:1 — one drawn metre is one metre of support — so what they positioned a
+ * reader inside was the national distribution, which is a statistician's
+ * question and not a map reader's: somebody looking at a street compares the
+ * two masts in front of them to each other and to the buildings, and the globe
+ * answers that unaided. The distribution stays measured and quoted in this
+ * module's header, where the next person to touch the channel will look.
+ *
+ * The `Fût` row said a shaft is a shaft. A shaft under a dot decodes right
+ * without a key.
+ *
+ * What is left is the pair no shape can state, because they are marks that are
+ * NOT THERE: a mast drawn with no shaft reads as a short mast, and a ceiling
+ * that withholds a shaft reads as a missing measurement. Both are decoded
+ * WRONG unaided, which is the one case the rule keeps a form row for. The
+ * selected support's azimuths join them when there are any, for the same
+ * reason — a 60 m ray is a drawing convention and reads as a coverage claim.
+ *
+ * The rows only appear where the channel does. Publishing a mast key beside a
+ * maillage that draws no shafts would be a legend for a mark that is not on
  * the screen.
  *
  * @param {object} [state] Injected for tests.
@@ -1977,57 +1983,38 @@ export function buildAnfrLoadingLabel({
 export function anfrMastLegend({
   mastRegime = _mastRegime,
   regime = _regime,
-  masts = _mastsDrawn,
   mastsUnpublished = _mastsUnpublished,
   mastsClipped = _mastsClipped,
   sectors = _sectorsDrawn,
 } = {}) {
   if (regime !== 'supports' || !mastRegime) return [];
-  const rows = [{
-    label: 'Fût — la hauteur réelle du support',
-    color: null,
-    count: masts,
-    blurb: 'Une seule échelle, et c’est celle du monde : un mètre dessiné vaut un mètre de support, '
-      + 'donc le fût rapetisse avec la distance comme le mât lui-même. La taille en pixels du point '
-      + 'reste le nombre d’opérateurs et n’est multipliée par rien. '
-      + `${fr(ANFR_HEIGHT_PUBLISHED)} des 72 700 supports publient une hauteur (99,24 %).`,
-  }];
-  for (const tick of MAST_LEGEND_TICKS_M) {
+  const rows = [];
+  if (mastsUnpublished > 0) {
     rows.push({
-      label: `${fr(tick)} m`,
-      color: MAST_LEGEND_SWATCH,
-      glyph: prismHeightGlyph(tick / ANFR_HEIGHT_P95_M),
-      blurb: MAST_LEGEND_BLURBS[tick],
+      label: 'Sans mât — hauteur non publiée',
+      color: null,
+      count: mastsUnpublished,
+      glyph: prismHatchGlyph(),
+      blurb: 'Le point reste au sol et aucun fût n’est dessiné. Les '
+        + `${fr(ANFR_HEIGHT_MISSING)} concernés sont souterrains ou en tunnel : il n’y a pas de mât `
+        + 'à mesurer.',
     });
   }
-  rows.push({
-    label: 'sans fût — hauteur non publiée',
-    color: null,
-    count: mastsUnpublished,
-    glyph: prismHatchGlyph(),
-    blurb: `${fr(ANFR_HEIGHT_MISSING)} supports du registre, et les ${fr(ANFR_HEIGHT_MISSING)} sont `
-      + `${ANFR_HEIGHTLESS_NATURES.join(', ').toLowerCase()} : l’ANFR laisse la case vide parce qu’il `
-      + 'n’y a pas de mât à mesurer. Le point reste au sol et aucun fût n’est dessiné — une mesure '
-      + `absente ne prend jamais la longueur par défaut. Maximum du registre : ${fr(ANFR_HEIGHT_MAX_M)} m.`,
-  });
   if (mastsClipped > 0) {
     rows.push({
-      label: 'fûts écrêtés',
+      label: 'Fûts écrêtés',
       color: null,
       count: mastsClipped,
-      blurb: `Plafond de ${fr(MAX_RENDERED_MASTS)} fûts, au-dessus des 1 913 de la vue la plus dense `
-        + 'de France : le point est dessiné, le fût non.',
+      blurb: `Plafond de ${fr(MAX_RENDERED_MASTS)} fûts par vue : le point est dessiné, le fût non.`,
     });
   }
   if (sectors > 0) {
     rows.push({
-      label: 'azimuts du support sélectionné',
+      label: 'Azimuts du support sélectionné',
       color: SELECTED_COLOR,
       count: sectors,
-      blurb: 'Un rayon par direction publiée, à la hauteur de fixation de l’antenne. L’azimut n’est '
-        + 'pas dans l’observatoire — il vient de la fiche Cartoradio du mât cliqué, un mât à la fois. '
-        + `La longueur de ${fr(ANFR_SECTOR_RAY_M)} m est une convention de dessin : ni l’ouverture du `
-        + 'lobe ni la portée ne sont publiées.',
+      blurb: 'Une direction publiée par rayon. La longueur est une convention de dessin, pas une '
+        + 'portée : ni l’ouverture du faisceau ni la distance couverte ne sont publiées.',
     });
   }
   return rows;
@@ -2213,6 +2200,11 @@ const anfrFranceLayer = {
    * newest-generation-first because that is the order the map is read in. The
    * `projet` row is kept even at zero: "a hollow ring means nothing transmits
    * here" is the entry a reader has to be given.
+   *
+   * ONE SENTENCE PER ROW. The bands carry the colour channel and say what the
+   * colour means; `anfrMastLegend` adds only the marks that are ABSENT. Typical
+   * on-screen key over a French city: 5G, 4G, `projet`, and a `Sans mât` row
+   * when there is one — four lines where this used to print nine.
    */
   getRowControls() {
     if (!_records.size) return { chips: [], legend: [] };
@@ -2232,10 +2224,7 @@ const anfrFranceLayer = {
     legend.push(...anfrMastLegend());
     // No chips: the manager renders a chip as a BUTTON keyed by `chip.id` and
     // dispatches `chip.params` on click, so an informational one would be a
-    // control that looks clickable and does nothing. The national fact that
-    // belongs beside the ramp — that the status field describes the
-    // GENERATION and not this mast — is in the `5g` blurb, which renders as
-    // the legend entry's tooltip.
+    // control that looks clickable and does nothing.
     return { chips: [], legend };
   },
 

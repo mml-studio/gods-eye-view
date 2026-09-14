@@ -6101,6 +6101,35 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   line-height: 1;
 }
 
+/* A row whose icon is a vendored MAP glyph (Maki/Temaki, CC0) rather than a
+   character. Masked rather than drawn: the element paints its own background
+   through the glyph's alpha, so the silhouette takes `--text-primary` and
+   belongs to the type beside it. An `<img>` would carry its own black and white
+   instead, and an emoji carries a whole palette — which is why the row that
+   needed a precise sign could not use one.
+
+   16px, measured against the rows beside it: an emoji at `font-size: 16px`
+   lays out in a ~20px advance and a plain character (`✈`) in 15px. The glyphs
+   are authored in a 15-unit box padded to 17 (MAP_ICON_VIEW_BOX), so a 16px
+   slot puts ~14.1px of artwork on screen — between the two, which is where a
+   monochrome silhouette belongs next to a colour emoji that carries its own
+   padding. */
+.data-icon.has-glyph {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  background: currentColor;
+  color: var(--text-primary);
+  -webkit-mask-image: var(--data-icon-glyph);
+  mask-image: var(--data-icon-glyph);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
 .data-name {
   font-family: var(--font-sans);
   font-size: 13px;

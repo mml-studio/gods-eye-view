@@ -580,11 +580,16 @@ test('the legend keeps the project row at zero, because the ring has to be expla
   assert.equal(legend.find((row) => row.color === ANFR_BAND_COLORS['5g']).count, FOLD.bands['5g']);
   for (const row of legend) assert.ok(row.blurb && row.blurb.length > 20, row.label);
 
-  // The one national fact a reader cannot get from the map itself rides on the
-  // 5G swatch's tooltip, where the ramp is actually read.
+  // ONE SENTENCE PER SWATCH. A colour key answers "what does this colour mean"
+  // and a national count puts it in proportion; it does not run to four
+  // sentences about how ANFR files a status. That fact qualifies one clicked
+  // mast and the CARD prints ANFR's own gloss for it.
   const fiveG = legend.find((row) => row.color === ANFR_BAND_COLORS['5g']);
-  assert.match(norm(fiveG.blurb), /AUCUN émetteur 5G « en service »/);
-  assert.match(norm(fiveG.blurb), /120 891 lignes 5G/);
+  assert.match(norm(fiveG.blurb), /La 5G émet depuis ce mât/);
+  assert.match(norm(fiveG.blurb), /50 148 supports/);
+  for (const row of legend) {
+    assert.ok(row.blurb.length <= 140, `${row.label} is a paragraph again: ${row.blurb.length}`);
+  }
 
   // With nothing drawn there is no legend to draw either.
   _clearAnfrSelectionForTest();
@@ -876,32 +881,45 @@ test('the shaft sub-regime has hysteresis and is nested inside the exact one', (
   _clearAnfrSelectionForTest();
 });
 
-test('the height legend publishes numbered marks and names the shape of a blank', () => {
-  // D1 — a size channel with no numbered mark says only "taller than that
-  // one". Three marks, frozen, from the national distribution (C1).
+test('the mast key states the ABSENCES and publishes no size ladder', () => {
+  // The house rule (PR #138): `#map-legend` carries the COLOUR channel, not the
+  // FORM channel. A shaft under a dot is decoded right without a key, and the
+  // three numbered height marks were a size ladder in one flat graphite — a
+  // second list re-printing the same masts by their extent. Both are gone.
   _setAnfrStateForTest({ overlayHost: makeHost(), pack: PACK, regime: 'supports', mastRegime: true });
   const { legend } = _anfrRowControlsForTest();
   const labels = legend.map((row) => row.label);
-  assert.ok(labels.includes('12 m') && labels.includes('30 m') && labels.includes('48 m'));
-  const ticks = legend.filter((row) => /^\d+ m$/.test(row.label));
-  assert.equal(ticks.length, 3);
-  for (const tick of ticks) assert.ok(tick.glyph?.startsWith('data:image/svg+xml'));
-  // The scale is 1:1 and the legend says so, because that is the whole reason
-  // the length is legitimate on a globe.
-  const header = legend.find((row) => row.label.startsWith('Fût'));
-  assert.ok(header.blurb.includes('un mètre dessiné vaut un mètre de support'));
-  assert.equal(header.count, 14);
-  // A1 — the blank has its own row, its own count, and a hatch rather than a
-  // tint, so it survives the sensor passes (D3).
-  const blank = legend.find((row) => row.label.startsWith('sans fût'));
+  assert.equal(labels.filter((label) => /^\d+ m$/.test(label)).length, 0, 'the size ladder is gone');
+  assert.ok(!labels.some((label) => label.startsWith('Fût —')), 'a shaft needs no key');
+
+  // A1 — what survives is the mark that is NOT THERE. A dot with no shaft reads
+  // as a short mast, which is the one way a form is decoded WRONG unaided, so
+  // it keeps its row, its count and a hatch rather than a tint (D3).
+  const blank = legend.find((row) => row.label.startsWith('Sans mât'));
   assert.equal(blank.count, 1);
   assert.ok(blank.glyph?.startsWith('data:image/svg+xml'));
   assert.ok(blank.blurb.includes(String(ANFR_HEIGHT_MISSING)));
-  // ANFR's own spelling, `Intérieur sous-terrain`, quoted rather than tidied.
-  assert.ok(blank.blurb.includes('sous-terrain'));
-  // The band ramp is untouched: the new rows are appended, never mixed into it.
+  assert.ok(blank.blurb.length <= 180, blank.blurb);
+  // The band ramp is untouched: the absence rows are appended, never mixed in.
   assert.equal(labels.indexOf('5G en service'), 0);
   _clearAnfrSelectionForTest();
+});
+
+test('the ceiling and the azimuths only take a row when they have something to say', () => {
+  assert.deepEqual(
+    anfrMastLegend({
+      regime: 'supports', mastRegime: true, mastsUnpublished: 0, mastsClipped: 0, sectors: 0,
+    }),
+    [],
+    'every shaft drawn at its height is a key with nothing to disclose',
+  );
+  const full = anfrMastLegend({
+    regime: 'supports', mastRegime: true, mastsUnpublished: 2, mastsClipped: 7, sectors: 3,
+  });
+  assert.deepEqual(full.map((row) => row.label), [
+    'Sans mât — hauteur non publiée', 'Fûts écrêtés', 'Azimuts du support sélectionné',
+  ]);
+  assert.deepEqual(full.map((row) => row.count), [2, 7, 3]);
 });
 
 test('the row label tells the three empties apart', () => {

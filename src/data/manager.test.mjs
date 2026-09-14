@@ -10,7 +10,9 @@
 // a toggle container is present) DOM refresh. We pass no container, so it stays
 // headless. Run with: npm test
 import { test } from 'node:test';
-import { fusionMemberChipFor } from './layerFusions.js';
+import { fusionMemberChipFor, fusionPrimaryChipFor } from './layerFusions.js';
+import { layerTaxonomyFor } from './layerTaxonomy.js';
+import { MAKI_PATHS, MAP_ICON_HALO_COLOR } from './mapIcons.js';
 import assert from 'node:assert/strict';
 import {
   DataLayerManager,
@@ -3340,6 +3342,10 @@ function makePanelElement() {
     attributes: {},
     listeners: new Map(),
     html: '',
+    // A row sets `--data-icon-glyph` on itself when its taxonomy states a
+    // vendored map glyph. A stub without `style` swallowed that silently, so
+    // the icon path was untested rather than passing.
+    style: { setProperty(name, value) { this[name] = value; } },
     classList: {
       toggle(name, force) {
         const set = new Set(String(element.className).split(/\s+/).filter(Boolean));
@@ -3876,6 +3882,199 @@ test('two modules publishing the same chip id do not steer each other', async ()
   } finally {
     await panel.restore();
   }
+});
+
+/**
+ * The SAME panel machinery, over the one row whose members are PEERS rather
+ * than a subject and its variants: « Infrastructure numérique » carries data
+ * centres, submarine cables and radio masts, and the real fusion table marks it
+ * `primaryToggle`. The ids are the shipped ones on purpose — `fusionPrimaryChipFor`
+ * reads `LAYER_FUSIONS`, so a fixture with invented ids would prove nothing.
+ */
+const PEER_CATEGORIES = Object.freeze([
+  { id: 'comms-sensors', label: 'RÉSEAUX & CAPTEURS', icon: '📡' },
+]);
+const PEER_TAXONOMY = Object.freeze([
+  {
+    id: 'local-datacenters',
+    category: 'comms-sensors',
+    label: 'Infrastructure numérique',
+    // The shipped value, read off the real table rather than retyped: a test
+    // that invents its own URI proves the panel can mask a string, not that
+    // the row anybody opens carries one.
+    iconGlyph: layerTaxonomyFor('local-datacenters').iconGlyph,
+    kind: 'dataset',
+    coverage: 'global',
+    scopeChip: null,
+    companions: [
+      { id: 'telegeography-submarine-cables', chip: 'Câbles', title: 'TeleGeography' },
+      { id: 'anfr-fr', chip: 'Antennes', title: 'Supports ANFR' },
+    ],
+    fusedInto: null,
+  },
+  {
+    id: 'telegeography-submarine-cables',
+    category: 'comms-sensors',
+    label: 'Câbles sous-marins',
+    kind: 'dataset',
+    coverage: 'global',
+    scopeChip: null,
+    companions: null,
+    fusedInto: 'local-datacenters',
+  },
+  {
+    id: 'anfr-fr',
+    category: 'comms-sensors',
+    label: 'Antennes-relais',
+    kind: 'dataset',
+    coverage: 'fr',
+    scopeChip: null,
+    companions: null,
+    fusedInto: 'local-datacenters',
+  },
+]);
+
+function makePeerPanel() {
+  const originalDocument = globalThis.document;
+  const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  globalThis.document = { createElement: makePanelElement };
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: makeMemoryStorage(), configurable: true, writable: true,
+  });
+
+  const mgr = new DataLayerManager({});
+  for (const { id } of PEER_TAXONOMY) {
+    mgr.register(makeSlowLayer(id, { updateInterval: -1 }).module);
+  }
+  mgr.finalizeRegistrations(
+    PEER_TAXONOMY.map(({ id }) => ({ id, disposition: 'enabled-only' })),
+    PEER_TAXONOMY,
+    PEER_CATEGORIES,
+  );
+  const container = makePanelElement();
+  mgr.buildTogglePanel(container);
+
+  return {
+    mgr,
+    container,
+    row: (id) => container.querySelector(`[data-layer-id="${id}"]`),
+    chips: (id) => findAll(
+      container.querySelector(`[data-layer-id="${id}"]`),
+      '.data-toggle-chip',
+    ),
+    // The delegated handler is fire-and-forget — it kicks `setEnabled()` and
+    // returns undefined — so a caller that only awaits its return value would
+    // assert against the state it started from. One turn of the microtask queue
+    // per await is what the fake layers need to settle.
+    click: async (id, index) => {
+      const chips = findAll(
+        container.querySelector(`[data-layer-id="${id}"]`),
+        '.data-toggle-chip',
+      );
+      const controls = container
+        .querySelector(`[data-layer-id="${id}"]`)
+        .querySelector('.data-toggle-controls');
+      controls.listeners.get('click')[0]({ target: chips[index] });
+      for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
+    },
+    async restore() {
+      await mgr.destroyAll();
+      if (originalDocument === undefined) delete globalThis.document;
+      else globalThis.document = originalDocument;
+      if (originalStorage) Object.defineProperty(globalThis, 'localStorage', originalStorage);
+      else delete globalThis.localStorage;
+    },
+  };
+}
+
+test('a peer row gives its own primary a chip, so the reader can subtract it', async () => {
+  const panel = makePeerPanel();
+  try {
+    await panel.mgr._setRowEnabled('local-datacenters', true);
+    panel.mgr._refreshTogglePanel();
+
+    // The primary leads the strip: it is the member the row is named after, and
+    // "how do I switch the halls off" must not be found past two companions.
+    assert.deepEqual(panel.chips('local-datacenters').map((chip) => chip.textContent), [
+      'Data centers', 'Câbles', 'Antennes',
+    ]);
+    assert.deepEqual(panel.chips('local-datacenters').map((chip) => chip.dataset.chipId), [
+      'fusion:local-datacenters',
+      'fusion:telegeography-submarine-cables',
+      'fusion:anfr-fr',
+    ]);
+    for (const chip of panel.chips('local-datacenters')) {
+      assert.equal(chip.attributes['aria-pressed'], 'true');
+      assert.ok(chip.className.includes('chip-fusion'));
+    }
+
+    // THE DEFECT THIS CLOSES. Pressing it switches the data centres off while
+    // the cables and the masts keep drawing, and the row stays ON because
+    // something in its group still is.
+    await panel.click('local-datacenters', 0);
+    panel.mgr._refreshTogglePanel();
+    assert.equal(panel.mgr.isEnabled('local-datacenters'), false);
+    assert.equal(panel.mgr.isEnabled('anfr-fr'), true);
+    assert.equal(panel.mgr.isEnabled('telegeography-submarine-cables'), true);
+    // The row's own button tracks the PRIMARY, exactly as it does for a
+    // companion left on by a share link: it reads OFF and stays a "switch the
+    // whole subject on" control. What says the row is still drawing is the
+    // chip strip, which only appears while something in the group is on.
+    assert.equal(panel.row('local-datacenters').querySelector('.data-toggle-btn').textContent, 'OFF');
+    assert.equal(panel.chips('local-datacenters').length, 3);
+    assert.deepEqual(
+      panel.chips('local-datacenters').map((chip) => chip.attributes['aria-pressed']),
+      ['false', 'true', 'true'],
+    );
+
+    // And back on, from the same chip.
+    await panel.click('local-datacenters', 0);
+    assert.equal(panel.mgr.isEnabled('local-datacenters'), true);
+
+    // The row toggle still takes the whole group down, chip or no chip.
+    await panel.mgr._setRowEnabled('local-datacenters', false);
+    panel.mgr._refreshTogglePanel();
+    assert.deepEqual(panel.chips('local-datacenters'), [], 'a dark row shows no chips');
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('the peer row draws a vendored map glyph, masked, instead of a character', async () => {
+  const panel = makePeerPanel();
+  try {
+    const row = panel.row('local-datacenters');
+    const left = row.querySelector('.data-toggle-left');
+    // The slot is EMPTY of text: a glyph row must not print a character behind
+    // its mask, or a browser without mask support shows both.
+    assert.match(left.innerHTML, /<span class="data-icon has-glyph"><\/span>/);
+    assert.match(left.innerHTML, /<span class="data-name">Infrastructure numérique<\/span>/);
+
+    // The URI rides a CSS custom property on the ROW, which inherits down to
+    // `.data-icon`. That is what keeps a base64 blob out of an innerHTML string.
+    const mask = row.style['--data-icon-glyph'];
+    assert.ok(mask.startsWith('url("data:image/svg+xml;base64,'), mask?.slice(0, 40));
+    // And it is the real artwork, not a placeholder: Maki's own path string.
+    const svg = Buffer.from(mask.slice(mask.indexOf('base64,') + 7, -2), 'base64').toString();
+    assert.ok(svg.includes(MAKI_PATHS['communications-tower']), 'the vendored `d` reaches the DOM');
+    // A MASK is one solid pass — the two-pass halo raster the globe uses would
+    // resolve as a 62 %-opaque fringe in whatever colour the row happens to be.
+    assert.equal(svg.includes(MAP_ICON_HALO_COLOR), false, 'no halo in a mask');
+
+    // Every other row still gets its character, and no custom property.
+    assert.equal(panel.row('anfr-fr'), null, 'a companion has no row to ask about');
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('only a peer row gets a primary chip — every other fusion keeps one control', () => {
+  assert.equal(fusionPrimaryChipFor('local-datacenters').chip, 'Data centers');
+  // `flights` is the ordinary shape: the primary IS the subject and `military`
+  // is a variant of it, so the row toggle is the primary's only control and a
+  // chip for it would be a second switch beside the first.
+  assert.equal(fusionPrimaryChipFor('flights'), null);
+  assert.equal(fusionPrimaryChipFor('nope'), null);
 });
 
 test('setRowFollowers moves the companions and leaves the primary alone', async () => {

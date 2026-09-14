@@ -39,6 +39,7 @@
 
 import { REGISTERED_LAYER_IDS } from './layerState.js';
 import { fusedIntoFor, fusionCompanionsFor } from './layerFusions.js';
+import { mapIconMask } from './mapIcons.js';
 
 /**
  * The groups, in panel order. Ordering is a product decision: the flagship
@@ -650,10 +651,18 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     auth: 'none',
     cadence: 'static',
   }),
+  // THE ONE ROW WITH AN ICON OF ITS OWN, and the reason is the row's shape.
+  // It carries three PEERS — data centres, submarine cables, ANFR masts — so
+  // its icon has to name the subject, not one member. It was showing `▣`, the
+  // data centre module's square, which named a third of the row as if it were
+  // the whole of it; the arrival of the `Data centers` chip beside `Câbles` and
+  // `Antennes` made that visible. A lattice mast with waves is the sign for
+  // telecom infrastructure that a reader already owns.
   Object.freeze({
     id: 'local-datacenters',
     category: 'comms-sensors',
     label: 'Infrastructure numérique',
+    iconGlyph: mapIconMask('maki', 'communications-tower'),
     kind: 'dataset',
     coverage: 'global',
     auth: 'none',
@@ -1031,6 +1040,14 @@ export function validateLayerTaxonomy(
     if (!VALID_COVERAGE.has(entry.coverage)) throw new Error(`Invalid layer coverage: ${entry.id}`);
     if (!VALID_AUTH.has(entry.auth)) throw new Error(`Invalid layer auth: ${entry.id}`);
     if (!VALID_CADENCE.has(entry.cadence)) throw new Error(`Invalid layer cadence: ${entry.id}`);
+    // Optional, and a DATA URI when present: the panel masks it, and a bare
+    // icon name or a raw `<svg>` string would render as an empty 16 px box with
+    // nothing thrown. `mapIconMask` returns null for a glyph it does not carry,
+    // which is exactly the typo this catches at boot.
+    if (entry.iconGlyph !== undefined
+        && (typeof entry.iconGlyph !== 'string' || !entry.iconGlyph.startsWith('data:image/'))) {
+      throw new Error(`Layer taxonomy iconGlyph must be a data URI: ${entry.id}`);
+    }
   }
 
   const registered = new Set(registeredIds);

@@ -429,11 +429,22 @@ export const DATACENTER_ANCHOR_PX = 6;
 export const DATACENTER_POINTLESS_PX = 9;
 
 /**
- * The four render classes, in the order the legend prints them.
+ * The four render classes.
  *
  * `count` is the measured population of the shipped pack, quoted so that a
  * re-extraction that shifts these proportions shows up as a stale comment
  * rather than as a silent change of what the map says.
+ *
+ * `label` and `blurb` are NOT rendered anywhere, and that is a change: they were
+ * the legend's until the key folded these four classes into the three lines of
+ * {@link DATACENTER_LEGEND_ROWS} (the reason is documented there). What they are
+ * now is this file's own record of what each class IS — the measurement behind
+ * "a fence is not a hall" (medians 31 204 m² against 5 008 m²), and behind "no
+ * default height is invented" (63 % of the pack publishes none). They are
+ * reachable through {@link datacenterSurfaceInfo}, which is a seam with no
+ * caller today; `count` is the half that IS load-bearing, cross-checked against
+ * the shipped file by `datacentersPack.test.mjs` so a re-extraction that shifts
+ * these proportions fails rather than quietly changing what the map says.
  */
 export const DATACENTER_SURFACES = Object.freeze([
   Object.freeze({
@@ -502,42 +513,64 @@ export function datacenterSurface(tags, areaM2) {
 }
 
 /**
- * The three published size marks, largest first — the legend's scale.
+ * THE THREE LINES THE KEY PRINTS, and why they are three where the map draws
+ * four signs.
  *
- * FROZEN DOMAIN thresholds (C1): a hectare and ten hectares are units a reader
- * already owns, and 1 000 m² is the floor under which an OSM outline is more
- * about the tracing than about the site. They are never derived from what is
- * on screen. Counts are the shipped pack's, cumulative — `≥ 1 ha` includes the
- * 84 that are also `≥ 10 ha`.
+ * The house rule for `#map-legend` (PR #138) is that the key carries the COLOUR
+ * channel and not the FORM channel: a shape is what a reader decodes WITHOUT a
+ * key — a footprint clamped to the ground IS ground, a box in relief IS a
+ * volume — so a line that only names a shape spends panel height re-stating
+ * what the map already said. A form earns a line only when it is decoded WRONG
+ * unaided, which is the hollow ring's case and only its case.
+ *
+ * Applied here that removes four of the seven rows this key used to print:
+ *
+ *   `volume` and `slab` MERGE. They are one colour (cyan) and one subject —
+ *   the building — separated by whether OSM published a height. « Emprise
+ *   extrudée à sa hauteur publiée, ou building:levels × 5 m » is a sentence
+ *   about the OSM schema, not about what is under the reader's cursor, and the
+ *   relief is self-evident on a 3D globe.
+ *
+ *   THE THREE AREA MARKS GO. `≥ 10 ha` / `≥ 1 ha` / `≥ 1 000 m²` were a SIZE
+ *   scale drawn in one flat graphite, i.e. a second list re-printing the same
+ *   objects by their extent, and the extent is drawn in world units — a reader
+ *   compares two footprints to each other the way they compare two buildings.
+ *   `local-airports` next door made exactly this cut, and `sizeFootprintGlyph`
+ *   was deleted from `sizeLegendGlyphs.js` by the same PR.
+ *
+ * What survives is what no shape says: cyan is the BUILDING, slate is the
+ * FENCE around it, and a hollow ring is "we know where, we do not know how
+ * big". Each line names its class once and carries the class's own mark, which
+ * is the nuance the rule allows — the swatch IS the map's glyph.
+ *
+ * `surfaces` is which of the four render classes a line counts.
  */
-export const DATACENTER_AREA_MARKS = Object.freeze([
-  Object.freeze({ key: 'ha10', minM2: 100_000, label: '≥ 10 ha', count: 84 }),
-  Object.freeze({ key: 'ha1', minM2: 10_000, label: '≥ 1 ha', count: 1254 }),
-  Object.freeze({ key: 'm1000', minM2: 1_000, label: '≥ 1 000 m²', count: 2976 }),
+export const DATACENTER_LEGEND_ROWS = Object.freeze([
+  Object.freeze({
+    key: 'building',
+    surfaces: Object.freeze(['volume', 'slab']),
+    label: 'Le bâtiment',
+    color: DATACENTER_HALL_COLOR,
+    blurb: 'Dessiné à son emprise réelle, sur le terrain : il rapetisse avec la '
+      + 'distance comme le hall qu’il est. En relief quand sa hauteur est connue.',
+  }),
+  Object.freeze({
+    key: 'site',
+    surfaces: Object.freeze(['site']),
+    label: 'L’enceinte du site',
+    color: DATACENTER_SITE_COLOR,
+    blurb: 'Le terrain clôturé autour, pas le hall : un campus fait six fois la '
+      + 'surface d’un bâtiment. Jamais mis en relief.',
+  }),
+  Object.freeze({
+    key: 'point',
+    surfaces: Object.freeze(['point']),
+    label: 'Emplacement seul',
+    color: DATACENTER_HALL_COLOR,
+    blurb: 'La position est connue, l’emprise n’a jamais été relevée. Un anneau '
+      + 'creux, parce qu’« inconnu » ne doit pas se lire « petit ».',
+  }),
 ]);
-
-/**
- * Graphite for the size marks. ONE colour for all three, because in those rows
- * the datum is the swatch's SIZE; a hue that moved with it would be a second,
- * false encoding. Same reasoning as `PRISM_HEIGHT_SWATCH_COLOR` next door.
- */
-export const DATACENTER_SIZE_SWATCH_COLOR = '#c3ccd8';
-
-/**
- * The area band one footprint falls in, or '' when it is under the smallest
- * published mark (or absent). Used as the second half of the tally key so the
- * legend can count the marks without a second pass over the pack.
- * @param {number} areaM2
- * @returns {string} A {@link DATACENTER_AREA_MARKS} key, or ''.
- */
-export function datacenterAreaBand(areaM2) {
-  const area = Number(areaM2);
-  if (!Number.isFinite(area) || area <= 0) return '';
-  for (const mark of DATACENTER_AREA_MARKS) {
-    if (area >= mark.minM2) return mark.key;
-  }
-  return '';
-}
 
 /* ── Legend glyphs ─────────────────────────────────────────────────────────
  * Masked by the panel (see manager.js), so the fill colour written here is
@@ -563,12 +596,7 @@ function glyph(key, body) {
   return uri;
 }
 
-/** A box seen in relief — the extruded volume. */
-const VOLUME_GLYPH = glyph('volume',
-  '<path d="M2 9L8 5.5L14 9L8 12.5Z" fill="#000"/>'
-  + '<path d="M2 9L2 12L8 15.5L8 12.5Z" fill="#000" opacity="0.75"/>'
-  + '<path d="M14 9L14 12L8 15.5L8 12.5Z" fill="#000" opacity="0.5"/>');
-/** The same box seen flat — footprint, no height. */
+/** A footprint seen flat. The relief of an extruded hall needs no key. */
 const SLAB_GLYPH = glyph('slab', '<path d="M2 8L8 4.5L14 8L8 11.5Z" fill="#000"/>');
 /** The same outline, hollow — a fence encloses, it does not occupy. */
 const SITE_GLYPH = glyph('site',
@@ -577,18 +605,13 @@ const SITE_GLYPH = glyph('site',
 const RING_GLYPH = glyph('ring',
   '<circle cx="8" cy="8" r="4.6" fill="none" stroke="#000" stroke-width="1.8"/>');
 
-/** A filled square whose SIDE is the datum, for the three area marks. */
-function areaMarkGlyph(sidePx) {
-  const side = Math.max(2, Math.min(GLYPH_BOX, Number(sidePx) || 2));
-  const origin = (GLYPH_BOX - side) / 2;
-  return glyph(`area:${side}`,
-    `<rect x="${origin.toFixed(2)}" y="${origin.toFixed(2)}" `
-    + `width="${side.toFixed(2)}" height="${side.toFixed(2)}" fill="#000"/>`);
-}
-
+/**
+ * One glyph per LEGEND ROW (not per render class): the merged building line
+ * takes the flat footprint, which is the mark 2 739 of its 3 200 members
+ * actually draw, and relief is left to speak for itself on the globe.
+ */
 const SURFACE_GLYPHS = Object.freeze({
-  volume: VOLUME_GLYPH,
-  slab: SLAB_GLYPH,
+  building: SLAB_GLYPH,
   site: SITE_GLYPH,
   point: RING_GLYPH,
 });
@@ -608,7 +631,10 @@ export function datacenterRenderSpec(props, { areaM2 = 0 } = {}) {
   const height = surface === 'volume' ? datacenterHeightM(tags) : null;
   const isSite = surface === 'site';
   return {
-    key: `${surface}|${datacenterAreaBand(areaM2)}`,
+    // The SURFACE alone. It used to be `surface|areaBand`, because the key was
+    // folded twice — once per sign, once per size mark — and the size marks are
+    // gone (see DATACENTER_LEGEND_ROWS).
+    key: surface,
     pixelSize: surface === 'point' ? DATACENTER_POINTLESS_PX : DATACENTER_ANCHOR_PX,
     // A1: no emprise published is a HOLLOW mark, never a small filled one.
     hollow: surface === 'point',
@@ -635,15 +661,15 @@ export function datacenterRenderSpec(props, { areaM2 = 0 } = {}) {
 }
 
 /**
- * Build the row/map legend from a live tally keyed by `datacenterRenderSpec`.
+ * Build the map key from a live tally keyed by `datacenterRenderSpec`.
  *
- * Seven rows: four signs, then the three size marks. The signs answer "what am
- * I looking at"; the marks answer "how big is that", which a world-unit size
- * channel cannot answer on its own — a footprint drawn at its true extent has
- * no scale unless one is printed (D1).
+ * THREE rows at most, one per line of {@link DATACENTER_LEGEND_ROWS}, and a row
+ * with nothing drawn behind it is not printed — a key is a legend for the marks
+ * ON SCREEN, never a catalogue of the pack.
  *
- * Counts are what is DRAWN. The key is composite (`surface|band`) so both
- * questions are answered from one pass, the same fold `damTierLegend` uses.
+ * Counts are what is DRAWN, and `masqué` is the difference: a footprint culled
+ * by distance still sits in the tally's `total` and has left the screen, and a
+ * reader who watched ten sites disappear on a zoom-out is owed the word.
  *
  * @param {Map<string,{total:number, visible:number}>|object} tally
  * @returns {Array<{label:string,color:string,glyph:string,blurb:string,count:number}>}
@@ -651,52 +677,38 @@ export function datacenterRenderSpec(props, { areaM2 = 0 } = {}) {
 export function datacenterSurfaceLegend(tally) {
   const entries = tally instanceof Map ? [...tally] : Object.entries(tally || {});
   const bySurface = new Map();
-  const byBand = new Map();
   for (const [key, bucket] of entries) {
     if (!bucket?.total) continue;
-    const at = String(key).indexOf('|');
-    const surface = at < 0 ? String(key) : String(key).slice(0, at);
-    const band = at < 0 ? '' : String(key).slice(at + 1);
-    for (const [map, id] of [[bySurface, surface], [byBand, band]]) {
-      if (!id) continue;
-      const seen = map.get(id) || { total: 0, visible: 0 };
-      seen.total += bucket.total;
-      seen.visible += bucket.visible ?? bucket.total;
-      map.set(id, seen);
-    }
+    const surface = String(key);
+    const seen = bySurface.get(surface) || { total: 0, visible: 0 };
+    seen.total += bucket.total;
+    seen.visible += bucket.visible ?? bucket.total;
+    bySurface.set(surface, seen);
   }
 
   const legend = [];
-  for (const surface of DATACENTER_SURFACES) {
-    const bucket = bySurface.get(surface.key);
-    if (!bucket?.total) continue;
-    const hidden = bucket.total - bucket.visible;
+  for (const row of DATACENTER_LEGEND_ROWS) {
+    let total = 0;
+    let visible = 0;
+    for (const surface of row.surfaces) {
+      const bucket = bySurface.get(surface);
+      if (!bucket) continue;
+      total += bucket.total;
+      visible += bucket.visible;
+    }
+    if (!total) continue;
+    const hidden = total - visible;
     legend.push({
-      label: surface.label,
-      color: surface.color,
-      glyph: SURFACE_GLYPHS[surface.key],
-      blurb: hidden > 0 ? `${surface.blurb} — ${hidden} masqué${hidden > 1 ? 's' : ''}` : surface.blurb,
-      count: bucket.visible,
+      label: row.label,
+      color: row.color,
+      // The line's own mark, tinted by the manager to the line's colour. Not a
+      // second FORM list — the class is named once and both its channels ride
+      // that one line. See the note in DATACENTER_LEGEND_ROWS.
+      glyph: SURFACE_GLYPHS[row.key],
+      blurb: hidden > 0 ? `${row.blurb} — ${hidden} masqué${hidden > 1 ? 's' : ''}` : row.blurb,
+      count: visible,
     });
   }
-  // The marks are CUMULATIVE — `≥ 1 ha` counts the `≥ 10 ha` too — so they are
-  // summed downward. A reader compares them to each other, not to the total.
-  let running = 0;
-  const sizes = [];
-  for (const mark of DATACENTER_AREA_MARKS) {
-    const bucket = byBand.get(mark.key);
-    running += bucket?.visible ?? 0;
-    if (!bucket?.total && running === 0) continue;
-    sizes.push({
-      label: mark.label,
-      color: DATACENTER_SIZE_SWATCH_COLOR,
-      glyph: areaMarkGlyph(4 + 4 * (DATACENTER_AREA_MARKS.length - sizes.length - 1)),
-      blurb: 'Emprise dessinée à l’échelle du terrain, pas en pixels : elle '
-        + 'rapetisse avec la distance comme le bâtiment qu’elle est.',
-      count: running,
-    });
-  }
-  legend.push(...sizes);
   return legend;
 }
 
