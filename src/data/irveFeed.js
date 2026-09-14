@@ -202,10 +202,20 @@ export const IRVE_POWER_BANDS = Object.freeze([
   Object.freeze({ key: 'rapide', max: 150, label: 'Rapide (≤ 150 kW)' }),
   Object.freeze({ key: 'hpc', max: 400, label: 'Haute puissance (> 150 kW)' }),
 ]);
-/** Band for a charge point whose published power is outside the envelope. */
+/**
+ * Band for a charge point whose published power is outside the envelope.
+ *
+ * « Puissance inconnue » since 2026-09-14, and the rename is not a softening:
+ * the label is read on the map key by somebody looking for a charge point, and
+ * « non exploitable » describes what the value did to our parser rather than
+ * what the reader can know about the station. What we can tell them is that we
+ * do not know its power. The card still names the cause — a value outside the
+ * gauge, never converted — and the mark keeps its own shape (D3), so nothing
+ * about the honesty of the class moved with the word.
+ */
 export const IRVE_UNKNOWN_BAND = Object.freeze({
   key: 'inconnue',
-  label: 'Puissance non exploitable',
+  label: 'Puissance inconnue',
 });
 /** Band keys, low to high, with the out-of-envelope band last. */
 export const IRVE_BAND_KEYS = Object.freeze([

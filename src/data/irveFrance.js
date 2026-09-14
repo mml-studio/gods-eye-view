@@ -173,13 +173,15 @@
  * ones. It also called lattice cells "sites", which is the same word for two
  * different units. Both are fixed in {@link buildIrveLoadingLabel}.
  *
- * WHAT THE KEY SAYS ABOUT ITS OWN CLOCK. `fetchedAt` is when the proxy swept —
- * a fact about this server. The key prints `date_maj`, the operators' own
- * filing date, because a tenth of this file has not been touched since 2023
- * and E1 is P0. Future-dated filings are refused on both sides: measured
- * 2026-09-10, 56 rows of 227 007 are stamped 2026-12-30, and the plain maximum
- * would date the whole national key three months ahead. See
- * {@link irveLatestFiling} and the proxy's `fetchIrveLastFiling`.
+ * WHERE THIS LAYER'S CLOCK IS. `fetchedAt` is when the proxy swept — a fact
+ * about this server, never printed as the data's own date (E4). The date that
+ * IS printed is `date_maj`, the operator's own filing, because a tenth of this
+ * file has not been touched since 2023 and E1 is P0 — and since 2026-09-14 it
+ * is printed on the CARD, per site, rather than in the key as the newest
+ * filing in view. Per site it is also a stronger statement: the view-wide
+ * maximum said nothing about the station the reader had clicked, and it needed
+ * a guard against the 56 rows of 227 007 stamped 2026-12-30 to mean anything
+ * at all. The proxy keeps its own guard in `fetchIrveLastFiling`.
  *
  * WHAT IS DRAWN PER DOT. One dot per SITE — per coordinate, not per station.
  * That is forced by the data rather than chosen: Q-Park's Grande Arche car
@@ -207,11 +209,9 @@ import { markViewportRead, releaseCameraSettle, watchCameraSettle } from './came
 import {
   PRISM_BASE_HEIGHT_M,
   PRISM_BODY_ALPHA,
-  PRISM_HEIGHT_SWATCH_COLOR,
   PRISM_NO_RATIO_COLOR,
   PRISM_TOP_ALPHA,
   createPrismScale,
-  prismHeightGlyph,
   prismLegend,
   prismRatioColor,
   prismRow,
@@ -576,12 +576,12 @@ const SELECTED_MARK_BONUS_PX = 9;
 
 /** One-line explanations behind each power swatch. */
 const BAND_BLURBS = Object.freeze({
-  lente: 'Prise murale ou borne de trottoir — une charge de nuit.',
-  normale: 'Triphasé, le barreau courant en voirie et en parking.',
-  accelere: 'AC rapide ou DC d’entrée de gamme — un appoint le temps d’une course.',
-  rapide: 'DC rapide, le barreau des aires d’autoroute.',
-  hpc: 'DC haute puissance, publié jusqu’à 400 kW.',
-  inconnue: 'Puissance publiée hors gabarit — ≤ 0 kW, ou des watts dans une colonne de kilowatts. Comptée, jamais reconvertie.',
+  lente: 'Une charge de nuit.',
+  normale: 'Voirie et parking.',
+  accelere: 'Le temps d’une course.',
+  rapide: 'Aires d’autoroute.',
+  hpc: 'Jusqu’à 400 kW.',
+  inconnue: 'Mal publiée, jamais corrigée.',
 });
 
 /**
@@ -770,7 +770,7 @@ export function irveBandColor(band) {
 
 /** Display label for a power band. */
 export function irveBandLabel(band) {
-  return IRVE_BAND_LABELS[band] || 'Puissance non exploitable';
+  return IRVE_BAND_LABELS[band] || 'Puissance inconnue';
 }
 
 /**
@@ -1014,48 +1014,21 @@ function fr(value) {
   return Number(value).toLocaleString('fr-FR');
 }
 
-/** `YYYY-MM-DD` → `JJ/MM/AAAA`, or `null` for anything that is not one. */
+/**
+ * `YYYY-MM-DD` → `JJ/MM/AAAA`, or `null` for anything that is not one.
+ *
+ * E1's clock for this layer is on the CARD since 2026-09-14, not in the key —
+ * and per SITE rather than per view, which is the stronger statement: a tenth
+ * of this register has not been touched since 2023, and « le plus récent dépôt
+ * de la vue » told a reader nothing about the station they had clicked.
+ * `_lastUpdate` is when the proxy answered, a fact about this server, and is
+ * still never printed as the data's own date (E4).
+ */
 export function irveFilingDate(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value ?? ''));
   return match ? `${match[3]}/${match[2]}/${match[1]}` : null;
 }
 
-/**
- * The latest date an operator declared, over the sites currently drawn.
- *
- * E1 is P0, and the two clocks this layer runs on are NOT interchangeable
- * (E4). `_lastUpdate` is when the proxy answered — a fact about this server.
- * `date_maj` is when an operator last filed, and a tenth of this register has
- * not been touched since 2023, so it is the one a key may print.
- *
- * FUTURE DATES ARE REFUSED, because the register carries some: measured on
- * 2026-09-10, 56 rows of 227 007 are stamped 2026-12-30. One typo would
- * otherwise date a whole viewport. Same guard, same reason, as the national
- * clock the proxy computes in `fetchIrveLastFiling`.
- *
- * @param {Iterable<object>} records Rendered records.
- * @param {string} [today] `YYYY-MM-DD`, injectable so a test is not a clock.
- * @returns {?string} `YYYY-MM-DD`, or null when nothing published a date.
- */
-export function irveFutureFilings(records, today = new Date().toISOString().slice(0, 10)) {
-  let ahead = 0;
-  for (const record of records || []) {
-    const filed = record?.site?.updatedTo;
-    if (typeof filed === 'string' && filed.length >= 10 && filed > today) ahead += 1;
-  }
-  return ahead;
-}
-
-export function irveLatestFiling(records, today = new Date().toISOString().slice(0, 10)) {
-  let latest = null;
-  for (const record of records || []) {
-    const filed = record?.site?.updatedTo;
-    if (typeof filed !== 'string' || filed.length < 10) continue;
-    if (filed > today) continue;
-    if (!latest || filed > latest) latest = filed;
-  }
-  return latest;
-}
 
 /**
  * Build the card copy for a selected site. Every line is a published value or
@@ -1110,10 +1083,19 @@ export function buildIrveSelectionLabel(record, live = null) {
   // The freshness of the DECLARATION, not of the poll: a tenth of this file
   // has not been touched since 2023 and the card has to be able to say so.
   if (site.updatedFrom) {
-    details.push(site.updatedTo && site.updatedTo !== site.updatedFrom
-      ? `🗓 déclaré ${site.updatedFrom} → ${site.updatedTo}`
-      : `🗓 déclaré ${site.updatedFrom}`);
+    const from = irveFilingDate(site.updatedFrom) || site.updatedFrom;
+    const to = irveFilingDate(site.updatedTo) || site.updatedTo;
+    details.push(to && site.updatedTo !== site.updatedFrom
+      ? `🗓 déclaré ${from} → ${to}`
+      : `🗓 déclaré ${from}`);
   }
+  // F7 a AND A5, on the surface that carries the figure they decode. The beam
+  // is a frozen SCREEN scale — not a world height — and past the domain it
+  // stops counting; that used to be a 68-word paragraph and a four-rung ruler
+  // in the key, read by everyone, useful to the reader who clicked a beam.
+  details.push(pdc > IRVE_BEAM_PDC_DOMAIN
+    ? `▮ Le trait mesure les points de charge — au-delà de ${IRVE_BEAM_PDC_DOMAIN}, il plafonne`
+    : `▮ Le trait mesure les points de charge (${IRVE_BEAM_PDC_DOMAIN} au maximum)`);
   details.push('Capacité installée — ce fichier ne publie pas la disponibilité');
   // …AND WHAT DOES. The line above is about the REGISTER and stays true; this
   // one is a second source answering a second question, so it names itself.
@@ -2788,27 +2770,40 @@ export function irveSiteReadout(record) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
- * THE KEY — two tiers, in French, with a clock and one unit per regime
+ * THE KEY — one question, six answers
  * ══════════════════════════════════════════════════════════════════════════
  *
- * WHAT WAS ON SCREEN BEFORE, measured over the Basque Country at 1440×900 on
- * 2026-09-10. Six power classes were published and **three** were visible, the
- * third cut mid-word; each of the six carried a 19-word sentence — *« Counted
- * as SITES over the sampled maillage — a sample of the mix in view, not the
- * national figure »* — repeated verbatim, in English, inside a French panel;
- * and the block had **no clock at all**, over a register a tenth of which has
- * not been touched since 2023 (E1, P0).
+ * WHAT WAS ON SCREEN BEFORE, measured in Chrome over a city view on
+ * 2026-09-14: **13 rows, 301 words and 717 px of content in a 355 px window**
+ * — the reader saw half a key, and its closing sentence never at all. Thirteen rows for six classes, because the key
+ * also carried the beam's reading ruler — four ticks quoted IN PIXELS, « 64 px
+ * de haut » — two channel headers with a paragraph each (the square root, the
+ * pitch correction and its 70° limit, deuteranopia, the frozen class bounds),
+ * the register's provenance and filing date, and a closing sentence on how a
+ * site key is minted from 127 station ids at one coordinate.
  *
- * The repair is the one the road key already had (#166: 23 rows and 559 words
- * became 20 and 207). The repeated sentence leaves the six blurbs and becomes
- * ONE `note` under the block — the A5 slot, "what this key had to leave out".
- * The provenance and the clock become `legendNote`, the block's own sentence,
- * which `manager.js` prints above the classes. Six short lines fit.
+ * Every one of those is true, and none of them is what the reader came for.
+ * **The reader of this key is looking for somewhere to plug in**; the screen
+ * height of a beam is an author's question. So the key answers ONE question —
+ * what does the colour mean — and the rest moves to surfaces that are one
+ * click away and that already carried it:
  *
- * AND THE LABEL SAYS ITS UNIT. The same word « sites » counted lattice CELLS
- * in the maillage and CHARGE POINTS over a city, which is two questions under
- * one caption. Each regime now names what it counted, in the row and in the
- * key.
+ *   - the filing date and « capacité installée, jamais la disponibilité » are
+ *     on the site card, verbatim, in {@link buildIrveSelectionLabel};
+ *   - the publisher is named in the attribution surface by `dataCredits.js`
+ *     (`irve-charge-points` → transport.data.gouv.fr, ODRÉ);
+ *   - the beam's register (F7 a) and its ceiling (A5) are declared on that
+ *     same card, beside the exact charge-point figure that decodes them,
+ *     rather than as a four-rung ruler in a key;
+ *   - the maillage cell's size in degrees and in km (C2, C3) is the first line
+ *     of {@link buildIrveMeshLabel}, and the sampling ratio is on the row.
+ *
+ * WHAT STAYS, because nothing else on screen says it: the six classes with
+ * their bounds in kW and their counts (D1), the refused class as a hollow ring
+ * rather than a tint (D3), the maillage's mark-to-site ratio (A5), and — only
+ * when a power floor is actually hiding marks — one line saying how many, and
+ * why slower classes survive it. Measured after, same view: **7 rows, 46 words
+ * and 215 px, inside a 262 px window** — nothing clipped.
  */
 
 /** Chips for the power floor — G1's filter, on the row strip. */
@@ -2821,55 +2816,22 @@ function irvePowerChips() {
     state: _floorId === floor.id ? 'active' : 'idle',
     title: floor.band
       ? `Ne garder que les sites dont la charge la plus rapide dépasse ${floor.label.replace('> ', '')}`
-      : 'Tout le registre, y compris les puissances non exploitables',
+      : 'Tout le registre, y compris les puissances inconnues',
     params: { powerFloor: floor.id },
   }));
 }
 
-/** The block's own sentence: who published this, and when they last said so. */
-function irveLegendNote() {
-  const sites = _regime === 'sites';
-  const filing = sites
-    ? irveLatestFiling(_records.values())
-    : (_regime === 'mesh' ? _mesh?.lastFiling : _national?.lastFiling);
-  const ahead = sites
-    ? irveFutureFilings(_records.values())
-    : Number(_regime === 'mesh' ? _mesh?.futureDatedRows : _national?.futureDatedRows) || 0;
-  const dated = irveFilingDate(filing);
-  const parts = ['Registre consolidé transport.data.gouv.fr / ODRÉ'];
-  // NOT `_lastUpdate`, which is when the proxy answered — a fact about this
-  // server and not about the register (E4). When no filing date survives the
-  // future-date guard the key says so rather than falling back to the sweep.
-  parts.push(dated
-    ? `dernier dépôt opérateur le ${dated}`
-    : 'date de dépôt non exploitable');
-  // A1 — a filing dated in the future is a finding about the file, not a
-  // rounding, and the clock above is only honest because it excluded them.
-  // Measured 2026-09-10: 56 rows of 227 007 are stamped 2026-12-30.
-  if (ahead > 0) {
-    parts.push(sites
-      ? `${fr(ahead)} site${ahead === 1 ? '' : 's'} à une date future, écarté${ahead === 1 ? '' : 's'} du calcul`
-      : `${fr(ahead)} ligne${ahead === 1 ? '' : 's'} à une date future, écartée${ahead === 1 ? '' : 's'} du calcul`);
-  }
-  parts.push('capacité installée, jamais la disponibilité');
-  return parts.join(' · ');
-}
-
-/** Height ticks the beam scale is read against, in charge points. */
-const IRVE_BEAM_TICKS = Object.freeze([24, 12, 6, 2]);
-
 /**
  * The band key for the two regimes that draw marks.
  *
- * Returns `{legend, note, legendNote}` — the three slots `manager.js` renders,
- * and the reason they are three rather than one is that they answer three
- * different questions: what the marks mean, what the key left out (A5), and
- * who published it and when (E1).
+ * Returns `{legend, note}` — the classes, and the one line A5 owes the reader
+ * when the view is sampled or the filter is hiding marks. There is no third
+ * slot any more: the block's own sentence repeated three facts the card and
+ * the attribution surface already publish.
  */
 function irveBandLegend() {
   const mesh = _regime === 'mesh';
   const tally = new Map();
-  let clipped = 0;
   for (const record of _records.values()) {
     // THE KEY DESCRIBES WHAT IS ON SCREEN, which is the whole point of a key.
     // Counted over the payload instead, a « > 150 kW » filter left 25 marks on
@@ -2886,7 +2848,6 @@ function irveBandLegend() {
       if (band) tally.set(band, (tally.get(band) || 0) + 1);
       continue;
     }
-    if (Number(record.site?.pdcDistinct) > IRVE_BEAM_PDC_DOMAIN) clipped += 1;
     const bands = record.site?.bands || {};
     for (const band of IRVE_BAND_KEYS) {
       const count = Number(bands[band]) || 0;
@@ -2894,52 +2855,12 @@ function irveBandLegend() {
     }
   }
 
+  // ONE HEADER, in the words of somebody choosing where to plug in — see below
+  // for why it is added last. It used to read « Couleur — puissance publiée »
+  // over a 36-word paragraph on ordered lightness and deuteranopia: a property
+  // of the ramp, argued to a reader who is not the one reading this. The ramp
+  // keeps the property; the key stops spending four lines defending it.
   const legend = [];
-  if (mesh) {
-    legend.push({
-      label: 'Hauteur — marque de position',
-      color: null,
-      blurb: 'Uniforme dans le maillage : le faisceau lève la marque au-dessus du fond, '
-        + 'il ne compte rien. Ce que contient la cellule est sur sa fiche.',
-    });
-  } else {
-    // F7(a) — the register is NAMED, in the key, in words. This is a SCREEN
-    // length and not a world height, and nothing else on the globe says so.
-    legend.push({
-      label: 'Hauteur — points de charge du site',
-      color: null,
-      blurb: `Échelle d\u2019écran gelée, en racine carrée : deux fois plus haut vaut quatre fois plus. `
-        + `${IRVE_BEAM_PDC_DOMAIN} points de charge remplissent la hauteur — un domaine gelé qui couvre `
-        + `98,1 % des sites du registre. La longueur est corrigée du tangage, et cesse d\u2019être une `
-        + `règle au-delà de 70° d\u2019inclinaison : à la verticale, un trait vertical se projette en un point.`,
-    });
-    for (const tick of IRVE_BEAM_TICKS) {
-      const px = irveBeamPdcPx(tick);
-      legend.push({
-        label: `${fr(tick)} points de charge`,
-        color: PRISM_HEIGHT_SWATCH_COLOR,
-        glyph: prismHeightGlyph(px / IRVE_BEAM_MAX_PX),
-        blurb: `${Math.round(px)} px de haut.`,
-      });
-    }
-    if (clipped > 0) {
-      // A5 — a value above the frozen domain stops being measured by the mark.
-      legend.push({
-        label: 'au-dessus du domaine gelé',
-        color: null,
-        count: clipped,
-        blurb: `Plus de ${IRVE_BEAM_PDC_DOMAIN} points de charge : le faisceau est à sa longueur `
-          + 'maximale et ne dit plus combien. La fiche donne le chiffre exact.',
-      });
-    }
-  }
-
-  legend.push({
-    label: mesh ? 'Couleur — bande dominante de la cellule' : 'Couleur — puissance publiée',
-    color: null,
-    blurb: 'Rampe ordonnée en clarté, du plus lent au plus rapide : l\u2019ordre survit en niveaux '
-      + 'de gris et en deutéranopie. Bornes de classe gelées, jamais recalculées sur ce qui est à l\u2019écran.',
-  });
   for (const band of IRVE_BAND_KEYS) {
     const count = tally.get(band) || 0;
     if (!count) continue;
@@ -2968,53 +2889,47 @@ function irveBandLegend() {
     });
   }
 
-  return { legend, note: irveBandLegendNote(mesh), legendNote: irveLegendNote() };
+  // The header names the channel, and only when there is a class under it: a
+  // floor of « > 150 kW » over a town that has none leaves the key describing
+  // an empty list, and a title over nothing is chrome. The note below still
+  // says how many marks the floor took away.
+  if (legend.length) {
+    legend.unshift({
+      label: mesh ? 'Vitesse de charge dominante' : 'Vitesse de charge',
+      color: null,
+      // A caption, not a class: no swatch, or the empty slot in front of it
+      // reads as a seventh band — and as the same hollow disc the refused
+      // class is drawn with (D3).
+      heading: true,
+    });
+  }
+
+  return { legend, note: irveBandLegendNote(mesh) };
 }
 
-/** A5's slot: what this key counted, how the marks were chosen, what is missing. */
+/**
+ * A5's slot — what this view is not showing, and only when that is true.
+ *
+ * Two cases survive the cut, because neither has another surface a reader sees
+ * without opening a panel: a maillage draws ONE mark per cell and never one
+ * per site, and a power floor hides marks the counts above no longer include.
+ * Everything else this note used to carry — the cell's size in degrees and in
+ * km, how a representative site is picked, the 127 station ids behind one
+ * coordinate — is on the card of the mark it describes.
+ */
 function irveBandLegendNote(mesh) {
   const parts = [];
-  if (mesh) {
-    const pick = _meshPick;
-    const step = pick?.stepDeg;
-    if (step) {
-      const km = irveMeshCellKm(step, _lastMeshLat);
-      parts.push(`Comptés en CELLULES d\u2019un carroyage verrouillé sur le monde : ${step}° de côté, `
-        + `soit ${km.latKm.toFixed(1)} km du nord au sud et ${km.lonKm.toFixed(1)} km d\u2019est en ouest ici `
-        + '— une maille en degrés n\u2019est pas équi-aire, la largeur varie de 15 % entre Perpignan et Lille.');
-      parts.push('Une marque par cellule occupée, posée sur un site réel : le plus grand exemplaire '
-        + 'de la bande la plus fréquente de la cellule, pas le plus gros site, qui serait presque '
-        + 'toujours la station d\u2019autoroute.');
-      // A5 — the ladder publishes a step per zoom tier, and this view is not on
-      // it. Doubling is what keeps the pick from becoming "the biggest N
-      // cells", but a reader comparing two machines has to know it happened.
-      if (pick.coarsened > 0) {
-        parts.push(`Maille élargie ${pick.coarsened} fois par rapport au palier publié, `
-          + 'pour que chaque cellule occupée garde sa marque plutôt que les plus grosses seules.');
-      }
-    }
-    if (pick) {
-      parts.push(`${fr(pick.picked.length)} marque${pick.picked.length === 1 ? '' : 's'} pour `
-        + `${fr(pick.inBox)} site${pick.inBox === 1 ? '' : 's'} en vue.`);
-    }
-    if (_meshHidden > 0) {
-      parts.push(`${fr(_meshHidden)} site${_meshHidden === 1 ? '' : 's'} masqué${_meshHidden === 1 ? '' : 's'} `
-        + 'par le filtre de puissance, dont ceux dont la puissance publiée est inexploitable : '
-        + 'rien ne dit qu\u2019ils passent le seuil, et rien ne dit qu\u2019ils ne le passent pas.');
-    }
-    return parts.join(' ');
+  const hidden = mesh ? _meshHidden : _siteHidden;
+  if (mesh && _meshPick) {
+    parts.push(`${fr(_meshPick.picked.length)} cellule${_meshPick.picked.length === 1 ? '' : 's'} `
+      + `pour ${fr(_meshPick.inBox)} site${_meshPick.inBox === 1 ? '' : 's'} en vue.`);
   }
-  parts.push('Comptés en POINTS DE CHARGE, et une marque par SITE — par coordonnée, pas par station : '
-    + 'le registre publie jusqu\u2019à 127 identifiants de station au même point.');
-  if (_siteHidden > 0) {
+  if (hidden > 0) {
     // WHY SLOWER CLASSES SURVIVE A HIGH FLOOR, said once rather than left to
     // look like a bug: the floor keeps a SITE by its fastest charging, and a
-    // motorway hub with four 300 kW bays also publishes its 22 kW ones. The
-    // classes above still count every charge point of every site still drawn.
-    parts.push(`${fr(_siteHidden)} site${_siteHidden === 1 ? '' : 's'} masqué${_siteHidden === 1 ? '' : 's'} `
-      + 'par le filtre de puissance, dont ceux dont la puissance publiée est inexploitable. '
-      + 'Le seuil retient un SITE sur sa charge la plus rapide : les classes ci-dessus comptent '
-      + 'ensuite tous les points de charge des sites retenus, lents compris.');
+    // motorway hub with four 300 kW bays also publishes its 22 kW ones.
+    parts.push(`${fr(hidden)} site${hidden === 1 ? '' : 's'} masqué${hidden === 1 ? '' : 's'} `
+      + 'par le filtre — un site retenu compte aussi ses bornes lentes.');
   }
   return parts.join(' ');
 }
@@ -3293,9 +3208,6 @@ const irveFranceLayer = {
       return {
         chips: [],
         legend: prismLegend(IRVE_PRISM_SCALE, tally),
-        // E1 — the prism regime ran with no clock either, and it draws the
-        // same register the other two do.
-        legendNote: irveLegendNote(),
         surfaceFill: flat > 0,
       };
     }

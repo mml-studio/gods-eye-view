@@ -6,6 +6,39 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-14
 
 ### Changed
+- **La clé des bornes de recharge tenait 13 lignes et 301 mots, et le lecteur
+  n'en voyait que la moitié.** Mesuré dans Chrome sur une vue de ville :
+  **717 px de contenu dans une fenêtre de 355 px**, donc coupé, et sa dernière
+  phrase jamais à l'écran. Le bloc portait, pour six classes de couleur : la
+  règle de lecture du faisceau en quatre échelons **cotés en pixels** (« 64 px de haut »), deux en-têtes de
+  canal d'un paragraphe chacun (la racine carrée, la correction de tangage et
+  sa limite à 70°, la deutéranopie, les bornes de classe gelées), la provenance
+  du registre avec sa date de dépôt, et une phrase finale sur les 127
+  identifiants de station publiés à une même coordonnée.
+
+  Tout cela est vrai, et rien de tout cela n'est ce que le lecteur est venu
+  chercher : **il cherche où se brancher.** La clé ne répond donc plus qu'à une
+  question — que veut dire la couleur — en **7 lignes, 46 mots et 215 px, dans
+  une fenêtre de 262 px** : plus rien n'est coupé. Un en-tête « Vitesse de
+  charge », les classes présentes dans la vue avec leur compte, et
+  la classe refusée en anneau creux. S'y ajoute une seule ligne, et seulement
+  quand elle est vraie : ce que le filtre de puissance masque, et pourquoi un
+  site retenu compte quand même ses bornes lentes.
+
+  **Rien n'est perdu, tout est à un clic.** La date de dépôt est sur la fiche du
+  site, désormais **par site et en français** (`🗓 déclaré 15/11/2025 →
+  30/07/2026`) — plus solide que le dernier dépôt de la vue, puisqu'un dixième
+  de ce registre n'a pas bougé depuis 2023. L'éditeur est nommé dans la surface
+  d'attribution. La règle du faisceau et son plafond sont sur cette même fiche,
+  **à côté du nombre exact de points de charge qu'ils décodent**. La taille
+  d'une cellule du maillage, en degrés et en kilomètres, est la première ligne
+  de sa propre fiche.
+
+  Et la classe des puissances illisibles s'appelle **« Puissance inconnue »** au
+  lieu de « Puissance non exploitable » : le second décrivait ce que la valeur
+  avait fait à notre analyseur, le premier dit au lecteur ce qu'il peut savoir
+  de la station. La fiche nomme toujours la cause, et la marque garde sa forme
+  propre.
 - **Quatre exploitants dans la même rue dessinaient la même tache.** La couche
   des véhicules partagés portait l'exploitant sur la COULEUR et la forme sur une
   silhouette Material teintée. Mesuré aux tailles réelles de la rampe : à 17 px
