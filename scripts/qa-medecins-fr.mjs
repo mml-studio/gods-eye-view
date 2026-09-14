@@ -25,6 +25,19 @@
  *   vi.  a camera event that lands on the same view costs no request at all
  *   vii. the layer never merges the two counts: `medecins` is distinct names
  *        and `entrees` is register rows, and the second is the larger
+ *   viii. THE MARKS STAND ON THE GROUND, and are drawn WHOLE. Both halves of
+ *        the reported "les points ne sont pas bien positionnés… à moitié à
+ *        l'intérieur des bâtiments": a mark anchored on the ellipsoid is 220 m
+ *        under the Lyon street it describes, and a mark that keeps the depth
+ *        test is eaten from below by the ground nearer the camera at its own
+ *        lower pixels — the « parasol ». This reads the ellipsoidal height and
+ *        the depth flag back off the PRIMITIVE, which is where a passing test
+ *        with a live bug would hide.
+ *   ix.  AND THEY DO NOT MOVE WHEN THE MAP DOES: the same mark is screen-
+ *        projected before and after a pan-and-return, and a seated one comes
+ *        back to the same pixel.
+ *   x.   every family carries its own silhouette, and the key swatch IS that
+ *        silhouette — one family, one shape, no second list by shape.
  *
  * Run: node scripts/qa-medecins-fr.mjs --url http://localhost:4173
  */
@@ -56,6 +69,27 @@ const chrome = chromeCandidates.find((candidate) => {
 });
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Ellipsoidal height below which an anchor is judged to be on the ELLIPSOID
+ * rather than on France.
+ *
+ * Ambert stands ~530 m above the sea and the geoid runs ~+50 m through the
+ * Massif central, so a real floor there is some 560-600 m of ellipsoidal
+ * height; over Lyon it is ~220 m. The pre-fix anchor was the 6 m lift alone.
+ * Twenty metres is therefore a wide moat around a difference of hundreds, not
+ * a tuned threshold.
+ */
+const GROUND_FLOOR_MIN_M = 20;
+
+/**
+ * Screen slide tolerated across a pan and return, in CSS pixels.
+ *
+ * Not zero: the camera is restored by `setView` to the same cartographic pose,
+ * and floating-point projection over a 9 km standoff is worth a fraction of a
+ * pixel. The defect this guards was measured in the hundreds.
+ */
+const SLIDE_TOLERANCE_PX = 3;
 
 /** Ambert, Puy-de-Dôme: a real under-served commune with a real practice. */
 const CITY = { lon: 3.7444, lat: 45.5486 };
@@ -104,6 +138,28 @@ async function setView(page, lon, lat, height) {
   await waitForSettled(page);
 }
 
+/** Screen position of one drawn mark, by id. Null when it is not projectable. */
+function screenOf(page, id) {
+  return page.evaluate((wanted) => {
+    const scene = window.__godsEyeView.viewer.scene;
+    for (let i = 0; i < scene.primitives.length; i += 1) {
+      const collection = scene.primitives.get(i);
+      if (typeof collection?.get !== 'function' || !collection.length) continue;
+      if (!String(collection.get(0)?.id || '').startsWith('medecins-fr:')) continue;
+      for (let n = 0; n < collection.length; n += 1) {
+        const item = collection.get(n);
+        if (item.id !== wanted || !item.position) continue;
+        // `scene.cartesianToCanvasCoordinates` rather than `SceneTransforms`:
+        // the app does not publish Cesium on `window`, and the scene method is
+        // the same projection reachable from the viewer this harness has.
+        const at = scene.cartesianToCanvasCoordinates(item.position);
+        return at ? { x: at.x, y: at.y } : null;
+      }
+    }
+    return null;
+  }, id);
+}
+
 /**
  * Wait for the layer to finish the fetch the camera move started.
  *
@@ -150,16 +206,44 @@ function probe(page) {
       const color = item.polygon.material?.getValue?.(window.__godsEyeView?.viewer?.clock?.currentTime)?.color;
       if (color) materials.set(code, `${color.red.toFixed(3)},${color.green.toFixed(3)},${color.blue.toFixed(3)}`);
     }
+    // What actually reached the SCENE. Walk every collection and key on the
+    // layer's own id prefix: a record that agrees with the ground while the
+    // primitive does not is the bug with a passing test.
+    const scene = window.__godsEyeView.viewer.scene;
+    const ellipsoid = scene.globe?.ellipsoid || scene.ellipsoid;
+    const marks = [];
+    for (let i = 0; i < scene.primitives.length; i += 1) {
+      const collection = scene.primitives.get(i);
+      if (typeof collection?.get !== 'function' || !collection.length) continue;
+      if (!String(collection.get(0)?.id || '').startsWith('medecins-fr:')) continue;
+      for (let n = 0; n < collection.length; n += 1) {
+        const item = collection.get(n);
+        const carto = item.position ? ellipsoid.cartesianToCartographic(item.position) : null;
+        marks.push({
+          id: item.id,
+          height: carto ? carto.height : null,
+          // `Infinity` does not survive the JSON hop of CDP (it comes back
+          // null), so the flag is reported as a boolean rather than a number.
+          depthOff: item.disableDepthTestDistance === Number.POSITIVE_INFINITY,
+          image: typeof item.image === 'string' ? item.image.length : null,
+          width: item.width ?? null,
+        });
+      }
+    }
+
     const stats = module.getStats();
     const controls = module.getRowControls();
     return {
       stats,
       params: module.getParams(),
       legend: controls.legend.map((row) => row.label),
+      legendGlyphs: controls.legend.map((row) => row.glyph || null),
       chips: controls.chips.map((chip) => ({ id: chip.id, active: chip.active })),
       departementsShown: shown.size,
       departementColors: [...materials.values()],
       distinctColors: new Set(materials.values()).size,
+      marks,
+      cameraHeight: scene.camera.positionCartographic.height,
     };
   });
 }
@@ -295,6 +379,72 @@ async function main() {
       check('and it fetched the names for that address alone',
         praticienRequests === before + 1, `${praticienRequests - before} requests`);
     }
+
+    console.log('\n[viii] the marks stand on the ground, and are drawn whole');
+    // The floor lands over the NETWORK and the rendered surface streams, so the
+    // layer re-places what it drew when a better floor arrives. Wait for that
+    // settle rather than asserting on the first frame.
+    let seated = await probe(page);
+    for (let attempt = 0; attempt < 25; attempt += 1) {
+      const heights = seated.marks.map((mark) => mark.height);
+      if (heights.length && heights.every((h) => Number.isFinite(h) && h > GROUND_FLOOR_MIN_M)) break;
+      await pump(page, 3, 60);
+      await sleep(400);
+      seated = await probe(page);
+    }
+    const heights = seated.marks.map((mark) => mark.height);
+    const buried = heights.filter((h) => !Number.isFinite(h) || h <= GROUND_FLOOR_MIN_M).length;
+    const lowest = heights.length ? Math.min(...heights) : null;
+    const highest = heights.length ? Math.max(...heights) : null;
+    console.log(`  · ${heights.length} anchors, `
+      + `${lowest === null ? 'n/a' : lowest.toFixed(1)}-${highest === null ? 'n/a' : highest.toFixed(1)} m `
+      + `ellipsoidal, ${buried} on the ellipsoid`);
+    check('every drawn mark is placed on the ground, not on the ellipsoid',
+      heights.length > 0 && buried === 0,
+      `${buried} of ${heights.length} still at ellipsoid height`);
+    // The other half of the report: a plate that keeps the depth test is eaten
+    // from below by the ground nearer the camera at its own lower pixels, so it
+    // reads as a dot half-sunk into a roof rather than as a mark.
+    check('and every one of them disables the depth test',
+      seated.marks.length > 0 && seated.marks.every((mark) => mark.depthOff),
+      `${seated.marks.filter((mark) => !mark.depthOff).length} still depth-tested`);
+
+    console.log('\n[ix] a pan and return leaves them on their own pixel');
+    const sample = seated.marks[0];
+    const beforePan = sample ? await screenOf(page, sample.id) : null;
+    await setView(page, CITY.lon + 0.01, CITY.lat, 9000);
+    await sleep(600);
+    await setView(page, CITY.lon, CITY.lat, 9000);
+    await sleep(600);
+    await pump(page, 6, 80);
+    const afterPan = sample ? await screenOf(page, sample.id) : null;
+    const slide = beforePan && afterPan
+      ? Math.hypot(afterPan.x - beforePan.x, afterPan.y - beforePan.y)
+      : null;
+    console.log(`  · ${sample ? sample.id : 'no mark'} moved ${slide === null ? 'n/a' : slide.toFixed(1)} px`);
+    check('the same mark returns to the same pixel',
+      slide !== null && slide <= SLIDE_TOLERANCE_PX,
+      `${slide === null ? 'not projectable' : `${slide.toFixed(1)} px`}`);
+    await shoot(page, '05-seated.png');
+
+    console.log('\n[x] one family, one silhouette, and the key carries it');
+    state = await probe(page);
+    const drawnImages = new Set(state.marks.map((mark) => mark.image));
+    check('the marks are rasters, not bare dots',
+      state.marks.length > 0 && state.marks.every((mark) => Number.isFinite(mark.image)),
+      'a mark drew no image');
+    // Six families in the register, and a view this size holds most of them.
+    // The claim is the ceiling, not the floor: more distinct rasters than
+    // families would mean a per-mark texture, which is an atlas entry each.
+    check('and they share one raster per family, never one per mark',
+      drawnImages.size <= 6, `${drawnImages.size} distinct rasters`);
+    check('the key row carries the same mark as a swatch',
+      state.legendGlyphs.length === 6 && state.legendGlyphs.every((glyph) => (
+        typeof glyph === 'string' && glyph.startsWith('data:image/svg+xml')
+      )),
+      state.legendGlyphs.map((glyph) => (glyph ? 'glyph' : 'none')).join(','));
+    check('and no two families share a swatch',
+      new Set(state.legendGlyphs).size === 6, `${new Set(state.legendGlyphs).size} distinct`);
 
     console.log('\n[vi] an unchanged view costs nothing');
     const sitesBefore = siteRequests;

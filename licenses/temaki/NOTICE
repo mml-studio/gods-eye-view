@@ -8,7 +8,9 @@ in the `LICENSE` file next to this notice, or at
 
 Source: https://github.com/rapideditor/temaki
         icons/<name>.svg
-        Retrieved 2026-09-02 at commit 6d9ac860d1d6.
+        Retrieved 2026-09-02 (security_camera, fighter_jet, power_tower,
+        cooling_tower_radiation) and 2026-09-14 (radiation) at commit
+        6d9ac860d1d6 — the same upstream HEAD on both dates.
 
 CC0 IMPOSES NO CONDITIONS. There is no attribution requirement, no notice to
 propagate, and no obligation to state modifications. This file exists because
@@ -17,7 +19,7 @@ the same reason `DATA_SOURCES.md` records where every feed comes from — and
 because it lets a reader audit the claims below without cloning the upstream
 repository.
 
-WHAT WAS TAKEN. Four glyphs, held in one module.
+WHAT WAS TAKEN. Five glyphs, held in one module.
 
 `src/data/mapIcons.js` holds the artwork:
 
@@ -35,10 +37,15 @@ WHAT WAS TAKEN. Four glyphs, held in one module.
                               `src/data/powerGrid.js` along the mapped overhead
                               routes.
 
+    radiation               — the trefoil alone, drawn by
+                              `src/data/medecinFamilyIcons.js` for the
+                              « Imagerie et biologie » family of the French
+                              conventioned-doctors layer.
+
 Temaki is the icon set of the OpenStreetMap iD editor and covers subjects no
 interface icon set does; a wall-mounted surveillance camera is one of them, a
 combat aircraft is another, and so is a power station drawn by what it splits.
-Material Symbols has none of the four: what `security_camera` replaced was this
+Material Symbols has none of the five: what `security_camera` replaced was this
 project's own drawing, what `fighter_jet` replaced was Material's `flight` — an
 airliner, which is the right glyph for the civil aerodrome pack next door and
 the wrong one for an air base — Material has no nuclear glyph at all, and its
@@ -54,6 +61,28 @@ misses is a pylon of a way it deliberately does NOT draw, one of them a
 `disused:power=line` whose steel is still standing. The layer therefore draws
 the glyph on the way's own mapped vertices, at the spacing the camera can read,
 and never at a position it invented between them.
+
+WHY THE BARE TREFOIL IS LEGITIMATE HERE, HAVING BEEN REJECTED NEXT DOOR.
+
+`plantFiliereIcons.js` records a refusal to draw the bare trefoil for the EDF
+generating fleet: "the bare trefoil is a HAZARD sign — a claim this map does not
+make and has no data for". That refusal stands where it was made. Nothing in the
+EDF file says a station emits anything, so the symbol there would have been an
+assertion with nothing behind it.
+
+For the doctors layer the data IS the assertion. The family the trefoil marks is
+built from the register's own specialty codes, and 90.8 % of its 40 009 entries
+are `06` Radiologue, `72` médecine nucléaire, `74` Cancérologue radiothérapeute
+and `76` Radiothérapeute — practices that use ionising radiation by definition,
+and that post this exact sign on their own doors under French radiation-protection
+rules. It is read as the CARTOGRAPHIC symbol for those specialties, the same
+reading `cooling_tower_radiation` already carries in this project.
+
+The alternatives were measured on a contact sheet over a real Lyon capture at
+30 / 24 / 19 / 15 / 12 px: Material's `science` (a flask) and `biotech` (a
+microscope) both read cleanly at 12 px and both name the family's remaining
+9.2 % — the pathologists and medical biologists — instead of its 90.8 %.
+Material's `radiology` names the right specialty and is mush below 19 px.
 
 WHY THE VARIANT WITH THE TREFOIL. Temaki publishes a plain `cooling_tower` as
 well, and it is the wrong glyph here: coal plants have cooling towers too, and
@@ -82,6 +111,9 @@ the artwork that was evaluated; everything downstream — the padded viewBox, th
 halo width, the transform that fits a silhouette into a 96-unit plate — is
 expressed as a ratio of that box.
 
+The bare `radiation` trefoil is one path carrying four subpaths — three blades
+and the hub — and is kept whole for the same reason as the rest.
+
 Temaki publishes the camera as three sibling paths — a body, a wall bracket, and
 a hood whose lens is a counter-wound subpath — and they are kept whole, in
 order, and are never merged: merging them would fill the lens. The cooling tower
@@ -91,9 +123,11 @@ longer a nuclear station — it is what a coal plant looks like. The PYLON is on
 path too, carrying the three crossarm diamonds as counter-wound subpaths; merged
 it is a black obelisk, which is what a chimney looks like.
 
-THE TREFOIL IS READ HERE AS A CARTOGRAPHIC SYMBOL, the one OpenStreetMap
-renderers use for `plant:source=nuclear`, and not as a hazard notice — a claim
-this project has no data for and does not make.
+THE TREFOIL IS READ HERE AS A CARTOGRAPHIC SYMBOL — on the cooling tower, the
+one OpenStreetMap renderers use for `plant:source=nuclear`; on its own, the one
+French radiology, nuclear-medicine and radiotherapy practices post on their own
+doors. In neither case is it a hazard notice, which is a claim this project has
+no measurement for and does not make.
 
 At render time this project draws the artwork in one of two ways, neither of
 which touches a coordinate. The CAMERA is drawn twice — once as a wide dark
@@ -103,8 +137,8 @@ viewBox is padded to `-1 -1 17 17` so that halo is not clipped, since the glyph
 spans the full published box from x=0 to x=15. The PYLON is drawn the same way,
 halo and white fill, so the layer's per-band voltage colour multiplies onto it
 exactly and a 400 kV pylon reads as the colour of the 400 kV line it stands on.
-The JET and the COOLING TOWER are
-instead PUNCHED out of a tinted plate through an SVG `<mask>`: they mark PLACES
-on a photograph of places, where a bare silhouette is unfindable below 18 px.
-The path geometry itself is untouched in both, and `src/data/mapIcons.test.mjs`
-pins it.
+The JET, the COOLING TOWER and the TREFOIL
+are instead PUNCHED out of a tinted plate through an SVG `<mask>`: they mark
+PLACES on a photograph of places, where a bare silhouette is unfindable below
+18 px. The path geometry itself is untouched in all three, and
+`src/data/mapIcons.test.mjs` pins it.

@@ -117,9 +117,9 @@ export const MAP_ICON_HALO_COLOR = 'rgba(0,0,0,0.62)';
 
 /**
  * Maki — https://github.com/mapbox/maki (CC0 1.0).
- * Retrieved 2026-09-02 (aerialway, harbor), 2026-09-14 (bicycle, scooter, car,
- * charging-station) and 2026-09-14 (communications-tower) at commit
- * 28e2a3602e4b from `icons/<name>.svg` — the same upstream HEAD on all three.
+ * Retrieved 2026-09-02 (aerialway, harbor) and 2026-09-14 (bicycle, scooter,
+ * car, charging-station, communications-tower, doctor, hospital) at commit
+ * 28e2a3602e4b from `icons/<name>.svg` — the same upstream HEAD on both dates.
  *
  * @see licenses/maki/NOTICE
  */
@@ -190,11 +190,32 @@ export const MAKI_PATHS = Object.freeze({
   // chart already uses, and it is compact enough to survive being punched into
   // a 16 px plate; the ferry's superstructure was not.
   harbor: 'M7.5,0C5.5,0,4,1.567,4,3.5c0.0024,1.5629,1.0397,2.902,2.5,3.3379v6.0391 c-0.9305-0.1647-1.8755-0.5496-2.6484-1.2695C2.7992,10.6273,2.002,9.0676,2.002,6.498c0.0077-0.5646-0.4531-1.0236-1.0176-1.0137 C0.4329,5.493-0.0076,5.9465,0,6.498c0,3.0029,1.0119,5.1955,2.4902,6.5723C3.9685,14.4471,5.8379,15,7.5,15 c1.6656,0,3.535-0.5596,5.0117-1.9395S14.998,9.4868,14.998,6.498c0.0648-1.3953-2.0628-1.3953-1.998,0 c0,2.553-0.7997,4.1149-1.8535,5.0996C10.3731,12.3203,9.4288,12.7084,8.5,12.875V6.8418C9.9607,6.4058,10.9986,5.0642,11,3.5 C11,1.567,9.5,0,7.5,0z M7.5,2C8.3284,2,9,2.6716,9,3.5S8.3284,5,7.5,5S6,4.3284,6,3.5S6.6716,2,7.5,2z',
+  // A stethoscope, earpieces up and the chestpiece hanging to one side. This is
+  // Maki's own icon for `amenity=doctors` — the exact subject `medecinsFrance`
+  // draws — and `medecinFamilyIcons.js` punches it for the `generaliste` family.
+  //
+  // Preferred over Material's `stethoscope`, which draws the same object with a
+  // thinner tube: measured on a real Lyon orthophoto crop at the sizes this
+  // layer draws, Maki's heavier tube still reads as a stethoscope at 15 px
+  // where Material's has already broken into two disconnected specks.
+  doctor: 'M5.5,7C4.1193,7,3,5.8807,3,4.5l0,0v-2C3,2.2239,3.2239,2,3.5,2H4c0.2761,0,0.5-0.2239,0.5-0.5S4.2761,1,4,1H3.5 C2.6716,1,2,1.6716,2,2.5v2c0.0013,1.1466,0.5658,2.2195,1.51,2.87l0,0C4.4131,8.1662,4.9514,9.297,5,10.5C5,12.433,6.567,14,8.5,14 s3.5-1.567,3.5-3.5V9.93c1.0695-0.2761,1.7126-1.367,1.4365-2.4365C13.1603,6.424,12.0695,5.7809,11,6.057 C9.9305,6.3332,9.2874,7.424,9.5635,8.4935C9.7454,9.198,10.2955,9.7481,11,9.93v0.57c0,1.3807-1.1193,2.5-2.5,2.5S6,11.8807,6,10.5 c0.0511-1.2045,0.5932-2.3356,1.5-3.13l0,0C8.4404,6.7172,9.001,5.6448,9,4.5v-2C9,1.6716,8.3284,1,7.5,1H7 C6.7239,1,6.5,1.2239,6.5,1.5S6.7239,2,7,2h0.5C7.7761,2,8,2.2239,8,2.5v2l0,0C8,5.8807,6.8807,7,5.5,7 M11.5,9 c-0.5523,0-1-0.4477-1-1s0.4477-1,1-1s1,0.4477,1,1S12.0523,9,11.5,9z',
+  // A plain cross with rounded corners, filling its box. Maki publishes it for
+  // `amenity=hospital`, and `medecinFamilyIcons.js` punches it for the CATCH-ALL
+  // family of 24 medical specialties — the one mark that has to say "medicine
+  // here" and refuse to say anything narrower, the same job the shield does for
+  // `military_land` in `militarySiteIcons.js`.
+  //
+  // It is also the only glyph in either CC0 set that survives being punched into
+  // a 12 px plate intact, which is what that family's share of the register
+  // (24 of 46 mapped specialty codes) makes it worth.
+  hospital: 'M7,1C6.4,1,6,1.4,6,2v4H2C1.4,6,1,6.4,1,7v1 c0,0.6,0.4,1,1,1h4v4c0,0.6,0.4,1,1,1h1c0.6,0,1-0.4,1-1V9h4c0.6,0,1-0.4,1-1V7c0-0.6-0.4-1-1-1H9V2c0-0.6-0.4-1-1-1H7z',
 });
 
 /**
  * Temaki — https://github.com/rapideditor/temaki (CC0 1.0).
- * Retrieved 2026-09-02 at commit 6d9ac860d1d6 from `icons/<name>.svg`.
+ * Retrieved 2026-09-02 (security_camera, fighter_jet, power_tower,
+ * cooling_tower_radiation) and 2026-09-14 (radiation) at commit 6d9ac860d1d6
+ * from `icons/<name>.svg` — the same upstream HEAD on both dates.
  *
  * Temaki publishes each icon as SEVERAL sibling paths rather than one, so the
  * entries here are arrays. The lens of the camera is a subpath that winds
@@ -245,6 +266,22 @@ export const TEMAKI_PATHS = Object.freeze({
   ]),
   cooling_tower_radiation: Object.freeze([
     'M12 1C10 6 14 12 14 14C13 15 2 15 1 14C1 12 5 6 3 1C3 0 12 0 12 1zM8.2 10.18C7.73 10.54 7.27 10.54 6.8 10.18L5.4 12.63C6.8 13.12 8.2 13.12 9.6 12.63L8.2 10.18zM7.5 8.46C7.15 8.46 6.8 8.82 6.8 9.19C6.8 9.56 7.15 9.93 7.5 9.93C7.85 9.93 8.2 9.56 8.2 9.19C8.2 8.82 7.85 8.46 7.5 8.46zM5.87 6C4.47 6.74 4 7.72 4 9.19L6.33 9.19C6.33 8.82 6.57 8.33 7.03 8.09L5.87 6zM9.13 6L7.97 8.09C8.43 8.33 8.67 8.82 8.67 9.19L11 9.19C11 7.72 10.53 6.74 9.13 6z',
+  ]),
+  // The radiation trefoil on its own: three blades and a hub, one path, four
+  // subpaths. Temaki's icon for `hazard=radiation`, punched by
+  // `medecinFamilyIcons.js` for the « Imagerie et biologie » family.
+  //
+  // `plantFiliereIcons.js` rejects the BARE trefoil in its own header, and that
+  // rejection stands where it was made: nothing in the EDF fleet file says a
+  // station emits anything, so a trefoil there would have been a hazard claim
+  // with no data behind it. Here the data IS the claim — the family is the
+  // register's radiology, nuclear-medicine and radiotherapy codes, 90.8 % of its
+  // 40 009 entries (`06`, `72`, `74`, `76`), and every one of those practices
+  // posts this exact sign on its own door under French radiation-protection
+  // rules. It is read as the CARTOGRAPHIC symbol for those specialties, the same
+  // reading `cooling_tower_radiation` already carries in this file.
+  radiation: Object.freeze([
+    'M9 9L12 14C9 15 6 15 3 14L6 9C7 9.75 8 9.75 9 9zM11 0.5L8.5 4.75C9.5 5.25 10 6.25 10 7L15 7C15 4 14 2 11 0.5zM4 0.5C1 2 0 4 0 7L5 7C5 6.25 5.5 5.25 6.5 4.75L4 0.5zM9 7C9 6.25 8.25 5.5 7.5 5.5C6.75 5.5 6 6.25 6 7C6 7.75 6.75 8.5 7.5 8.5C8.25 8.5 9 7.75 9 7z',
   ]),
 });
 

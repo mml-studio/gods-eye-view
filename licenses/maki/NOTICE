@@ -8,10 +8,10 @@ in the `LICENSE` file next to this notice, or at
 
 Source: https://github.com/mapbox/maki
         icons/<name>.svg
-        Retrieved 2026-09-02 (aerialway, harbor), 2026-09-14 (bicycle,
-        scooter, car, charging-station) and 2026-09-14
-        (communications-tower) at commit 28e2a3602e4b — the same upstream
-        HEAD on all three dates.
+        Retrieved 2026-09-02 (aerialway, harbor) and 2026-09-14 (bicycle,
+        scooter, car, charging-station, communications-tower, doctor,
+        hospital) at commit 28e2a3602e4b — the same upstream HEAD on both
+        dates.
 
 CC0 IMPOSES NO CONDITIONS. There is no attribution requirement, no notice to
 propagate, and no obligation to state modifications. This file exists because
@@ -20,7 +20,7 @@ the same reason `DATA_SOURCES.md` records where every feed comes from — and
 because it lets a reader audit the claims below without cloning the upstream
 repository.
 
-WHAT WAS TAKEN. Eight glyphs, held in one module.
+WHAT WAS TAKEN. Ten glyphs, held in one module.
 
 `src/data/mapIcons.js` holds the artwork:
 
@@ -47,6 +47,12 @@ WHAT WAS TAKEN. Eight glyphs, held in one module.
                        declared in `src/data/layerTaxonomy.js` and masked by
                        `src/data/manager.js`. The only vendored glyph that is
                        not drawn on the globe.
+
+    doctor           — a stethoscope, for the « Médecine générale » family,
+    hospital         — a plain cross, for the catch-all « Spécialité
+                       médicale » family,
+                       both drawn by `src/data/medecinFamilyIcons.js` for the
+                       French conventioned-doctors layer.
 
 `aerialway` replaced Material Symbols' `cable_car`, which is an interface glyph:
 a boxed cabin on stubby legs that reads as a building at the 22 CSS px that
@@ -87,6 +93,21 @@ military-sites layer. The masts keep their dots; the glyph lives at the 16 px
 the panel gives it, painted through a CSS mask so it takes the row's own colour
 and dims with it.
 
+`doctor` is Maki's own icon for `amenity=doctors`, which is exactly the subject
+that layer draws. It was preferred to Material Symbols' `stethoscope` — the same
+object, drawn for a menu — on a contact sheet rendered over a real Lyon capture
+at the sizes the layer actually draws: Maki's heavier tube still reads as a
+stethoscope at 15 px, where Material's has already broken into two disconnected
+specks.
+
+`hospital` is a plain cross, and it is punched for the CATCH-ALL family: 24 of
+the register's 46 mapped specialty codes fall there, from cardiology to
+dermatology to ORL, and no single object pictures them. The mark therefore says
+"medicine, and nothing narrower" — the job the heater shield does for the
+`military_land` catch-all in `militarySiteIcons.js` — while the card names the actual
+specialty. It is also the only borrowed glyph in this project that survives a
+12 px plate intact.
+
 `harbor` replaced Material Symbols' `directions_boat`, a passenger ferry seen
 head-on. The OSM tag says arsenal, not boat, and the ferry's superstructure did
 not survive being punched into a 16 px plate. An anchor is the sign every
@@ -117,6 +138,11 @@ that fits a 15-unit box into that 96-unit plate is a transform, not a rewrite �
 the coordinates reach the SVG renderer exactly as vendored, which is what
 `src/data/sharedMobilityIcons.test.mjs` asserts by looking for the path string
 itself in what the module draws.
+
+`militarySiteIcons.js` and `medecinFamilyIcons.js` compose `harbor`, `doctor` and
+`hospital` the same way, and their tests make the same assertion: each looks for
+`mapIconArtwork(...).geometry` — the vendored string itself — inside the SVG the
+module builds, so a rescale or a redraw would fail the suite rather than ship.
 
 `franceEnergy.js` composes `arrow` a third way, and it is still no rewrite. It
 draws three passes over the one path — a wide dark halo, then a translucent

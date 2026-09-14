@@ -17,7 +17,7 @@ import medecinsFranceLayer, {
   buildDepartementCard,
   buildSiteCard,
   createMedecinsLayer,
-  medecinPixelSize,
+  medecinMarkPixelSize,
   selectLabelCohort,
   tariffLine,
 } from './medecinsFrance.js';
@@ -54,13 +54,16 @@ test('every family has a colour, and no two share one', () => {
   assert.equal(new Set(colors).size, colors.length, 'two families share a colour');
 });
 
-test('dot size grows with doctors and stays bounded', () => {
-  assert.ok(medecinPixelSize(1) < medecinPixelSize(4));
-  assert.ok(medecinPixelSize(4) < medecinPixelSize(30));
-  assert.ok(medecinPixelSize(500) <= 15, 'a very large practice must not swallow its street');
+test('plate size grows with doctors and stays bounded', () => {
+  assert.ok(medecinMarkPixelSize(1) < medecinMarkPixelSize(4));
+  assert.ok(medecinMarkPixelSize(4) < medecinMarkPixelSize(30));
+  assert.ok(medecinMarkPixelSize(500) <= 30, 'a very large practice must not swallow its street');
+  // The floor is what a punched silhouette needs to survive inside; a plate
+  // smaller than this is a dot again, which is the state this layer left.
+  assert.ok(medecinMarkPixelSize(1) >= 17, 'a solo practice must still hold its glyph');
   // A site with no published count is drawn, not deleted.
-  assert.equal(medecinPixelSize(0), medecinPixelSize(1));
-  assert.ok(Number.isFinite(medecinPixelSize(undefined)));
+  assert.equal(medecinMarkPixelSize(0), medecinMarkPixelSize(1));
+  assert.ok(Number.isFinite(medecinMarkPixelSize(undefined)));
 });
 
 test('the APL ladder is anchored on the two thresholds that are policy', () => {
