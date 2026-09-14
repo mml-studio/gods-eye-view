@@ -511,6 +511,66 @@ const note = (ok, message) => {
     note(windowState.rejected === false && windowState.rejectedKey === false,
       'ADS refuses an unlisted window and an unknown key rather than clamping them');
 
+    // TWO REGISTERS ON ONE ROW, AND EACH ONE HAS TO COME OFF THE MAP ALONE.
+    // The urbanism layer paints a zoning wash over every square metre of the
+    // block and easement envelopes across it, and the only way to see under
+    // one was to switch off the answer entirely. What is checked is the whole
+    // mechanism end to end: the chip presses, the shapes it owns leave the
+    // collection, the other half stays, and NOTHING IS REFETCHED — a
+    // `drawOnlyParams` key that leaked into the query string would re-download
+    // 1.4 MB to draw less of it, and the only witness to that from here is the
+    // scan clock standing still.
+    const halves = await page.evaluate(async () => {
+      const dm = window.__godsEyeView.dataManager;
+      const module = dm.layers.get('urbanisme-gpu')?.module;
+      const source = window.__godsEyeView.viewer.dataSources.getByName('urbanisme-gpu')?.[0];
+      const shapes = () => {
+        const ids = (source?.entities?.values || []).map((entity) => String(entity.id));
+        return {
+          zones: ids.filter((id) => id.startsWith('gpu:zone:')).length,
+          servitudes: ids.filter((id) => id.startsWith('gpu:sup:')).length,
+          marker: ids.filter((id) => id === 'gpu:scan-point').length,
+        };
+      };
+      const chips = () => (module?.getRowControls?.()?.chips || [])
+        .map((chip) => ({ label: chip.label, active: chip.active, params: chip.params }));
+      const before = shapes();
+      const clock = module?.getStats?.().lastUpdate ?? null;
+      const press = (params) => dm.setLayerParams('urbanisme-gpu', params, { origin: 'user' });
+      const acceptedSup = press({ sup: 'off' });
+      const withoutSup = shapes();
+      const acceptedPlu = press({ plu: 'off' });
+      const neither = shapes();
+      press({ plu: 'on', sup: 'on' });
+      return {
+        before,
+        withoutSup,
+        neither,
+        restored: shapes(),
+        chips: chips(),
+        accepted: acceptedSup && acceptedPlu,
+        rejected: press({ plu: 'peut-être' }),
+        refetched: (module?.getStats?.().lastUpdate ?? null) !== clock,
+      };
+    });
+    note(halves.chips.length === 2 && halves.chips.every((chip) => chip.active),
+      `GPU offers ${halves.chips.length} half chips, both lit: `
+      + `${halves.chips.map((chip) => chip.label).join(' / ') || 'none'}`);
+    note(halves.accepted && halves.rejected === false,
+      'GPU takes on/off on both halves and refuses anything else');
+    note(halves.before.servitudes > 0 && halves.withoutSup.servitudes === 0,
+      `GPU dropped ${halves.before.servitudes} easement shapes off the map`);
+    note(halves.withoutSup.zones === halves.before.zones,
+      `GPU kept its ${halves.before.zones} zoning shapes while the easements went (`
+      + `${halves.withoutSup.zones})`);
+    note(halves.neither.zones === 0 && halves.neither.marker === 1,
+      'GPU with both halves off still plants the marker that carries the answer');
+    note(halves.restored.zones === halves.before.zones
+      && halves.restored.servitudes === halves.before.servitudes,
+      'GPU redraws both halves from the payload in hand');
+    note(halves.refetched === false,
+      'GPU hid a half without asking the register again');
+
     // The reported symptom, measured: "the dots move when I nudge the map".
     // `Cartesian3.fromDegrees(lon, lat)` puts a marker on the ELLIPSOID, and
     // the globe draws avenue de France at 79 to 83 m — so the marker was

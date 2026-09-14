@@ -211,7 +211,7 @@ export const LAYER_MANIFEST = Object.freeze([
     icon: '▦',
     source: 'Géoportail de l\'urbanisme — IGN',
     capabilities: Object.freeze(['destroy', 'getStats', 'setParams', 'getParams']),
-    defaultParams: Object.freeze({  }),
+    defaultParams: Object.freeze({ plu: 'on', sup: 'on' }),
     load: () => import('./urbanismeGpu.js').then((module) => module.default),
   }),
   Object.freeze({
