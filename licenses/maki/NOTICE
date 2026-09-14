@@ -8,9 +8,10 @@ in the `LICENSE` file next to this notice, or at
 
 Source: https://github.com/mapbox/maki
         icons/<name>.svg
-        Retrieved 2026-09-02 (aerialway, harbor) and 2026-09-14 (bicycle,
-        scooter, car, charging-station) at commit 28e2a3602e4b — the same
-        upstream HEAD on both dates.
+        Retrieved 2026-09-02 (aerialway, harbor), 2026-09-14 (bicycle,
+        scooter, car, charging-station) and 2026-09-14
+        (communications-tower) at commit 28e2a3602e4b — the same upstream
+        HEAD on all three dates.
 
 CC0 IMPOSES NO CONDITIONS. There is no attribution requirement, no notice to
 propagate, and no obligation to state modifications. This file exists because
@@ -19,7 +20,7 @@ the same reason `DATA_SOURCES.md` records where every feed comes from — and
 because it lets a reader audit the claims below without cloning the upstream
 repository.
 
-WHAT WAS TAKEN. Seven glyphs, held in one module.
+WHAT WAS TAKEN. Eight glyphs, held in one module.
 
 `src/data/mapIcons.js` holds the artwork:
 
@@ -40,6 +41,12 @@ WHAT WAS TAKEN. Seven glyphs, held in one module.
 
     arrow            — the five commercial exchanges at France's frontiers,
                        drawn by `src/data/franceEnergy.js`.
+
+    communications-tower
+                     — the PANEL ROW icon of « Infrastructure numérique »,
+                       declared in `src/data/layerTaxonomy.js` and masked by
+                       `src/data/manager.js`. The only vendored glyph that is
+                       not drawn on the globe.
 
 `aerialway` replaced Material Symbols' `cable_car`, which is an interface glyph:
 a boxed cabin on stubby legs that reads as a building at the 22 CSS px that
@@ -66,6 +73,19 @@ corrugated hose, and a cone is a triangle only from side-on. Maki's arrow also
 arrives with a head 5.6 times the width of its shaft, which is the ratio that
 module had spent a paragraph arguing for and could only reach by inventing a
 factor of its own.
+
+`communications-tower` replaced the character `▣` on 2026-09-14, and it is a
+ROW icon rather than a map mark. That row carries three peers — data centres,
+submarine cables and ANFR masts — and `▣` is the data centre module's own
+square, so the row was named after one of its three members. A lattice mast
+with radio waves is the sign for telecom infrastructure a reader already owns.
+
+It is deliberately NOT on the map. `anfr-fr` draws its supports at 4,5 to 11
+CSS px (18 px when one is selected), and a bare silhouette on orthophoto stops
+being findable under about 18 px — measured on three real crops for the
+military-sites layer. The masts keep their dots; the glyph lives at the 16 px
+the panel gives it, painted through a CSS mask so it takes the row's own colour
+and dims with it.
 
 `harbor` replaced Material Symbols' `directions_boat`, a passenger ferry seen
 head-on. The OSM tag says arsenal, not boat, and the ferry's superstructure did

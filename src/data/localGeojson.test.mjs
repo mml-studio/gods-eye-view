@@ -1606,16 +1606,16 @@ test('the datacenter pack draws three different footprints without being wired t
         assert.equal(valueOf(entity.point.color).alpha, 1);
       }
 
-      // …and the legend publishes both halves: what the signs are, then how
-      // big they are. Without the second half a world-unit size has no scale.
+      // …and the key names the two COLOURS on screen and stops there. The hall
+      // and the extruded hall are one line — same hue, same subject, and relief
+      // is decoded off the globe — and the three area marks are gone with the
+      // rest of the size ladder.
       const legend = harness.layer.getRowControls().legend;
+      assert.deepEqual(legend.map((row) => row.label), ['Le bâtiment', 'L’enceinte du site']);
       const byLabel = new Map(legend.map((row) => [row.label, row]));
-      assert.equal(byLabel.get('Volume bâti').count, 1);
-      assert.equal(byLabel.get('Emprise seule').count, 1);
-      assert.equal(byLabel.get('Contour de site').count, 1);
-      assert.equal(byLabel.has('Sans emprise'), false, 'no row for a class with no members');
-      assert.equal(byLabel.get('≥ 1 ha').count, 1, 'the fence is the only hectare here');
-      assert.equal(byLabel.get('≥ 1 000 m²').count, 3);
+      assert.equal(byLabel.get('Le bâtiment').count, 2, 'the volume and the slab are one line');
+      assert.equal(byLabel.get('L’enceinte du site').count, 1);
+      assert.equal(byLabel.has('Emplacement seul'), false, 'no row for a class with no members');
     } finally {
       await harness.layer.destroy?.(harness.viewer);
       harness.cleanup();

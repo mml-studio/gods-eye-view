@@ -1,7 +1,7 @@
 import { governorRequestRender } from '../renderGovernor.js';
 import { markDetectionSourcesChanged } from './detection.js';
 import { SURFACE_FILL_DRAPE_NOTE, surfaceFillDrapesBuildings } from './surfaceFillNotice.js';
-import { fusionMemberChipFor } from './layerFusions.js';
+import { fusionMemberChipFor, fusionPrimaryChipFor } from './layerFusions.js';
 import {
   coverageNoticeFor,
   coverageSignature,
@@ -2199,6 +2199,11 @@ export class DataLayerManager {
         // so a consumer that needs the canonical string keeps having one.
         label: taxonomy?.label || null,
         icon: entry.module.icon,
+        // A ROW's icon, when the taxonomy states one — a data URI the panel
+        // masks, never a character. Kept beside `icon` rather than replacing
+        // it: `icon` is what the module calls itself and what the voice layer
+        // and the LLM scene context still read back.
+        iconGlyph: taxonomy?.iconGlyph || null,
         source: entry.module.source,
         showInTogglePanel: entry.module.showInTogglePanel !== false,
         category: taxonomy?.category || null,
@@ -2637,7 +2642,23 @@ export class DataLayerManager {
     // Bordeaux something nobody built.
     const coverageEntry = layerCoverageFor(layer.id);
     const scopeText = coverageEntry?.chip || layer.tags?.scopeChip || '';
-    left.innerHTML = `<span class="data-icon">${layer.icon}</span>`
+    // A row whose taxonomy states an `iconGlyph` draws a vendored MAP glyph
+    // instead of a character, and draws it the way the map key draws a class
+    // silhouette: as a MASK, so the panel's own colour paints through it and
+    // the icon inherits every state the row already has. An `<img>` would
+    // carry its own black-and-white and read as a sticker beside thirty rows
+    // of text.
+    //
+    // The URI travels as a CSS CUSTOM PROPERTY on the row rather than inside
+    // the markup below, because custom properties inherit — `.data-icon` picks
+    // it up without this method having to reach back into a string it just
+    // serialised — and because a data URI interpolated into an `innerHTML`
+    // blob is a string nothing here can escape safely.
+    if (layer.iconGlyph) {
+      row.style?.setProperty?.('--data-icon-glyph', `url("${layer.iconGlyph}")`);
+    }
+    left.innerHTML = `<span class="data-icon${layer.iconGlyph ? ' has-glyph' : ''}">`
+      + `${layer.iconGlyph ? '' : layer.icon}</span>`
       + `<span class="data-name">${this._displayName(layer)}</span>`;
     // Appended as a NODE rather than interpolated into the markup above,
     // because unlike the icon and the name this badge has a live state:
@@ -2964,10 +2985,18 @@ export class DataLayerManager {
     const companions = this._fusionCompanions(layer.id);
     if (!companions.length) return own;
     const chips = [];
+    // The row's own primary, WHEN the fusion asks for it — a peer row whose
+    // members are three different objects rather than one subject seen three
+    // ways. Everywhere else this is null and the row toggle stays the primary's
+    // only control. See `primaryToggle` in layerFusions.js.
+    const primaryChip = fusionPrimaryChipFor(layer.id);
     // Nothing in the group is on: the row shows no chips at all, exactly as an
     // unfused off row shows none.
     if (this._rowEnabled(layer.id)) {
-      for (const companion of companions) {
+      // First in the strip when it exists: it is the member the row is named
+      // after, and a reader scanning for "how do I switch the halls off" must
+      // not have to read past the two companions to find it.
+      for (const companion of primaryChip ? [primaryChip, ...companions] : companions) {
         const active = this.isEnabled(companion.id);
         // A control with a territory says so RATHER THAN DISAPPEARING. Hiding
         // it outside its coverage would make it undiscoverable — you would have

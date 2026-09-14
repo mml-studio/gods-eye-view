@@ -11,7 +11,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  DATACENTER_AREA_MARKS,
   DATACENTER_ANCHOR_PX,
   DATACENTER_FILL_ALPHA,
   DATACENTER_HALL_COLOR,
@@ -20,8 +19,8 @@ import {
   DATACENTER_MIN_AREA_M2,
   DATACENTER_POINTLESS_PX,
   DATACENTER_SITE_COLOR,
+  DATACENTER_LEGEND_ROWS,
   DATACENTER_SURFACES,
-  datacenterAreaBand,
   datacenterCardDetails,
   datacenterFootprint,
   datacenterHeightM,
@@ -415,58 +414,57 @@ test('the render spec draws four different signs and never a default height', ()
   assert.equal(datacenterRenderSpec(undefined, {}).hollow, true);
 });
 
-test('the area marks are frozen domain thresholds, never quantiles of the view', () => {
-  const marks = DATACENTER_AREA_MARKS.map((mark) => mark.minM2);
-  assert.deepEqual(marks, [100_000, 10_000, 1_000], 'largest first, and round');
-  for (let i = 1; i < marks.length; i += 1) assert.ok(marks[i] < marks[i - 1]);
-
-  assert.equal(datacenterAreaBand(7_060_220), 'ha10');
-  assert.equal(datacenterAreaBand(100_000), 'ha10');
-  assert.equal(datacenterAreaBand(99_999), 'ha1');
-  assert.equal(datacenterAreaBand(10_000), 'ha1');
-  assert.equal(datacenterAreaBand(1_000), 'm1000');
-  assert.equal(datacenterAreaBand(999), '', 'under the smallest mark is not a mark');
-  assert.equal(datacenterAreaBand(0), '');
-  assert.equal(datacenterAreaBand(NaN), '');
-});
-
-test('the legend publishes the four signs AND a numbered scale, counting what is drawn', () => {
+test('the key folds four signs into three lines, and prints no line for a mark that is absent', () => {
   const legend = datacenterSurfaceLegend(new Map([
-    ['volume|ha1', { total: 10, visible: 10 }],
-    ['slab|m1000', { total: 100, visible: 60 }],
-    ['site|ha10', { total: 5, visible: 5 }],
-    ['point|', { total: 20, visible: 20 }],
+    ['volume', { total: 10, visible: 10 }],
+    ['slab', { total: 100, visible: 60 }],
+    ['site', { total: 5, visible: 5 }],
+    ['point', { total: 20, visible: 20 }],
   ]));
+  assert.deepEqual(legend.map((row) => row.label), [
+    'Le bâtiment', 'L’enceinte du site', 'Emplacement seul',
+  ]);
   const byLabel = new Map(legend.map((row) => [row.label, row]));
-
-  // Four signs…
-  for (const surface of DATACENTER_SURFACES) {
-    assert.ok(byLabel.has(surface.label), `${surface.label} is missing`);
-    assert.ok(byLabel.get(surface.label).glyph.startsWith('data:image/svg+xml;base64,'));
+  for (const row of legend) {
+    assert.ok(row.glyph.startsWith('data:image/svg+xml;base64,'), row.label);
   }
-  assert.equal(byLabel.get('Volume bâti').count, 10);
-  assert.equal(byLabel.get('Emprise seule').count, 60, 'counts what is DRAWN');
-  assert.match(byLabel.get('Emprise seule').blurb, /40 masqués/);
-  assert.equal(byLabel.get('Sans emprise').count, 20);
 
-  // …then the scale, without which a world-unit size is unreadable (D1). The
-  // marks are cumulative: `≥ 1 ha` counts the `≥ 10 ha` too.
-  assert.equal(byLabel.get('≥ 10 ha').count, 5);
-  assert.equal(byLabel.get('≥ 1 ha').count, 15);
-  // 5 sites + 10 volumes + the 60 slabs still DRAWN — not the 100 loaded.
-  assert.equal(byLabel.get('≥ 1 000 m²').count, 75);
-  // One graphite for every size row: in those rows the datum is the swatch's
-  // size, so a hue that moved with it would encode the same fact twice.
-  const sizeColors = new Set(DATACENTER_AREA_MARKS.map((mark) => byLabel.get(mark.label).color));
-  assert.equal(sizeColors.size, 1);
-  // …and three visibly different swatch shapes, largest mark largest.
-  const sizeGlyphs = DATACENTER_AREA_MARKS.map((mark) => byLabel.get(mark.label).glyph);
-  assert.equal(new Set(sizeGlyphs).size, 3);
+  // `volume` and `slab` are ONE line: same colour, same subject, and the relief
+  // of an extruded hall is decoded off the globe without a key.
+  assert.equal(byLabel.get('Le bâtiment').count, 70, 'counts what is DRAWN');
+  assert.match(byLabel.get('Le bâtiment').blurb, /40 masqués/);
+  assert.equal(byLabel.get('L’enceinte du site').count, 5);
+  assert.equal(byLabel.get('Emplacement seul').count, 20);
 
-  // Nothing loaded is no rows, not seven rows of zero.
+  // The fence is the only OTHER colour, and it is the reason it has a line.
+  const colors = new Set(legend.map((row) => row.color));
+  assert.equal(colors.size, 2);
+  assert.equal(byLabel.get('L’enceinte du site').color, DATACENTER_SITE_COLOR);
+  assert.equal(byLabel.get('Le bâtiment').color, byLabel.get('Emplacement seul').color);
+
+  // NO SIZE LADDER. `≥ 10 ha` / `≥ 1 ha` / `≥ 1 000 m²` were a second list
+  // re-printing the same objects by their extent; the extent is drawn in world
+  // units and compares to itself. Same cut as `local-airports`.
+  for (const row of legend) assert.doesNotMatch(row.label, /ha|m²/);
+
+  // A sign nobody drew gets no line — a key is for the marks ON SCREEN.
+  const halls = datacenterSurfaceLegend(new Map([['slab', { total: 3, visible: 3 }]]));
+  assert.deepEqual(halls.map((row) => row.label), ['Le bâtiment']);
+
+  // Nothing loaded is no rows, not three rows of zero.
   assert.deepEqual(datacenterSurfaceLegend(new Map()), []);
   assert.deepEqual(datacenterSurfaceLegend(null), []);
-  assert.deepEqual(datacenterSurfaceLegend({ 'volume|ha1': { total: 0, visible: 0 } }), []);
+  assert.deepEqual(datacenterSurfaceLegend({ volume: { total: 0, visible: 0 } }), []);
+});
+
+test('every render class reaches exactly one legend line', () => {
+  const claimed = DATACENTER_LEGEND_ROWS.flatMap((row) => row.surfaces);
+  assert.equal(new Set(claimed).size, claimed.length, 'a class is claimed twice');
+  assert.deepEqual(
+    [...claimed].sort(),
+    DATACENTER_SURFACES.map((surface) => surface.key).sort(),
+    'a render class with no line would draw a mark the key cannot explain',
+  );
 });
 
 test('the shipped pack still splits into the four populations this was measured on', () => {
@@ -476,14 +474,12 @@ test('the shipped pack still splits into the four populations this was measured 
   ).trim().split('\n');
 
   const counts = { volume: 0, slab: 0, site: 0, point: 0 };
-  const bands = new Map();
   let extrudedMax = 0;
   for (const raw of lines) {
     const feature = JSON.parse(raw);
     const areaM2 = geometryAreaM2(feature.geometry);
     const spec = datacenterRenderSpec(feature.properties, { areaM2 });
     counts[datacenterSurface(feature.properties?.tags, areaM2)] += 1;
-    bands.set(datacenterAreaBand(areaM2), (bands.get(datacenterAreaBand(areaM2)) || 0) + 1);
     if (spec.extrudedHeightM) extrudedMax = Math.max(extrudedMax, spec.extrudedHeightM);
     // A spec is either extruded or flat, never "extruded by nothing".
     assert.equal(spec.surface === 'volume', spec.extrudedHeightM !== null, raw.slice(0, 80));
@@ -497,13 +493,6 @@ test('the shipped pack still splits into the four populations this was measured 
   // Two thirds of the pack has an emprise and no height. That proportion IS
   // the argument for the flat slab, so it is asserted rather than assumed.
   assert.ok(counts.slab / lines.length > 0.6);
-  // And the cumulative mark counts the legend promises.
-  assert.equal(bands.get('ha10'), 84);
-  assert.equal(bands.get('ha10') + bands.get('ha1'), 1254);
-  assert.equal(bands.get('ha10') + bands.get('ha1') + bands.get('m1000'), 2976);
-  for (const mark of DATACENTER_AREA_MARKS) {
-    assert.ok(mark.count > 0, `${mark.label} count is stale`);
-  }
   // Nothing in the pack asks for a skyscraper.
   assert.ok(extrudedMax <= DATACENTER_MAX_HEIGHT_M, `${extrudedMax} m`);
   assert.equal(extrudedMax, 170);

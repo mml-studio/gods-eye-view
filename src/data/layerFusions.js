@@ -76,11 +76,26 @@ import { REGISTERED_LAYER_IDS } from './layerState.js';
  * nothing. Measured on « Trafic routier »: four blocks, and the first was
  * called `Trafic routier` under a heading also called `Trafic routier`.
  *
- * It is OPTIONAL, and only the nine fusions that can currently split their key
+ * It is OPTIONAL, and only the fusions that can currently split their key
  * carry one. A missing `primaryChip` falls back to the layer's display name,
  * and the renderer drops a sub-title that would only repeat the row's — so a
  * fusion whose primary gains a key later degrades to today's rendering rather
  * than to a wrong name. Add one when that happens.
+ *
+ * `primaryToggle: true` promotes that same label to a CHIP ON THE STRIP, so the
+ * primary can be switched off while the row stays on. It requires
+ * `primaryChip`, because a chip with no label is a blank button.
+ *
+ * IT IS THE EXCEPTION, AND THE RULE ABOVE IS STILL THE RULE. On almost every
+ * fusion the primary IS the subject and the companions are variants of it — the
+ * row's own toggle is the primary's control, and a chip for it would be a
+ * second switch for the same thing sitting next to the first. `primaryToggle`
+ * is for the fusions where the members are PEERS: « Infrastructure numérique »
+ * carries data centres, submarine cables and radio masts, three different
+ * objects that happen to share a shelf, and no one of them is the row. Without
+ * the flag the reader could add the other two and never subtract the first —
+ * measured on that row, where the 4 351 data centres were unswitchable for as
+ * long as the reader wanted to look at antennas.
  *
  * `optIn: true` means the row's toggle does NOT switch that companion on. It
  * is for a companion whose cost is real and whose value is conditional — the
@@ -394,8 +409,16 @@ export const LAYER_FUSIONS = Object.freeze([
   // data everywhere. The submarine cables stay — they are already here, they
   // are drawn, and a French focus is a reason to ADD French layers, never a
   // reason to unplug a world one.
+  //
+  // THREE PEERS, SO THE PRIMARY GETS A CHIP TOO (`primaryToggle`). A hall, a
+  // cable and a mast are three different objects; none of them is "the subject
+  // the other two qualify", which is the shape every other fusion here has. The
+  // row's toggle alone therefore left the data centres forced on under any
+  // reader who came for the antennas.
   Object.freeze({
     primary: 'local-datacenters',
+    primaryChip: 'Data centers',
+    primaryToggle: true,
     companions: Object.freeze([
       Object.freeze({
         id: 'telegeography-submarine-cables',
@@ -459,6 +482,17 @@ export function validateLayerFusions(
         && (typeof fusion.primaryChip !== 'string' || !fusion.primaryChip.trim())) {
       throw new Error(`Fusion primaryChip must be a non-empty string: ${primary}`);
     }
+    // Typed rather than truthy, same reason as `disabled` below: a string
+    // `'false'` reads as off to a reviewer and as on to JavaScript.
+    if (fusion.primaryToggle !== undefined && typeof fusion.primaryToggle !== 'boolean') {
+      throw new Error(`Fusion primaryToggle must be a boolean: ${primary}`);
+    }
+    // A chip with no label is a blank button, and the fallback `primaryChip`
+    // has for the MAP KEY (the layer's display name) is the row's own name —
+    // which on the strip would read as a chip for the row inside the row.
+    if (fusion.primaryToggle === true && !fusion.primaryChip) {
+      throw new Error(`Fusion primaryToggle needs a primaryChip: ${primary}`);
+    }
     claimed.set(primary, primary);
     const companions = fusion.companions;
     if (!Array.isArray(companions) || companions.length === 0) {
@@ -504,6 +538,15 @@ const OFFERED_BY_PRIMARY = new Map(LAYER_FUSIONS.map((fusion) => {
   const offered = fusion.companions.filter((entry) => entry.disabled !== true);
   return [fusion.primary, offered.length ? Object.freeze(offered) : null];
 }));
+// Frozen once at import, like OFFERED_BY_PRIMARY above and for the same
+// reason: the table cannot change, and the panel asks for this on every repaint.
+const PRIMARY_CHIP_BY_ID = new Map(LAYER_FUSIONS
+  .filter((fusion) => fusion.primaryToggle === true)
+  .map((fusion) => [fusion.primary, Object.freeze({
+    id: fusion.primary,
+    chip: fusion.primaryChip,
+    title: '',
+  })]));
 const PRIMARY_BY_COMPANION = new Map();
 for (const fusion of LAYER_FUSIONS) {
   for (const companion of fusion.companions) {
@@ -559,6 +602,27 @@ export function fusionMemberChipFor(rowId, memberId) {
   if (!fusion) return null;
   if (memberId === rowId) return fusion.primaryChip || null;
   return fusion.companions.find((entry) => entry.id === memberId)?.chip || null;
+}
+
+/**
+ * The chip a row offers for its OWN primary, or null when it offers none.
+ *
+ * Shaped like a companion descriptor (`{id, chip, title}`) so the strip builder
+ * can run one loop over `[primary, ...companions]` instead of forking, and so a
+ * future second peer row is a line in the table rather than a branch in the
+ * panel.
+ *
+ * `title` is deliberately absent rather than invented: the companion tooltips
+ * in this table carry a source and a hedge, and a made-up sentence beside them
+ * would be the one line in the strip that says nothing.
+ *
+ * @param {string} layerId Registered layer id.
+ * @returns {?{id: string, chip: string, title: string}} Descriptor, or null.
+ */
+export function fusionPrimaryChipFor(layerId) {
+  const fusion = FUSION_BY_PRIMARY.get(layerId);
+  if (!fusion || fusion.primaryToggle !== true) return null;
+  return PRIMARY_CHIP_BY_ID.get(layerId) || null;
 }
 
 /**

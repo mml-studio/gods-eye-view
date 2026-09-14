@@ -117,8 +117,9 @@ export const MAP_ICON_HALO_COLOR = 'rgba(0,0,0,0.62)';
 
 /**
  * Maki — https://github.com/mapbox/maki (CC0 1.0).
- * Retrieved 2026-09-02 (aerialway, harbor) and 2026-09-14 (bicycle,
- * scooter, car, charging-station) at commit 28e2a3602e4b from `icons/<name>.svg`.
+ * Retrieved 2026-09-02 (aerialway, harbor), 2026-09-14 (bicycle, scooter, car,
+ * charging-station) and 2026-09-14 (communications-tower) at commit
+ * 28e2a3602e4b from `icons/<name>.svg` — the same upstream HEAD on all three.
  *
  * @see licenses/maki/NOTICE
  */
@@ -170,6 +171,18 @@ export const MAKI_PATHS = Object.freeze({
   // ratio that layer spent a paragraph arguing for and could only reach by
   // inventing a `ARC_HEAD_RADIUS_FACTOR`. It comes free with the artwork.
   arrow: 'M8.29289 2.29289C8.68342 1.90237 9.31658 1.90237 9.70711 2.29289L14.2071 6.79289C14.5976 7.18342 14.5976 7.81658 14.2071 8.20711L9.70711 12.7071C9.31658 13.0976 8.68342 13.0976 8.29289 12.7071C7.90237 12.3166 7.90237 11.6834 8.29289 11.2929L11 8.5H1.5C0.947715 8.5 0.5 8.05228 0.5 7.5C0.5 6.94772 0.947715 6.5 1.5 6.5H11L8.29289 3.70711C7.90237 3.31658 7.90237 2.68342 8.29289 2.29289Z',
+  // A lattice mast with radio waves leaving it on both sides. It is the sign
+  // for telecom infrastructure that a reader already owns — it is what a phone
+  // status bar, a network diagram and every mobile-coverage map draw — and it
+  // is the row icon of « Infrastructure numérique », whose three members are a
+  // hall, a submarine cable and a mast. That row used to show `▣`, the data
+  // centre's own square, which named ONE of the three as if it were the row.
+  //
+  // PANEL ONLY, and that is a measurement rather than a scruple. `anfr-fr`
+  // draws its supports at 4,5 to 11 CSS px (18 px when selected), and a bare
+  // silhouette on orthophoto stops being findable under ~18 px — so the masts
+  // keep their dots and this glyph lives at the 16 px the panel gives it.
+  'communications-tower': 'M11.8545,6.4336l-.4131-.2813a4.7623,4.7623,0,0,0,.2813-4.8779l-.0835-.1533L12.0747.875l.0908.167a5.2619,5.2619,0,0,1-.311,5.3916Zm1.1521,7.1316V14h-11v-.4348H4.4952L6.0439,6.4a.5.5,0,0,1,.4888-.3945h.7255V4.6014A1.14,1.14,0,0,1,6.3756,3.5a1.1568,1.1568,0,1,1,2.3136,0,1.14,1.14,0,0,1-.931,1.1112V6.0059h.7223A.5.5,0,0,1,8.9692,6.4l1.5478,7.1648ZM8.4543,8.751H6.5588L6.236,10.2441H8.777ZM6.1279,10.7441l-.3233,1.4952H9.2082l-.3231-1.4952ZM6.936,7.0059,6.6669,8.251H8.3463L8.0771,7.0059ZM5.5179,13.5652H9.4948l-.1786-.8259h-3.62ZM5.21,5.0137a2.7523,2.7523,0,0,1,.0161-3.0518L4.812,1.6826a3.25,3.25,0,0,0-.019,3.6065ZM10.7568,3.5a3.2433,3.2433,0,0,0-.5341-1.7861l-.418.2754a2.7517,2.7517,0,0,1-.0176,3.0488l.4141.2793A3.2341,3.2341,0,0,0,10.7568,3.5ZM3.5342,6.1182A4.7637,4.7637,0,0,1,3.3813,1.13L2.9478.88a5.2643,5.2643,0,0,0,.1694,5.5137Z',
   // An anchor, drawn as one solid mass with a hole in its stock. Used by
   // `militarySiteIcons.js` for `military=naval_base`, where it replaced
   // Material's `directions_boat` — a civil ferry seen head-on, which said
@@ -281,6 +294,50 @@ export function mapIconArtwork(set, name) {
   const geometry = mapIconGeometry(set, name);
   if (!geometry) return null;
   return { geometry, box: MAP_ICON_BOX[name] || MAP_ICON_DEFAULT_BOX };
+}
+
+/**
+ * The same artwork as a CSS MASK — one solid pass, no halo.
+ *
+ * A mask is read through its ALPHA channel, so the two-pass raster
+ * {@link mapIconGlyph} builds is the wrong shape for one: the halo strokes at
+ * `rgba(0,0,0,0.62)`, which a mask resolves as a 62 %-opaque fringe around
+ * every edge, i.e. a soft dark outline drawn in whatever colour the element
+ * happens to be. What a DOM slot needs is the silhouette alone, painted by the
+ * panel's own `background` through the mask.
+ *
+ * This is the pattern the map key already uses for a class glyph
+ * (`_refreshMapLegend` sets `maskImage` and lets the row's colour show
+ * through), and `datacentersPack.js` builds its swatches the same way: one
+ * solid fill, no stroke. Same reasoning, one more caller.
+ *
+ * No `px`: an SVG mask scales to the box CSS gives it, so there is no raster to
+ * size and nothing to minify.
+ *
+ * @param {'maki'|'temaki'} set Which vendored set the name belongs to.
+ * @param {string} name Icon name, as published upstream.
+ * @returns {?string} `data:image/svg+xml;base64,…`, or null for an unknown icon.
+ */
+export function mapIconMask(set, name) {
+  const cacheKey = `${set}/${name}@mask`;
+  const cached = _cache.get(cacheKey);
+  if (cached) return cached;
+
+  const artwork = mapIconArtwork(set, name);
+  if (!artwork) return null;
+  const { geometry, box } = artwork;
+  // The SAME padded viewBox as the raster, so a glyph does not change its
+  // optical weight between the globe and the panel.
+  const pad = box / MAP_ICON_DEFAULT_BOX;
+  const viewBox = box === MAP_ICON_DEFAULT_BOX
+    ? MAP_ICON_VIEW_BOX
+    : `${-pad} ${-pad} ${box + 2 * pad} ${box + 2 * pad}`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">`
+    + `<g fill="#000000" stroke="none">${geometry}</g>`
+    + '</svg>';
+  const uri = `data:image/svg+xml;base64,${_b64(svg)}`;
+  _cache.set(cacheKey, uri);
+  return uri;
 }
 
 /**
