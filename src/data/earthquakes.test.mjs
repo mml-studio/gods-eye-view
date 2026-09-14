@@ -24,6 +24,11 @@ import {
   EARTHQUAKE_SELECTED_OVERLAY_SOURCE_ID,
   ageBandFor,
   buildEarthquakeCard,
+  classifyEarthquakeMagnitude,
+  describeEarthquakeDepth,
+  frenchEarthquakePlace,
+  magnitudeGauge,
+  EARTHQUAKE_GAUGE_CELLS,
   buildEarthquakeLegend,
   buildEarthquakeNote,
   createEarthquakeOverlayEntry,
@@ -239,7 +244,8 @@ test('the key states the colour and the two domains, and stays short', () => {
   // The ruler must still say it is a reading device, never a position, and the
   // point must still refuse the footprint reading the old radius invited.
   assert.match(depth.blurb, /la tige monte, le foyer descend/);
-  assert.match(size.blurb, /Ni énergie, ni emprise/);
+  // D3 moved the energy ratio here, the only surface left that keys the MARK.
+  assert.match(size.blurb, /Ni énergie — \+1 vaut ×31,6 —, ni emprise/);
 
   // The colour channel keeps every class, with its count (D1).
   for (const band of EARTHQUAKE_AGE_BANDS) assert.ok(labels.includes(band.label), band.label);
@@ -598,14 +604,21 @@ test('real earthquake lifecycle publishes host labels while runtime entities car
 });
 
 // ── The card, and the click that opens it ───────────────────────────────────
-// The caveats the key used to print permanently now travel on the card of the
-// event they are about. That only holds if every one of them is actually
-// attached to a number, so the pin is per-line rather than "the card mentions
-// the ruler somewhere".
+// D3: the card answers « what is this earthquake », never « what is this disc ».
+// The pins below are per-line, because the failure this guards against is one
+// rendering caveat creeping back in next to the measurements.
 
 const CARD_NOW = Date.parse('2026-09-10T20:30:00Z');
 
-test('the card pairs every measurement with the caveat that belongs to it', () => {
+/** Local noon on the reader's calendar day, ± whole days — DST-proof. */
+function localNoon(dayOffset = 0) {
+  const d = new Date(CARD_NOW);
+  d.setDate(d.getDate() + dayOffset);
+  d.setHours(12, 0, 0, 0);
+  return d.getTime();
+}
+
+test('the card decodes the magnitude instead of printing it bare', () => {
   const card = buildEarthquakeCard({
     id: 'us7000abcd',
     magnitude: 4.1,
@@ -615,44 +628,53 @@ test('the card pairs every measurement with the caveat that belongs to it', () =
   }, CARD_NOW);
   const [title, ...details] = card.split('\n');
 
-  assert.equal(title, 'M4,1');
-  // The magnitude line carries its own pixel size AND the energy ratio: the
-  // whole reason the key no longer has to.
-  const mag = details.find((line) => line.includes('px'));
-  assert.match(mag, /10,8 px/);
-  assert.match(mag, /la magnitude, pas l’énergie/);
-  assert.match(mag, /×31,6/);
-  assert.match(mag, /aucune emprise/);
+  // The number AND what it means, on the line the reader cannot miss.
+  assert.equal(title, 'Magnitude 4,1 — secousse modérée');
+  assert.ok(details.includes('Ressentie sur place, dégâts rares.'), card);
 
-  // The depth line carries the ruler's direction, next to the depth.
-  const depth = details.find((line) => line.startsWith('↧'));
-  assert.match(depth, /12,3 km sous le niveau de la mer/);
-  assert.match(depth, /VERS LE HAUT/);
+  // The gauge spans the key's own domain, so the two surfaces agree on where
+  // the scale stops — and it is filled cells, never the sparkline ramp.
+  const gauge = details.find((line) => line.includes('█'));
+  assert.match(gauge, /^2,5 █+─+ 9,5 record mondial$/);
+  assert.doesNotMatch(gauge, /[▁▂▃▄▅▆▇░]/);
 
-  // E1 — the instant REPRESENTED, in UTC because the feed is worldwide, then
-  // the distance to now.
-  assert.ok(details.includes('🕐 2026-09-10 20:24 UTC · il y a 6 min'), card);
-  assert.ok(details.includes('📍 5 km NE of Mraighah, Lebanon'), card);
-  assert.ok(details.some((line) => line.includes('us7000abcd')), card);
+  // The depth line trades the ruler's direction for what depth does at the
+  // surface, and drops the decimal USGS pads whole numbers with.
+  const depth = details.findIndex((line) => line.startsWith('↓'));
+  assert.equal(details[depth], '↓ foyer à 12,3 km sous le niveau de la mer');
+  assert.equal(details[depth + 1], '   peu profond, donc ressenti plus fort');
+
+  // E1 — the instant REPRESENTED, on the reader's calendar, then the distance
+  // to now.
+  assert.ok(details.some((line) => /^🕐 aujourd’hui à \d{1,2} h \d{2} chez vous · il y a 6 min$/.test(line)), card);
+  assert.ok(details.includes('📍 5 km au nord-est de Mraighah, Lebanon'), card);
+  assert.ok(details.includes('Source : USGS, institut géologique américain'), card);
+
+  // Nothing on the card describes the mark the reader just clicked: no pixel
+  // size, no energy ratio, no ruler direction, no opaque event id.
+  assert.doesNotMatch(card, / px|×31,6|VERS LE HAUT|us7000abcd/);
 
   // No line is pre-wrapped: the host measures and breaks against maxWidthPx.
   assert.ok(details.every((line) => line.length < 200));
 });
 
-test('the card names the three A1 fallbacks in the reader’s own words', () => {
+test('the card names the A1 fallbacks in the reader’s own words', () => {
   const noDepth = buildEarthquakeCard({
     id: 'a', magnitude: 2.6, depthKm: null, place: 'Nevada', timeMs: null,
   }, CARD_NOW);
-  assert.match(noDepth, /profondeur non publiée — aucune tige, et le point est creux/);
-  assert.match(noDepth, /horodatage non publié/);
+  assert.match(noDepth, /↓ profondeur non publiée par l’USGS/);
+  assert.match(noDepth, /🕐 date non publiée par l’USGS/);
   assert.doesNotMatch(noDepth, /NaN|undefined|null/);
+  // Why the point is a hollow ring is the KEY's job; the card owes the reader
+  // only that the number does not exist.
+  assert.doesNotMatch(noDepth, /tige|creux/);
 
-  // A measured zero is a measurement, and the card says where the 1:1 stops.
+  // A measured zero is a measurement, and reads as one.
   const floored = buildEarthquakeCard({
     id: 'b', magnitude: 6.8, depthKm: 0, place: 'Ridgecrest, CA', timeMs: CARD_NOW,
   }, CARD_NOW);
-  assert.match(floored, /0,0 km sous le niveau de la mer/);
-  assert.match(floored, /tige au plancher d’1 km/);
+  assert.match(floored, /Magnitude 6,8 — séisme destructeur/);
+  assert.match(floored, /foyer à 0 km sous le niveau de la mer/);
 
   // USGS publishes NEGATIVE depths for foci above sea level. The datum is
   // named with the sign, never as a double negative.
@@ -661,20 +683,79 @@ test('the card names the three A1 fallbacks in the reader’s own words', () => 
   }, CARD_NOW);
   assert.match(above, /1,4 km au-dessus du niveau de la mer/);
   assert.doesNotMatch(above, /-1,4|−1,4/);
+
+  // An unmeasured magnitude loses the title's class and the gauge, not the card.
+  const noMag = buildEarthquakeCard({
+    id: 'd', magnitude: null, depthKm: 8, place: 'Nevada', timeMs: CARD_NOW,
+  }, CARD_NOW);
+  assert.match(noMag, /^Magnitude non publiée\n/);
+  assert.doesNotMatch(noMag, /█/);
 });
 
-test('the age line keeps the minutes an age band would round across', () => {
+test('every magnitude and depth lands in exactly one class', () => {
+  // Whole-unit boundaries belong to the class they open, and the gauge never
+  // empties — an empty bar reads as « no data », and a floor event is data.
+  assert.equal(classifyEarthquakeMagnitude(2.5).label, 'secousse très faible');
+  assert.equal(classifyEarthquakeMagnitude(4).label, 'secousse modérée');
+  assert.equal(classifyEarthquakeMagnitude(6.999).label, 'séisme destructeur');
+  assert.equal(classifyEarthquakeMagnitude(9.5).label, 'séisme dévastateur');
+  assert.equal(classifyEarthquakeMagnitude(null), null);
+
+  assert.equal(magnitudeGauge(EARTHQUAKE_MAG_FLOOR), `█${'─'.repeat(13)}`);
+  assert.equal(magnitudeGauge(EARTHQUAKE_MAG_DOMAIN_MAX), '█'.repeat(14));
+  // Clamped at both ends, like the disc it stands for.
+  assert.equal(magnitudeGauge(12), magnitudeGauge(EARTHQUAKE_MAG_DOMAIN_MAX));
+  assert.equal(magnitudeGauge(-3), magnitudeGauge(EARTHQUAKE_MAG_FLOOR));
+  assert.equal(magnitudeGauge('4.9'), null);
+  for (const mag of [2.5, 3.7, 4.9, 6, 8.2, 9.5]) {
+    assert.equal(magnitudeGauge(mag).length, EARTHQUAKE_GAUGE_CELLS);
+  }
+
+  // 70 and 300 km are seismology's own shallow / intermediate / deep cuts.
+  assert.match(describeEarthquakeDepth(69.9), /peu profond/);
+  assert.match(describeEarthquakeDepth(70), /profondeur moyenne/);
+  assert.match(describeEarthquakeDepth(300), /très profond/);
+  assert.match(describeEarthquakeDepth(-1.4), /peu profond/);
+  assert.equal(describeEarthquakeDepth(null), null);
+});
+
+test('USGS place strings are French where their grammar is mechanical', () => {
+  assert.equal(frenchEarthquakePlace('86 km SSW of Isangel, Vanuatu'),
+    '86 km au sud-sud-ouest d’Isangel, Vanuatu');
+  // Both elisions: « à l’est » on the bearing, « de Mraighah » on the name.
+  assert.equal(frenchEarthquakePlace('5 km ENE of Mraighah, Lebanon'),
+    '5 km à l’est-nord-est de Mraighah, Lebanon');
+  assert.equal(frenchEarthquakePlace('12km W of Big Bear City, CA'),
+    '12 km à l’ouest de Big Bear City, CA');
+  assert.equal(frenchEarthquakePlace('1234 km N of Ambon, Indonesia'),
+    '1 234 km au nord d’Ambon, Indonesia');
+  // The forms that would need a phrasebook are passed through, never guessed.
+  assert.equal(frenchEarthquakePlace('South of the Fiji Islands'), 'South of the Fiji Islands');
+  assert.equal(frenchEarthquakePlace('Balleny Islands region'), 'Balleny Islands region');
+  assert.equal(frenchEarthquakePlace(null), '');
+});
+
+test('the age line cannot be misread as a second time of day', () => {
   const at = (ms) => buildEarthquakeCard(
     { id: 'x', magnitude: 4, depthKm: 10, place: 'p', timeMs: CARD_NOW - ms },
     CARD_NOW,
   );
   assert.match(at(30e3), /à l’instant/);
   assert.match(at(6 * 60e3), /il y a 6 min/);
-  // 90 minutes is in the 1–6 h band; « il y a 2 h » would read as the far side
-  // of a boundary the colour beside it has not crossed.
-  assert.match(at(90 * 60e3), /il y a 1 h 30/);
-  assert.match(at(2 * 3600e3), /il y a 2 h(?! )/);
-  assert.equal(formatEarthquakeInstant(Date.parse('2026-01-02T00:04:00Z')), '2026-01-02 00:04 UTC');
+  // Floored, never rounded: the narrowest age band is one hour, so « il y a
+  // 2 h » at 90 minutes would read as the far side of a boundary the colour
+  // beside it has not crossed. And no « il y a 11 h 11 » beside a wall clock.
+  assert.match(at(90 * 60e3), /il y a 1 h(?! \d)/);
+  assert.match(at(11 * 3600e3 + 11 * 60e3), /il y a 11 h(?! \d)/);
+
+  // The clock is the READER's day, named as theirs.
+  assert.match(formatEarthquakeInstant(localNoon(0), CARD_NOW), /^aujourd’hui à 12 h 00 chez vous$/);
+  assert.match(formatEarthquakeInstant(localNoon(-1), CARD_NOW), /^hier à 12 h 00 chez vous$/);
+  assert.match(formatEarthquakeInstant(localNoon(-4), CARD_NOW), /^le \d{1,2} septembre à 12 h 00 chez vous$/);
+  // French writes « 9 h 05 », not « 09 h 05 », and never « 24 h ».
+  const midnight = new Date(CARD_NOW);
+  midnight.setHours(0, 5, 0, 0);
+  assert.match(formatEarthquakeInstant(midnight.getTime(), CARD_NOW), /à 0 h 05 chez vous$/);
 });
 
 test('the card entry is protected, anchored above its mark, and off the age ramp', () => {
@@ -687,7 +768,7 @@ test('the card entry is protected, anchored above its mark, and off the age ramp
   assert.equal(entry.variant, 'selected');
   assert.equal(entry.protected, true);
   assert.equal(entry.placement, 'above');
-  assert.equal(entry.title, 'M5,0');
+  assert.equal(entry.title, 'Magnitude 5,0 — secousse forte');
   assert.ok(entry.details.length >= 4);
   // The accent may never be a hue the age ramp uses, or the card would read as
   // a fifth age.
