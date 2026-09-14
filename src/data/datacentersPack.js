@@ -435,10 +435,16 @@ export const DATACENTER_POINTLESS_PX = 9;
  * re-extraction that shifts these proportions shows up as a stale comment
  * rather than as a silent change of what the map says.
  *
- * `label` and `blurb` are CARD copy — the sentence one clicked site gets about
- * itself. They are no longer the legend's: the key folds these four classes
- * into the three lines of {@link DATACENTER_LEGEND_ROWS}, for the reason
- * documented there.
+ * `label` and `blurb` are NOT rendered anywhere, and that is a change: they were
+ * the legend's until the key folded these four classes into the three lines of
+ * {@link DATACENTER_LEGEND_ROWS} (the reason is documented there). What they are
+ * now is this file's own record of what each class IS — the measurement behind
+ * "a fence is not a hall" (medians 31 204 m² against 5 008 m²), and behind "no
+ * default height is invented" (63 % of the pack publishes none). They are
+ * reachable through {@link datacenterSurfaceInfo}, which is a seam with no
+ * caller today; `count` is the half that IS load-bearing, cross-checked against
+ * the shipped file by `datacentersPack.test.mjs` so a re-extraction that shifts
+ * these proportions fails rather than quietly changing what the map says.
  */
 export const DATACENTER_SURFACES = Object.freeze([
   Object.freeze({
