@@ -1,7 +1,15 @@
 import * as Cesium from 'cesium';
-import { DPE_LABELS } from './dpeFeed.js';
+import {
+  DPE_CELL_BREAKS,
+  DPE_CELL_MIN_TOTAL,
+  DPE_LABELS,
+  DPE_POOR_SHARE_NATIONAL,
+} from './dpeFeed.js';
 import { addressMarkerGlyph, dpeLetterKind } from './addressMarkerIcons.js';
-import { createAddressScanLayer } from './addressScanLayer.js';
+import { ADDRESS_SCAN_MIN_SHIFT_KM, createAddressScanLayer } from './addressScanLayer.js';
+import { drawScanBoundary } from './scanBoundary.js';
+import { cellDiscRadiusM, discRing } from './scanCells.js';
+import { SCAN_CELL_MIN_ALTITUDE_M, scanCellParams } from './scanRegime.js';
 import { bdtopoLoadedFootprints } from './bdtopoBuildings.js';
 import {
   clearBuildingTheme,
@@ -749,6 +757,27 @@ export function dpeRowControls(payload) {
  * @returns {object}
  */
 export function dpeSummarize(payload) {
+  if (Array.isArray(payload?.cells)) {
+    const summary = payload.summary || {};
+    return {
+      // `scanBasis` is what tells a caller which question was answered, and the
+      // voice surface reads it before quoting anything: "9,1 % de passoires sur
+      // la vue" and "9,1 % dans les 200 m" are different sentences.
+      scanBasis: 'cells',
+      cellCount: summary.cells ?? 0,
+      diagnosticsTotal: summary.total ?? 0,
+      // NAMED THE SAME AS THE DISC REGIME'S, because it is the same quantity
+      // measured over different ground — a share of F and G over the labelled
+      // diagnostics the scan reached.
+      poorCount: summary.poor ?? 0,
+      poorShare: summary.poorShare ?? null,
+      poorShareNational: DPE_POOR_SHARE_NATIONAL,
+      truncated: summary.truncated === true,
+      tilesMissing: summary.tilesMissing ?? 0,
+      coverage: dpeCellDisclosure(payload),
+      legend: dpeCellRowControls(payload).legend,
+    };
+  }
   const distribution = payload?.distribution || {};
   const labelled = DPE_LABELS.reduce((sum, letter) => sum + (distribution[letter] || 0), 0);
   const poor = (distribution.F || 0) + (distribution.G || 0);
@@ -990,6 +1019,243 @@ function drawSiteGround(dataSource, site, classificationType) {
 
 /* ── the layer ─────────────────────────────────────────────────────────── */
 
+/* ── the cell regime ───────────────────────────────────────────────────── */
+/**
+ * Above 600 m this layer stops drawing one badge per building and draws one
+ * disc per patch of ground. See `scanRegime.js` for the switch; what follows is
+ * what the mark claims and — just as importantly — what it refuses to claim.
+ *
+ * IT IS NOT A NEIGHBOURHOOD GRADE. This module has refused to average letters
+ * into one since it was written, and aggregating over a cell is exactly the
+ * place that refusal would quietly break: the mean of a block's A to G is not a
+ * property of the block, and a single letter over forty dwellings is a claim
+ * about none of them. So the cell carries a COUNT, not a letter — the share of
+ * F and G, the *passoires thermiques*, which is the one cut of this register
+ * with a legal consequence attached to it and the one the building card already
+ * makes.
+ *
+ * THE RAMP IS ITS OWN, and it has to be. The seven official DPE colours run
+ * green to red and are spent on the letters; a share is a different quantity
+ * with a different order — "more of something", not "which rung" — so it gets a
+ * sequential blue-to-magenta ramp measured clear of both the letters and the
+ * DVF price ramp (nearest neighbour ΔE76 17.4, adjacent steps 25 to 47).
+ */
+export const DPE_POOR_BREAKS = Object.freeze([25, 15, 5, 0]);
+
+/** @type {ReadonlyArray<{id: string, min: number, color: string, label: string, blurb: string}>} */
+export const DPE_POOR_CLASSES = Object.freeze([
+  Object.freeze({
+    id: 'very-high',
+    min: 25,
+    color: '#e02f8c',
+    label: '25 % et plus',
+    blurb: 'Au moins un logement diagnostiqué sur quatre est classé F ou G — deux fois et demie '
+      + 'la part du registre national.',
+  }),
+  Object.freeze({
+    id: 'high',
+    min: 15,
+    color: '#9a3fc4',
+    label: '15 à 25 %',
+    blurb: 'Nettement au-dessus de la part du registre national.',
+  }),
+  Object.freeze({
+    id: 'near',
+    min: 5,
+    color: '#7b6fe0',
+    label: '5 à 15 %',
+    blurb: 'La bande où tombe le registre national (9,75 %) : un îlot ordinaire à cette échelle.',
+  }),
+  Object.freeze({
+    id: 'low',
+    min: 0,
+    color: '#6fa3ee',
+    label: 'moins de 5 %',
+    blurb: 'Deux fois moins de passoires que le registre national.',
+  }),
+  Object.freeze({
+    id: 'none',
+    min: -Infinity,
+    color: '#9adcf5',
+    label: 'aucune',
+    blurb: 'Aucun diagnostic F ou G publié dans cette cellule.',
+  }),
+]);
+
+/** The colour of a cell's share, or the unlabelled grey when it has none. */
+export function dpePoorClass(share) {
+  if (!(typeof share === 'number' && Number.isFinite(share))) return null;
+  if (share <= 0) return DPE_POOR_CLASSES[DPE_POOR_CLASSES.length - 1];
+  return DPE_POOR_CLASSES.find((entry) => share >= entry.min) || null;
+}
+
+/** class id → number of CELLS. */
+export function countPoorCells(cells) {
+  const counts = new Map();
+  for (const cell of cells || []) {
+    const klass = dpePoorClass(cell?.poorShare);
+    counts.set(klass ? klass.id : 'unknown', (counts.get(klass ? klass.id : 'unknown') || 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * The key in cell mode: the five share classes, plus the cells that have too
+ * few diagnostics to carry a share at all.
+ * @param {object} payload @returns {object}
+ */
+export function dpeCellRowControls(payload) {
+  const counts = countPoorCells(payload?.cells);
+  const legend = DPE_POOR_CLASSES.map((klass) => ({
+    label: klass.label,
+    color: klass.color,
+    count: counts.get(klass.id) || 0,
+    blurb: klass.blurb,
+  }));
+  legend.push({
+    label: `moins de ${DPE_CELL_MIN_TOTAL} DPE`,
+    color: COLOR_UNLABELLED_CSS,
+    count: counts.get('unknown') || 0,
+    blurb: `Trop peu de diagnostics pour publier un taux : sous ${DPE_CELL_MIN_TOTAL}, un seul `
+      + 'DPE déplace la part de plus de douze points et le chiffre porterait '
+      + 'l\'échantillonnage, pas l\'îlot. La cellule est quand même dessinée, à la taille '
+      + 'que son nombre lui vaut.',
+  });
+  return {
+    legend,
+    // ORDERED CLASSES, SO ONE BAR — the same argument the price ramp makes next
+    // door: how an area's blocks fall around the national share is one
+    // distribution of one population.
+    legendBar: true,
+    legendNote: dpeCellLegendNote(payload),
+    note: dpeCellDisclosure(payload),
+  };
+}
+
+/** What the colours are read against, named — the anchor, and what it is not. */
+export function dpeCellLegendNote(payload) {
+  const summary = payload?.summary || {};
+  const here = Number.isFinite(summary.poorShare)
+    ? `${summary.poorShare.toLocaleString('fr-FR')} % ici`
+    : null;
+  return [
+    `Part de passoires (F ou G) · ${DPE_POOR_SHARE_NATIONAL.toLocaleString('fr-FR')} % `
+      + 'dans le registre national',
+    here,
+    // A2: the denominator is the REGISTER, not the housing stock. A DPE is
+    // compulsory on a sale or a new let, so the register over-represents what
+    // has changed hands recently — calling this a share of French housing
+    // would be a different and unsupported claim.
+    'un DPE est obligatoire à la vente et à la location : le registre n’est pas le parc',
+    'taille du disque = nombre de DPE',
+  ].filter(Boolean).join(' · ');
+}
+
+/** The A5 line in cell mode. */
+export function dpeCellDisclosure(payload) {
+  const summary = payload?.summary || {};
+  const parts = [];
+  const spanKm = payload?.box
+    ? ((payload.box.north - payload.box.south) * 110.54).toFixed(1).replace('.', ',')
+    : null;
+  parts.push(`vue agrégée sur ${spanKm ? `${spanKm} km` : 'la boîte'} de côté`);
+  parts.push(`${plural(summary.total || 0, 'DPE', 'DPE')} en ${plural(summary.cells || 0, 'cellule')}`);
+  if (summary.tilesMissing > 0) {
+    parts.push(`${summary.tilesMissing} tuile(s) sur ${summary.tiles} sans réponse : `
+      + 'ce sol est vide faute de donnée, pas faute de diagnostic');
+  }
+  if (summary.truncated) {
+    parts.push('agrégation écrêtée par l’API : la grille est un sous-ensemble du sol');
+  }
+  parts.push(`descendre sous ${SCAN_CELL_MIN_ALTITUDE_M} m pour retrouver chaque bâtiment, `
+    + 'son emprise et ses étiquettes');
+  const line = parts.join(' · ');
+  return `${line.charAt(0).toUpperCase()}${line.slice(1)}.`;
+}
+
+/** The card a cell opens. */
+export function dpeCellCard(cell) {
+  const klass = dpePoorClass(cell?.poorShare);
+  return [
+    `${plural(cell.total, 'DPE', 'DPE')} dans cette cellule`,
+    cell.poorShare === null
+      ? `moins de ${DPE_CELL_MIN_TOTAL} diagnostics : aucun taux publié`
+      : `${plural(cell.poor, 'passoire')} (F ou G) — ${cell.poorShare.toLocaleString('fr-FR')} %`,
+    klass && cell.poorShare !== null ? klass.label : null,
+    cell.poorShare !== null
+      ? `registre national ${DPE_POOR_SHARE_NATIONAL.toLocaleString('fr-FR')} %`
+      : null,
+    // The layer's own refusal, restated where a reader could most easily read
+    // past it: this disc is a count of F and G, never a grade for the block.
+    'part de F et G, jamais une note moyenne du quartier',
+    `descendre sous ${SCAN_CELL_MIN_ALTITUDE_M} m pour les étiquettes bâtiment par bâtiment`,
+  ].filter(Boolean).join(' · ');
+}
+
+/**
+ * Draw the cells. Clamped to whatever surface the globe is drawing, exactly as
+ * the site footprints next door are.
+ * @returns {number} Discs drawn.
+ */
+function drawDpeCells(payload, dataSource, classificationType) {
+  const cells = payload?.cells || [];
+  const breaks = DPE_CELL_BREAKS[payload?.band] || DPE_CELL_BREAKS.fine;
+  let drawn = 0;
+  for (const cell of cells) {
+    const radiusM = cellDiscRadiusM(cell, cell.total, breaks);
+    if (!(radiusM > 0)) continue;
+    const klass = dpePoorClass(cell.poorShare);
+    const css = klass ? klass.color : COLOR_UNLABELLED_CSS;
+    const ring = discRing(cell.lon, cell.lat, radiusM);
+    const positions = Cesium.Cartesian3.fromDegreesArray(ring.flat());
+    const name = cell.poorShare === null
+      ? plural(cell.total, 'DPE', 'DPE')
+      : `${cell.poorShare.toLocaleString('fr-FR')} % de passoires`;
+    const description = dpeCellCard(cell);
+    dataSource.entities.add({
+      id: `dpe-cell:${cell.key}`,
+      name,
+      description,
+      properties: {
+        kind: 'dpe-cell',
+        diagnostics: cell.total,
+        poor: cell.poor,
+        poorShare: cell.poorShare,
+        poorClass: klass ? klass.id : null,
+      },
+      polygon: {
+        hierarchy: new Cesium.PolygonHierarchy(positions),
+        material: Cesium.Color.fromCssColorString(css).withAlpha(DPE_CELL_FILL_ALPHA),
+        classificationType,
+        outline: false,
+      },
+    });
+    dataSource.entities.add({
+      id: `dpe-cell:${cell.key}:edge`,
+      name,
+      description,
+      polyline: {
+        positions: [...positions, positions[0]],
+        width: DPE_CELL_OUTLINE_WIDTH_PX,
+        material: new Cesium.ColorMaterialProperty(
+          Cesium.Color.fromCssColorString(css).withAlpha(DPE_CELL_OUTLINE_ALPHA),
+        ),
+        clampToGround: true,
+        classificationType,
+      },
+    });
+    drawn += 1;
+  }
+  return drawn;
+}
+
+/** Same ink as the price cells next door, for the same reason. */
+const DPE_CELL_FILL_ALPHA = 0.15;
+/** Whether the answer ON SCREEN is a field of cells — see `dvfSales.js`. */
+let _cellMode = false;
+const DPE_CELL_OUTLINE_ALPHA = 0.8;
+const DPE_CELL_OUTLINE_WIDTH_PX = 1.4;
+
 const dpeScanLayer = createAddressScanLayer({
   id: 'dpe-fr',
   name: THEME_LABEL,
@@ -997,10 +1263,33 @@ const dpeScanLayer = createAddressScanLayer({
   source: 'ADEME — Observatoire DPE',
   endpoint: '/api/dpe',
   updateInterval: UPDATE_INTERVAL_MS,
-  params: () => ({ radius: String(SCAN_RADIUS_M), limit: String(SCAN_LIMIT) }),
+  // Two questions, one route — see `dvfSales.js` for the contract.
+  params: (point) => {
+    const cells = scanCellParams(point);
+    return Object.keys(cells).length
+      ? cells
+      : { radius: String(SCAN_RADIUS_M), limit: String(SCAN_LIMIT) };
+  },
+  minShiftKm: () => (_cellMode ? 0.6 : ADDRESS_SCAN_MIN_SHIFT_KM),
 
-  render({ payload, dataSource, viewer }) {
+  render({ payload, dataSource, viewer, point }) {
     _dataSource = dataSource;
+    // The payload decides, not the camera — see `dvfSales.js`.
+    _cellMode = Array.isArray(payload?.cells);
+    if (_cellMode) {
+      // The volumes are painted from a building's own diagnostics and a cell
+      // has none. Withdrawn rather than left standing: a city tinted from the
+      // block the reader flew away from is the failure `withdrawTheme` exists
+      // for, reached by a different road.
+      _entries = [];
+      _sites = [];
+      _join = null;
+      _themeDirty = false;
+      withdrawTheme();
+      const drawn = drawDpeCells(payload, dataSource, gpuClassificationTypeForScene(viewer?.scene));
+      drawScanBoundary(dataSource, { id: 'dpe:scan-edge', box: payload.box });
+      return drawn;
+    }
     _entries = payload.entries || [];
     // The proxy resolves the sites, because it is the only side that can buy
     // their shapes. `groupDpeSites` is run here anyway when it could not — an
@@ -1064,6 +1353,13 @@ const dpeScanLayer = createAddressScanLayer({
       });
       drawn += 1;
     }
+    // The edge of the scanned disc — see `dvfSales.js` and `scanBoundary.js`.
+    // Never counted: `drawn` is badges, and the row prints badges.
+    drawScanBoundary(dataSource, {
+      id: 'dpe:scan-edge',
+      centre: point,
+      radiusM: SCAN_RADIUS_M,
+    });
     return drawn;
   },
 
@@ -1075,6 +1371,10 @@ const dpeScanLayer = createAddressScanLayer({
    */
   selectionFor(entityId) {
     const id = String(entityId ?? '');
+    // A cell's disc and its edge are one subject too.
+    if (id.startsWith('dpe-cell:') && id.endsWith(':edge')) {
+      return id.slice(0, -':edge'.length);
+    }
     for (const prefix of ['dpe:bati:', 'dpe:parcelle:']) {
       if (!id.startsWith(prefix)) continue;
       // `dpe:bati:<key>:<part>` and `dpe:bati:<key>:<part>:<ring>` both name
@@ -1085,7 +1385,9 @@ const dpeScanLayer = createAddressScanLayer({
     return null;
   },
 
-  rowControls: (_runtime, _summary, payload) => dpeRowControls(payload),
+  rowControls: (_runtime, _summary, payload) => (Array.isArray(payload?.cells)
+    ? dpeCellRowControls(payload)
+    : dpeRowControls(payload)),
 
   summarize: dpeSummarize,
 });
@@ -1114,6 +1416,7 @@ const dpeFranceLayer = {
     _sites = [];
     _join = null;
     _themeDirty = false;
+    _cellMode = false;
     withdrawTheme();
     return dpeScanLayer.enable(...args);
   },
@@ -1124,6 +1427,7 @@ const dpeFranceLayer = {
     _sites = [];
     _join = null;
     _themeDirty = false;
+    _cellMode = false;
     // Before the shell hides the markers, so the volumes and the badges leave
     // together rather than the city staying painted by a layer that is off.
     withdrawTheme();
@@ -1136,6 +1440,7 @@ const dpeFranceLayer = {
     _sites = [];
     _join = null;
     _themeDirty = false;
+    _cellMode = false;
     _dataSource = null;
     _rowControlsListener = null;
     withdrawTheme();

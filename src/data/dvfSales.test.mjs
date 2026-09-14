@@ -38,26 +38,32 @@ import {
 import { BDTOPO_USAGE_TIERS } from './bdtopoBuildingsFeed.js';
 import * as Cesium from 'cesium';
 import dvfSalesLayer, {
+  _dvfSetThemePayloadForTest,
+  _dvfWithdrawIfDormantForTest,
   COLOR_NO_BASIS,
   COLOR_NO_RATIO,
   DVF_LAYER_ID,
   DVF_RATIO_BREAKS,
   DVF_RATIO_CLASSES,
   DVF_THEME_PRECEDENCE,
-  _dvfSetThemePayloadForTest,
-  _dvfWithdrawIfDormantForTest,
+  DVF_TYPE_FILTERS,
+  countCellsByClass,
+  drawDvfParcels,
+  dvfCellClass,
+  dvfCellColorCss,
+  dvfCellDisclosure,
+  dvfCellLegendNote,
+  dvfCellReference,
+  dvfLegendDisclosure,
   dvfLegendEntries,
   dvfLegendNote,
-  dvfLegendDisclosure,
+  dvfMostRecentSale,
+  dvfReference,
+  dvfSaleCard,
   dvfSaleRecord,
   dvfVoiceSummary,
-  DVF_TYPE_FILTERS,
-  drawDvfParcels,
-  dvfMostRecentSale,
-  dvfSaleCard,
-  filterSalesByType,
-  dvfReference,
   dvfYearsLabel,
+  filterSalesByType,
   saleColorCss,
   saleRatioClass,
   saleRatioPrice,
@@ -688,4 +694,106 @@ test('the drawn payload is what answers, capped like every other layer', () => {
   assert.equal(dvfSalesLayer.getAnalystRecords()[0].id, 'dvf:s0');
   _dvfSetThemePayloadForTest(null, false);
   clearAllBuildingThemes();
+});
+
+// ── the cell regime ────────────────────────────────────────────────────────
+test('a cell is coloured by the same frozen ramp as a sale', () => {
+  // The whole argument for changing the UNIT and not the language: a reader
+  // who learned the ramp at street level reads the same ramp from altitude.
+  assert.equal(dvfCellClass(1.4).id, 'very-high');
+  assert.equal(dvfCellClass(1.1).id, 'high');
+  assert.equal(dvfCellClass(1).id, 'at-median');
+  assert.equal(dvfCellClass(0.8).id, 'low');
+  assert.equal(dvfCellClass(0.4).id, 'very-low');
+  for (const klass of DVF_RATIO_CLASSES) {
+    assert.equal(dvfCellClass(klass.min === -Infinity ? 0.01 : klass.min).id, klass.id);
+  }
+});
+
+test('a cell the register could not price takes the neutral, never a band', () => {
+  assert.equal(dvfCellClass(null), null);
+  assert.equal(dvfCellClass(0), null);
+  assert.equal(dvfCellColorCss({ medianRatio: null }), COLOR_NO_RATIO);
+  assert.equal(dvfCellColorCss({ medianRatio: 1 }), DVF_RATIO_CLASSES[2].color);
+});
+
+test('the key in cell mode labels the RATIOS, because there is no single median', () => {
+  // Two communes, two denominators — so restating the breaks in €/m² would
+  // have to pick one of them and would be false for the other.
+  const payload = {
+    years: [2025, 2024, 2023],
+    cells: [],
+    summary: {
+      references: [
+        { code: '69386', name: 'Lyon 6e', medianPrixM2: 5_500, count: 2_661, comparableCount: 1_808 },
+        { code: '69383', name: 'Lyon 3e', medianPrixM2: 4_660, count: 5_417, comparableCount: 3_500 },
+      ],
+    },
+  };
+  const reference = dvfCellReference(payload);
+  assert.equal(reference.medianPrixM2, null);
+  assert.equal(reference.basis, 'communes');
+  const entries = dvfLegendEntries(reference, new Map());
+  assert.equal(entries[0].label, '+25 % et plus');
+  // And every denominator is named rather than counted.
+  const note = dvfCellLegendNote(payload);
+  assert.match(note, /Lyon 6e/);
+  assert.match(note, /Lyon 3e/);
+  assert.match(note, /5\s500/u);
+  assert.match(note, /4\s660/u);
+  assert.match(note, /taille du disque/);
+});
+
+test('the cell key counts CELLS, and the neutral has its own bucket', () => {
+  const counts = countCellsByClass([
+    { medianRatio: 1.4 }, { medianRatio: 1.4 }, { medianRatio: 1 }, { medianRatio: null },
+  ]);
+  assert.equal(counts.get('very-high'), 2);
+  assert.equal(counts.get('at-median'), 1);
+  assert.equal(counts.get('no-ratio'), 1);
+});
+
+test('the A5 line names the box, the grid and what the probe can miss', () => {
+  const note = dvfCellDisclosure({
+    box: { south: 45.77, west: 4.84, north: 45.79, east: 4.86 },
+    communes: [{ code: '69386', name: 'Lyon 6e' }, { code: '69383', name: 'Lyon 3e' }],
+    communesProbed: 9,
+    unavailableYears: [2025],
+    summary: { cellM: 150, count: 1_324, pricedCount: 901 },
+  });
+  assert.match(note, /2,2 km/);
+  assert.match(note, /cellules de 150 m/);
+  // `toLocaleString('fr-FR')` groups with a NARROW NO-BREAK SPACE, not a space.
+  assert.match(note, /1\s324\sventes/u);
+  assert.match(note, /sondage/);
+  assert.match(note, /2025/);
+  assert.match(note, /descendre sous 600 m/);
+});
+
+test('the voice surface never claims a radius it did not use', () => {
+  // The failure this guards: a box answer published with `radiusM: 300` beside
+  // it, and a caller saying "sur les 300 m autour de vous" about two kilometres.
+  const cells = dvfVoiceSummary({
+    dormant: false,
+    scanBasis: 'cells',
+    salesFound: 1_324,
+    comparableCount: 901,
+    cellSizeM: 150,
+    localMedianPrixM2: 5_458,
+    scanCentre: { lat: 45.777, lon: 4.8498 },
+    communes: ['Lyon 6e', 'Lyon 3e'],
+  });
+  assert.equal(cells.basis, 'cells');
+  assert.equal(cells.radiusM, undefined);
+  assert.equal(cells.salesInView, 1_324);
+  // And it says out loud that there is no per-sale list up here, because
+  // `getAnalystRecords` returns none and an empty list reads as "no sales".
+  assert.match(cells.note, /not by\s+sale|by AREA/);
+  assert.match(cells.note, /600 m/);
+});
+
+test('the disc regime still answers with its radius', () => {
+  const disc = dvfVoiceSummary({ dormant: false, salesFound: 102, count: 102 });
+  assert.equal(disc.radiusM, 300);
+  assert.equal(disc.basis, undefined);
 });

@@ -149,6 +149,7 @@ import {
 } from './src/data/communeContours.js';
 import {
   DVF_FIRST_YEAR,
+  aggregateSalesIntoCells,
   buildDvfUrl,
   clampDvfRadius,
   dvfCoverage,
@@ -157,10 +158,23 @@ import {
   selectNearbySales,
 } from './src/data/dvfFeed.js';
 import {
+  boxSamplePoints,
+  readScanCellBox,
+  scanBoxKey,
+  scanTiles,
+} from './src/data/scanRegime.js';
+import {
   parseAvisSubject,
   projectAvisValeur,
 } from './src/data/avisValeurFeed.js';
-import { buildDpeUrl, clampDpeRadius, projectDpe } from './src/data/dpeFeed.js';
+import {
+  DPE_CELL_MIN_TOTAL,
+  buildDpeCellUrl,
+  buildDpeUrl,
+  clampDpeRadius,
+  projectDpe,
+  projectDpeCells,
+} from './src/data/dpeFeed.js';
 import {
   DPE_SITE_MAX,
   geometryParts,
@@ -23135,7 +23149,15 @@ function dvfProxy() {
    * eviction cheap — a re-read is a file, not a download.
    */
   const editions = new Map();
-  const EDITION_MEMORY_MAX = 40;
+  /**
+   * RAISED FROM 40 WHEN THE BOX REGIME LANDED. A disc scan reads one commune —
+   * three entries. A box scan reads every commune the box touches: four
+   * arrondissements and a slice of Villeurbanne for 0.02° at Lyon, and up to
+   * {@link DVF_BOX_MAX_COMMUNES} on the coarse band. At 40 the second half of a
+   * box evicted the first half and the next camera settle re-read it all from
+   * disk.
+   */
+  const EDITION_MEMORY_MAX = 90;
 
   function rememberEdition(key, value) {
     editions.set(key, value);
@@ -23342,12 +23364,104 @@ function dvfProxy() {
     return out;
   }
 
+  /**
+   * How many communes one box scan will read editions for.
+   *
+   * A ceiling, not an expectation: 0.02° over a city touches three to five, and
+   * the coarse band's 0.08° over open country can probe twenty-five distinct
+   * ones. Each costs up to three downloads and stays parsed in memory, so the
+   * cap is what stops a camera parked over a departmental boundary from pulling
+   * a region into this process. Over the cap the busiest communes are kept —
+   * the probe order is the sample order, so this is "the ones nearest the
+   * middle first".
+   */
+  const DVF_BOX_MAX_COMMUNES = 20;
+
+  /**
+   * Every commune a box touches, discovered by probing it.
+   *
+   * See {@link boxSamplePoints} for why this is a sample and not an
+   * intersection: only the BAN answers with the ARRONDISSEMENT code DVF files
+   * its editions under, and the BAN takes a point. The probes are memoised on
+   * an ~11 m grid by `resolveReverseAddress`, and the box is snapped to a grid,
+   * so a reader panning back over ground they have already seen pays nothing.
+   *
+   * @param {{south: number, west: number, north: number, east: number}} box
+   * @returns {Promise<{communes: Array<{code: string, name: ?string}>, probes: number}>}
+   */
+  async function communesInBox(box) {
+    const probes = boxSamplePoints(box);
+    const found = new Map();
+    // Sequential, like `loadEditions`: nine to twenty-five reverse geocodes
+    // fired at once is a burst the BAN has no reason to absorb for one camera
+    // settle, and after the first visit they are all memo hits anyway.
+    for (const probe of probes) {
+      const commune = await resolveCommuneCode(probe.lon, probe.lat);
+      if (commune && !found.has(commune.code)) found.set(commune.code, commune);
+      if (found.size >= DVF_BOX_MAX_COMMUNES) break;
+    }
+    return { communes: [...found.values()], probes: probes.length };
+  }
+
+  /**
+   * The cell answer for a box — the high-altitude regime.
+   *
+   * THE ROWS NEVER LEAVE THE SERVER. That is the whole economy of this branch:
+   * the editions are already parsed here, so aggregating them costs no request
+   * and no parse, and what crosses the wire is a few hundred cells instead of
+   * the ~3 000 mutations a Lyon viewport holds. The disc regime's own payload
+   * is 192 KB for 400 sales; this one is a fifth of that for eight times the
+   * ground.
+   *
+   * @param {object} box @param {object} band @param {Array<number>} years
+   * @returns {Promise<?object>}
+   */
+  async function loadCells(box, band, years) {
+    const { communes, probes } = await communesInBox(box);
+    if (!communes.length) return null;
+    const loaded = [];
+    const unavailable = new Set();
+    for (const commune of communes) {
+      const { mutations, unavailable: missing } = await loadEditions(years, commune.code);
+      for (const year of missing) unavailable.add(year);
+      if (mutations.length) loaded.push({ commune, mutations });
+    }
+    const { cells, summary } = aggregateSalesIntoCells(loaded, box, band.cellM);
+    return {
+      box,
+      band: band.id,
+      years,
+      unavailableYears: [...unavailable].sort((a, b) => b - a),
+      // The register's own holes, unioned over every commune the box touched:
+      // one Alsace-Moselle commune inside the box publishes nothing, and a
+      // reader must not read its empty ground as an absence of sales.
+      coverage: dvfCoverage(communes[0].code),
+      communes,
+      communesProbed: probes,
+      cells,
+      summary,
+    };
+  }
+
   function install(middlewares) {
     installAddressRoute(middlewares, '/api/dvf', (url) => {
       const point = addressPoint(url.searchParams);
       if (!point) return null;
-      const radiusM = clampDvfRadius(url.searchParams.get('radius'));
       const years = requestedYears(url.searchParams);
+      // THE BOX REGIME, AND IT IS KEYED ON THE BOX RATHER THAN ON THE POINT.
+      // `addressCacheKey` rounds a point to ~11 m, which is right for a disc
+      // centred on it and wrong here: the box is already snapped to a grid, so
+      // every point inside one tile must reach the SAME entry or a reader
+      // panning a street pays for an identical answer twice.
+      const cellScan = readScanCellBox(url.searchParams);
+      if (cellScan) {
+        const { box, band } = cellScan;
+        return {
+          key: `dvf-cells|${scanBoxKey(box)}|${band.id}|${years.join('-')}`,
+          load: () => loadCells(box, band, years),
+        };
+      }
+      const radiusM = clampDvfRadius(url.searchParams.get('radius'));
       return {
         key: addressCacheKey('dvf', point, radiusM, years.join('-')),
         load: async () => {
@@ -23658,10 +23772,114 @@ async function resolveDpeSites(projected, point, radiusM) {
  * @returns {import('vite').Plugin}
  */
 function dpeProxy() {
+  /**
+   * The cell answer for a box: four tiles, two aggregations each.
+   *
+   * FOUR TILES AND NOT ONE BOX, because the ADEME chooses the geohash precision
+   * from the span it is given — a 0.02° box is answered in 853 m cells while
+   * its four 0.01° quarters come back in 107 m ones. Asking tile by tile is
+   * what buys the fine band its resolution, and it is also what makes panning
+   * cheap: tiles are grid-aligned, so a reader stepping one tile east re-uses
+   * three of the four answers out of the cache below.
+   *
+   * TWO CALLS PER TILE, and the second one is the numerator. `geo_agg` counts
+   * rows per bucket and this API exposes no nested aggregation, so the share of
+   * F and G is a filtered count joined onto an unfiltered one — see
+   * `projectDpeCells`. Eight requests for a camera settle, constant whatever
+   * the band, and cached per tile.
+   *
+   * A TILE THAT FAILS IS A HOLE, NOT A ZERO. Its cells are simply absent and
+   * `tilesMissing` says how many, because ground with no data and ground with
+   * no diagnostics are different statements and only one of them is this
+   * layer's to make.
+   *
+   * @param {object} box @param {object} band
+   * @returns {Promise<?object>}
+   */
+  async function loadDpeCells(box, band) {
+    const tiles = scanTiles(box, band.tileDeg);
+    const cells = [];
+    let total = 0;
+    let poor = 0;
+    let truncated = false;
+    let missing = 0;
+    const answers = await mapWithConcurrency(tiles, 2, async (tile) => {
+      const [totals, poorOnly] = await Promise.all([
+        fetchAddressSource(buildDpeCellUrl({ box: tile })),
+        fetchAddressSource(buildDpeCellUrl({ box: tile, poorOnly: true })),
+      ]);
+      // The denominator is the answer; without it the tile has nothing to say.
+      // A missing NUMERATOR is different and survivable — every cell of that
+      // tile reads as "no F or G found", which is what a zero count means.
+      if (!totals) return null;
+      return projectDpeCells(totals, poorOnly);
+    });
+    // MERGED BY GEOHASH KEY, NEVER CONCATENATED. A geohash cell does not
+    // respect our tile grid: one straddling two tiles comes back TWICE, each
+    // copy counting only the rows on its own side. Concatenating them threw —
+    // `An entity with id dpe-cell:u05kqke already exists in this collection` —
+    // and even without the throw it would have published a share computed on
+    // half a denominator. Summing both halves is the only reading that makes
+    // the cell what it claims to be.
+    const byKey = new Map();
+    for (const answer of answers) {
+      if (!answer) { missing += 1; continue; }
+      total += answer.total;
+      poor += answer.poor;
+      truncated = truncated || answer.truncated;
+      for (const cell of answer.cells) {
+        const held = byKey.get(cell.key);
+        if (!held) { byKey.set(cell.key, { ...cell }); continue; }
+        // The centroid is a mean of positions, so the halves are recombined by
+        // WEIGHT. Averaging the two centroids unweighted would put the disc of
+        // a cell that is 90 % in one tile halfway into the other.
+        const weight = held.total + cell.total;
+        held.lon = Number((((held.lon * held.total) + (cell.lon * cell.total)) / weight).toFixed(6));
+        held.lat = Number((((held.lat * held.total) + (cell.lat * cell.total)) / weight).toFixed(6));
+        held.total = weight;
+        held.poor += cell.poor;
+      }
+    }
+    for (const cell of byKey.values()) {
+      // Recomputed, never carried: each half arrived with a share of its own
+      // and neither of them describes the whole cell.
+      cell.poorShare = cell.total >= DPE_CELL_MIN_TOTAL
+        ? Math.round((cell.poor / cell.total) * 1000) / 10
+        : null;
+      cells.push(cell);
+    }
+    if (!cells.length && missing === tiles.length) return null;
+    cells.sort((a, b) => b.total - a.total);
+    return {
+      box,
+      band: band.id,
+      cells,
+      summary: {
+        basis: 'cells',
+        cells: cells.length,
+        total,
+        poor,
+        poorShare: total ? Math.round((poor / total) * 1000) / 10 : null,
+        truncated,
+        tiles: tiles.length,
+        tilesMissing: missing,
+      },
+    };
+  }
+
   function install(middlewares) {
     installAddressRoute(middlewares, '/api/dpe', (url) => {
       const point = addressPoint(url.searchParams);
       if (!point) return null;
+      // Keyed on the BOX, not the point — see the DVF route for why.
+      const cellScan = readScanCellBox(url.searchParams);
+      if (cellScan) {
+        const { box, band } = cellScan;
+        return {
+          key: `dpe-cells|${scanBoxKey(box)}|${band.id}`,
+          load: () => loadDpeCells(box, band),
+        };
+      }
       const radiusM = clampDpeRadius(url.searchParams.get('radius'));
       const limit = Number.parseInt(url.searchParams.get('limit') || '', 10) || 100;
       return {
