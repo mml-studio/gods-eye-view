@@ -19,7 +19,7 @@ the same reason `DATA_SOURCES.md` records where every feed comes from — and
 because it lets a reader audit the claims below without cloning the upstream
 repository.
 
-WHAT WAS TAKEN. Six glyphs, held in one module.
+WHAT WAS TAKEN. Seven glyphs, held in one module.
 
 `src/data/mapIcons.js` holds the artwork:
 
@@ -38,6 +38,9 @@ WHAT WAS TAKEN. Six glyphs, held in one module.
                        bike,
                        all four drawn by `src/data/sharedMobilityIcons.js`.
 
+    arrow            — the five commercial exchanges at France's frontiers,
+                       drawn by `src/data/franceEnergy.js`.
+
 `aerialway` replaced Material Symbols' `cable_car`, which is an interface glyph:
 a boxed cabin on stubby legs that reads as a building at the 22 CSS px that
 layer draws at. Maki authors for map labels in a 15-unit box, and its cabin
@@ -54,6 +57,15 @@ bicycle keeps its counters open at 17 and still reads as a bicycle. No kick
 scooter exists in either CC0 set — checked across the whole of Maki and all 557
 Temaki icons on 2026-09-14 — so the trottinette keeps Material's
 `electric_scooter`, and that is the only Material glyph left in that module.
+
+`arrow` replaced a shape that module built out of Cesium primitives: a tube
+swept along a great circle, terminated by a cone. The reader's verdict on it was
+« moches », and the drawing agrees — an eight-sided `polylineVolume` with
+`outline: true` draws its eight longitudinal edges, so 340 km of shaft read as
+corrugated hose, and a cone is a triangle only from side-on. Maki's arrow also
+arrives with a head 5.6 times the width of its shaft, which is the ratio that
+module had spent a paragraph arguing for and could only reach by inventing a
+factor of its own.
 
 `harbor` replaced Material Symbols' `directions_boat`, a passenger ferry seen
 head-on. The OSM tag says arsenal, not boat, and the ferry's superstructure did
@@ -85,3 +97,14 @@ that fits a 15-unit box into that 96-unit plate is a transform, not a rewrite �
 the coordinates reach the SVG renderer exactly as vendored, which is what
 `src/data/sharedMobilityIcons.test.mjs` asserts by looking for the path string
 itself in what the module draws.
+
+`franceEnergy.js` composes `arrow` a third way, and it is still no rewrite. It
+draws three passes over the one path — a wide dark halo, then a translucent
+body and a near-opaque edge, the two alphas taken from the prisms that share its
+map — and it wraps them in a `rotate(-90 7.5 7.5)` so the arrow points UP,
+which is the contract `src/data/iconOrientation.js` expects of any glyph it aims.
+The billboard then scales that square texture into a rectangle, stretching the
+glyph along its own axis by the megawatts it stands for. A rotation and a scale
+applied to the QUAD and to the canvas move no coordinate: the texture is
+rasterised from the unmodified path, and the string in this project's source is
+Maki's own.

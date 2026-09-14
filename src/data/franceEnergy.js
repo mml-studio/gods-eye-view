@@ -5,11 +5,9 @@ import {
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
 import { parseDepartements } from './meteoFranceVigilance.js';
-import {
-  greatCircleArc,
-  greatCircleDistanceM,
-  greatCircleWaypoint,
-} from './greatCircleArc.js';
+import { greatCircleWaypoint } from './greatCircleArc.js';
+import { mapIconGeometry } from './mapIcons.js';
+import { screenProjectedRotation, stabilizeScreenRotation } from './iconOrientation.js';
 import {
   dissolveRings,
   flattenRing,
@@ -22,6 +20,7 @@ import {
   PRISM_BASE_HEIGHT_M,
   PRISM_BODY_ALPHA,
   PRISM_HEIGHT_SWATCH_COLOR,
+  PRISM_MAX_HEIGHT_M,
   PRISM_NO_RATIO_COLOR,
   PRISM_NO_RATIO_GLYPH,
   PRISM_TOP_ALPHA,
@@ -62,10 +61,10 @@ import {
  *    structural fact about the French grid, and the prism is what makes it one
  *    image instead of a table.
  *
- * 2. **The five border flows**, as VOLUMES whose direction is the direction
- *    the power is going: a translucent tube whose radius is the megawatts,
- *    ending in a near-opaque cone. Each one leaves the FRENCH FRONTIER rather
- *    than the middle of the country. See the flow section below.
+ * 2. **The five border flows**, as ARROWS pointing the way the power is
+ *    going — Maki's `arrow`, CC0, not a shape this file draws. Each one leaves
+ *    the FRENCH FRONTIER rather than the middle of the country, and its depth
+ *    is the megawatts. See the flow section below.
  *
  * 3. **The five neighbouring market areas**, as OUTLINES. Never filled — see
  *    the honesty rules below.
@@ -190,59 +189,64 @@ import {
  * under the prism it belongs to, in the same colour. The reader who wants to
  * know where Normandie stops looks at the line, which is exact; the reader who
  * wants to compare two heights looks at the volumes, which no longer merge.
- * The legend says both in French.
+ * The legend used to say both in French; it says two rows now, and
+ * {@link energyPrismLegend} records what that deliberately stopped telling
+ * anyone.
  *
- * ── The flow is a volume, and its length is not a variable ─────────────────
+ * ── The flow is a ready-made arrow, and its length is not a variable ───────
  *
- * The border flows were a Cesium `PolylineArrowMaterialProperty` — a tapering
- * stroke whose width ramped from 3 to 10 SCREEN PIXELS. The first reader's
- * verdict was « quasi illisible […] vraiment quelque chose de ridicule », and
- * the arithmetic agrees: 366 MW from Spain came out at 3.85 px, next to a
- * 78 km prism. Two things were wrong with it and only one was the size.
+ * Two drawings came before this one and both were this file's own. The first
+ * was a Cesium `PolylineArrowMaterialProperty`, a tapering stroke 3 to 10
+ * SCREEN PIXELS wide: 366 MW from Spain came out at 3.85 px next to a 78 km
+ * prism, and the reader's verdict was « quasi illisible […] vraiment quelque
+ * chose de ridicule ». The second was a tube swept along a great circle and
+ * terminated by a cone, in metres this time — and the same reader's verdict on
+ * it was « moches ».
  *
- * • **A screen width fights the rest of the layer.** Everything else here is
- *   measured in metres, so zooming in grew every prism and left the flow a
- *   hairline. The shaft is now a tube of WORLD radius, 9 km to 22 km, ramped
- *   by |MW| and saturating at the same 3 000 MW the stroke used. Measured at
- *   the 1 300 km altitude of the screenshots (≈1.21 km/px): 366 MW is 21 km
- *   across, 17 px; a saturated border is 44 km, 36 px; and its cone is 84 km,
- *   69 px. Against 3.85 px.
+ * They were right twice, and the second time it was not the size. An eight-
+ * sided `polylineVolume` with `outline: true` draws its eight longitudinal
+ * edges, so 340 km of shaft read as corrugated hose; and a cone is a triangle
+ * only from side-on, which is one of the camera pitches this layer is read at.
  *
- * • **Length was a variable nobody wrote.** Anchored on the market's reference
- *   point, the glyph was 94 km to Switzerland and 411 km to Italy — a 4:1
- *   ratio the reader can see, that says nothing, and that swamps the thickness
- *   which says everything (A3). The far end is now a BEARING and not a
- *   destination: the glyph runs `clamp(chord, 170 km, 340 km)` along the great
- *   circle toward the market. Thickness is the only thing that varies, and the
- *   legend says the length means nothing. The band is checked, not guessed —
- *   170 km is three heads of the widest tube, so no border collapses into a
- *   lozenge, and every one of the five still ENDS INSIDE the market it names,
- *   which is asserted against the bundled outlines.
+ * The mark is now **Maki's `arrow`** — CC0, authored for maps, vendored path-
+ * verbatim in `mapIcons.js` — drawn as ONE billboard. The constants section
+ * around {@link ARROW_LENGTH_M} carries the arithmetic; the three things worth
+ * knowing here are:
  *
- * The shape borrows the prism's grammar because that is what the reader asked
- * for — « cette forme un peu transparente et épaisse que tu as déjà pu créer »
- * — and because it is the same argument: a translucent body carries the colour
- * and a near-opaque edge carries the silhouette. The cross-section is a
- * REGULAR polygon, not a ribbon: Cesium sweeps the section along a Frenet
- * frame, so a flat band lies horizontal and disappears the moment the camera
- * drops to an oblique.
+ * • **It wears the prism's clothes, not the icon packs'.** Every other
+ *   billboard in this project is white line-art over a black halo. This one is
+ *   a translucent body at {@link PRISM_BODY_ALPHA} under a near-opaque edge at
+ *   {@link PRISM_TOP_ALPHA} — the same two numbers, imported and not retyped,
+ *   that the prism and the région perimeter already use. Asked for in those
+ *   words: « réutilise cet effet de transparence qui est appliqué sur le
+ *   traçage des formes des régions ». {@link borderArrowGlyph} builds it.
  *
- * The **cone** is where the sense lives. It is 1.9× the shaft radius and
- * nearly opaque where the shaft is not, so the brightest end of the mark is
- * the end the power arrives at — direction by contrast rather than by a 12 px
- * arrowhead. The shaft stops one head-length short so the cone is not
- * swallowed by the volume it terminates, and the whole glyph is lifted
- * `1.25 × radius` clear of the ground, because a sine bow is zero at both ends
- * and would bury the tube's lower half at exactly the two places a reader
- * looks: the frontier, and the market.
+ * • **A screen width still fights the rest of the layer**, and the arrow does
+ *   not use one: `sizeInMeters` puts it in metres like every prism. Its depth
+ *   ramps with |MW| and saturates at the same 3 000 MW the pixel stroke used.
+ *   At the 1.21 km/px of the reference altitude the shaft runs 15 px to 29 px
+ *   and the head 80 px to 161 px, against 3.85 px.
  *
- * **The bow measures nothing.** It rises 20–55 km, which is inside the prism
- * ruler's own amplitude, and F7(b) would normally forbid that. It is admitted
- * for one reason and it is stated in the legend: the arc is not vertical
- * anywhere a prism stands — it leaves the frontier and goes abroad — and it is
- * a TUBE, not a plateau on a footprint. Two different signs, two different
- * places. If a flow ever has to cross France, this is the paragraph that has
- * to be revisited first.
+ * • **Length is one constant for all five, and the arrow STRADDLES its
+ *   frontier.** The tube clamped length to `[170 km, 340 km]`, which left a
+ *   2:1 ratio between Switzerland and Spain that the data never wrote. Every
+ *   arrow is now 300 km: 190 km abroad and 110 km back into France. Both
+ *   halves are measured ceilings and both are recorded at
+ *   {@link ARROW_ABROAD_M} — the first is what keeps each far end inside the
+ *   market it names, the second is what keeps the Swiss and German arrows from
+ *   fusing into one orange knot over Grand Est.
+ *
+ * • **Sense survives the camera.** A billboard faces the viewer, and its
+ *   course is re-projected every frame by `iconOrientation.js` — the module
+ *   the flight and AIS layers already trust for exactly this. The arrow is the
+ *   same arrow from overhead and from a shallow oblique. The cone carried the
+ *   sense and was the first thing the camera took away.
+ *
+ * **The bow is gone, and with it an F7(b) exemption this file used to have to
+ * argue for.** The tube rose 20–55 km because a tube lying on the ground
+ * buries its own lower half, and that height sat inside the prism ruler's own
+ * amplitude. A billboard has no lower half: it rides at one constant altitude
+ * that ramps with nothing and means nothing.
  *
  * ── The neighbours are delimited, and never filled ──────────────────────────
  *
@@ -295,8 +299,10 @@ import {
  * ~13.5 GW of nuclear plus the Rhône hydro chain against a ~6.5 GW load, and
  * Normandie ~10.4 GW against ~2.6 GW. 12 000 MW sits above the largest balance
  * that fleet can produce while still spending 65 % of the ruler on the régions
- * that exist. A value above it is CLIPPED, counted, and declared in the legend
- * (A5) rather than silently rescaling the whole country.
+ * that exist. A value above it is CLIPPED and counted in `getStats()` rather
+ * than silently rescaling the whole country. It used to be declared in the
+ * legend too (A5); the legend is two rows now, by instruction, and
+ * {@link energyPrismLegend} carries the list of what that cost.
  *
  * ── Honesty rules this layer is built around ────────────────────────────────
  *
@@ -304,9 +310,9 @@ import {
  *   There are no bundled région polygons; the 96 département shapes already
  *   carried for Vigilance are grouped by région and DISSOLVED into one outline
  *   apiece before anything is drawn. No département survives into the scene,
- *   no label ever names one, and the legend says so in French — a prism looks
- *   far more like a measured unit than a flat fill ever did, and the unit has
- *   to be the one that was measured. See the dissolve section above.
+ *   no label ever names one — a prism looks far more like a measured unit than
+ *   a flat fill ever did, and the unit has to be the one that was measured.
+ *   See the dissolve section above.
  *
  * • **Corse gets a sign of its own, and it is not a short prism.** éCO2mix
  *   régional covers 12 metropolitan regions; Corsica runs on its own system
@@ -354,8 +360,9 @@ import {
  *   from Berry, which drew a country that trades out of its own centre of
  *   gravity. Each arc now leaves the point of the FRENCH FRONTIER nearest its
  *   market's reference point, computed from the same dissolved geometry
- *   (`frontierAnchors`), and it lands on the reference point inside the
- *   outlined market area. Measured, with Corsica excluded from the search so
+ *   (`frontierAnchors`), and runs a fixed 175 km on that BEARING — it aims at
+ *   the reference point and does not travel to it. Measured, with Corsica
+ *   excluded from the search so
  *   the Italian arc does not leave from Bonifacio: Angleterre 1.58 E / 50.87 N
  *   (Gris-Nez), Espagne 1.44 W / 43.05 N (Pays basque), Italie 7.71 E /
  *   44.07 N (Alpes-Maritimes), Suisse 7.42 E / 47.45 N (Sundgau),
@@ -564,83 +571,225 @@ export const BORDER_ANCHORS = Object.freeze({
 });
 
 /**
- * The border flow is a VOLUME, in metres, and no longer a stroke in pixels.
+ * The border flow is a READY-MADE ARROW, not a shape this file builds.
  *
- * The pixel stroke is what the first reader called « quasi illisible […]
- * vraiment quelque chose de ridicule », and the arithmetic backs them up:
- * 366 MW from Spain came out at 3.85 px of a tapering line, against a 78 km
- * prism beside it. A screen width also fights the rest of the layer, which
- * measures in metres — zoom in and every prism grows while the flow stays a
- * hairline.
+ * It was, in order: a `PolylineArrowMaterialProperty` 3.85 px wide, which the
+ * first reader called « quasi illisible […] vraiment quelque chose de
+ * ridicule »; then a tube swept along a great circle and terminated by a cone,
+ * which the same reader called « moches ». The second verdict is the one worth
+ * reading carefully, because the geometry was correct and it still looked
+ * wrong:
  *
- * So the shaft is a tube of world radius, ramped by |MW| and saturating with
- * the same 3 000 MW the old stroke used. Measured at the 1 300 km altitude the
- * screenshots were taken from (≈1.21 km per pixel): 366 MW is a 21 km tube,
- * 17 px across, and a saturated border is 44 km, 36 px — against 3.85 px
- * before. The head is wider still, at {@link ARC_HEAD_RADIUS_FACTOR}.
+ * • **An eight-sided `polylineVolume` with `outline: true` draws its eight
+ *   longitudinal edges.** Over 340 km of bowed tube that is eight parallel
+ *   stripes running the length of the mark — the silhouette the outline was
+ *   there to protect became corrugated hose.
+ * • **A cone is a blob from every angle but one.** Seen side-on it is a
+ *   triangle; seen at any other camera pitch it is an ellipse with a bump, and
+ *   the layer draws at every camera pitch.
+ *
+ * The mark is now Maki's `arrow`, CC0, vendored in `mapIcons.js` and drawn as a
+ * single billboard. Nothing here draws an arrow any more, which is the point:
+ * the artwork was authored for maps by people who draw arrows, and this file
+ * was inventing one out of primitives that happen to exist in Cesium.
+ *
+ * ── What the billboard buys, beyond looking like an arrow ───────────────────
+ *
+ * **Sense survives the camera.** A billboard faces the viewer, and
+ * {@link borderArrowRotation} re-projects the flow's course every frame
+ * through `iconOrientation.js`. The cone was the mark that carried the sense
+ * and it was the first thing lost when the camera dropped.
+ *
+ * **The bow is gone, and with it an F7(b) exemption.** The old glyph rose 20 to
+ * 55 km because a tube sitting on the ground buries its own lower half; that
+ * height was inside the prism ruler's amplitude and had to be argued for in the
+ * legend. A billboard has no lower half. It rides at a single constant
+ * {@link ARROW_ALTITUDE_M} and measures nothing at all.
+ *
+ * ── One length for all five, at last ────────────────────────────────────────
+ *
+ * Length has never been a variable this layer wrote, and it is now not a
+ * variable at all. The previous glyph clamped it to `[170 km, 340 km]`, which
+ * left a 2:1 ratio between the Swiss mark and the Spanish one that no reader
+ * could be blamed for reading as data.
+ *
+ * {@link ARROW_LENGTH_M} is a single constant, and 175 km is not a round
+ * number picked by eye — it is the largest one that keeps every flow pointing
+ * at its own market. Measured against the bundled outlines, from each market's
+ * frontier point along the great circle to its reference point:
+ *
+ *     suisse              the reference point is 94 km away; the glyph is
+ *                         still inside Switzerland at 175 km and leaves it at
+ *                         ~195 km. THIS is the binding constraint.
+ *     allemagne_belgique  117 km away, inside at 175 km.
+ *     angleterre          289 km away, inside.
+ *     espagne             347 km away, inside.
+ *     italie              411 km away, and the one that is NOT inside: the
+ *                         great circle from the Alpine frontier to central
+ *                         Italy crosses the Ligurian Sea, so at 175 km the
+ *                         glyph is over water off Genoa. It is on the exact
+ *                         bearing of its market, it is four times nearer the
+ *                         Italian reference point than any other, and the
+ *                         Italian outline is drawn in its colour. Stated here
+ *                         rather than fixed by lengthening the glyph, which
+ *                         would only move the problem onto Switzerland.
+ *
+ * ── Thickness is still the only thing the data moves ────────────────────────
+ *
+ * The billboard is scaled ANISOTROPICALLY: {@link ARROW_LENGTH_M} across, and
+ * a depth that ramps with |MW| and saturates at {@link ARC_SATURATION_MW}.
+ * Scaling a rectangle in image space is rigid — the rotation is applied to the
+ * quad's corners, not to the texture — so the head keeps its 5.6:1 ratio to the
+ * shaft at every flow. What changes is the arrow's ASPECT: a weak border draws
+ * a long thin arrow, a saturated one draws the artwork at its own proportions.
+ *
+ * {@link ARROW_DEPTH_MAX_M} is deliberately equal to {@link ARROW_LENGTH_M}, so
+ * the strongest flow on the map is the only one drawn undistorted. Anything
+ * above it would stretch Maki's arrow TALLER than it is long, which is the one
+ * direction that stops looking like an arrow.
+ *
+ * What that is worth, at the 1.21 km/px of the reference altitude: the shaft
+ * runs 10.6 km to 20.6 km, which is 9 px to 17 px, and the head 58 km to
+ * 113 km, 48 px to 94 px. Against 3.85 px.
  */
-const ARC_RADIUS_MIN_M = 9_000;
-const ARC_RADIUS_MAX_M = 22_000;
 const ARC_SATURATION_MW = 3000;
-/** Cross-section of the shaft. A regular polygon, so it is as thick from every angle. */
-const ARC_SHAPE_SIDES = 8;
 /**
- * The head, as multiples of the shaft radius.
+ * How far the glyph reaches ABROAD from its frontier point, and how far back
+ * INTO France. Their sum is the length, identical for all five borders.
  *
- * A cone, and a deliberately fat one: the reader asked that « la direction et
- * le sens du flux se voient également bien », and a head only slightly wider
- * than its shaft is a taper, not an arrow. At 1.9 the widest border reaches
- * 84 km across — 69 px at national altitude — and the length keeps it under a
- * third of the shortest glyph.
+ * Both halves are measured ceilings, not preferences:
+ *
+ * • **190 km abroad** is the largest reach that keeps every arrow's far end
+ *   inside the market it names. Switzerland binds it — its reference point is
+ *   94 km from the frontier and the glyph leaves Swiss territory at ~200 km.
+ *   (Italy is the one that never lands inside: the great circle from the
+ *   Alpine frontier to central Italy crosses the Ligurian Sea, so the far end
+ *   is over water off Genoa at any length. It is still four times nearer the
+ *   Italian reference point than any other, and Italy is outlined in its
+ *   colour.)
+ *
+ * • **110 km inland** is the largest reach that keeps the Swiss and the
+ *   Allemagne + Belgique arrows apart. Their frontier points are 234 km from
+ *   each other and their inland bearings CONVERGE — at 190 km inland the two
+ *   ends are 94 km apart and, with heads 200 km deep, the two marks overlap
+ *   into one orange knot. At 110 km they sit head to head across Grand Est
+ *   with air between them.
+ *
+ * The arrow therefore STRADDLES its frontier rather than leaving it, which is
+ * also the truer drawing: a cross-border flow crosses a border.
  */
-const ARC_HEAD_RADIUS_FACTOR = 1.9;
-const ARC_HEAD_LENGTH_FACTOR = 2.6;
+const ARROW_ABROAD_M = 190_000;
+const ARROW_INLAND_M = 110_000;
+const ARROW_LENGTH_M = ARROW_ABROAD_M + ARROW_INLAND_M;
 /**
- * The prism's own grammar, applied to the flow: a translucent body carrying
- * the colour, a near-opaque edge carrying the silhouette. Same reason as
- * `PRISM_BODY_ALPHA` — a volume composited over imagery and over other volumes
- * needs its outline to survive what its fill cannot.
+ * The glyph's depth — its short side — at a flow of nothing and at saturation.
  *
- * The HEAD is the exception and it is the point: it is nearly opaque where the
- * shaft is not, so the brightest end of the mark is the end the power is going
- * to. That is the sense, carried by contrast rather than by a 12 px glyph.
+ * The floor is not zero and is not proportional: a 12 MW border is a real
+ * border, and the mark has to be an arrow before it is a measurement. 150 km of
+ * box is a 17.6 km shaft, 15 px at the reference altitude — inside the band the
+ * swept tube occupied, which is where the first reader stopped calling the flow
+ * illegible.
  */
-const ARC_BODY_ALPHA = 0.42;
-const ARC_EDGE_ALPHA = 0.9;
-const ARC_HEAD_ALPHA = 0.88;
+const ARROW_DEPTH_MIN_M = 150_000;
+const ARROW_DEPTH_MAX_M = ARROW_LENGTH_M;
 /**
- * How far the flow rides above the ground, as a multiple of the shaft radius.
+ * How far above the ellipsoid the arrow rides — and it is a Z-ORDER, not a
+ * height.
  *
- * A bow that touches down at both ends buries the lower half of a 22 km tube
- * in the terrain at exactly the two places a reader looks — the frontier and
- * the market. The whole glyph is lifted instead, so it clears the Alps at its
- * lowest and still reads as a flow ABOVE the border rather than a pipeline in
- * it.
+ * It was 30 km, and at 30 km the mark was INVISIBLE over France. A prism is
+ * translucent geometry: it writes no depth, so Cesium sorts it against the
+ * billboard by distance and paints the nearer one last. From anywhere near
+ * nadir the prism's TOP FACE — up to 120 km of altitude at
+ * {@link PRISM_TOP_ALPHA}, which is 0.95 — is nearer the camera than an arrow
+ * at 30 km, and 0.95 of an opaque face leaves 5 % of the arrow. An import's
+ * head sits 110 km inside France, under exactly that face. The reader's
+ * verdict, looking at the first build of this mark: « les flèches sont
+ * toujours très peu visibles ».
+ *
+ * So the arrow rides above the TALLEST PRISM THIS LAYER CAN DRAW, which is
+ * `PRISM_MAX_HEIGHT_M` and not the tallest one in tonight's data — a height
+ * that moved with the feed would put the fix at the mercy of a quiet evening.
+ * Nothing about the number is a measurement: the glyph is flat, horizontal,
+ * has no base and no guide, and it is the same 130 km whatever the flow.
+ *
+ * What it costs is parallax, and it is small where this layer is read: a mark
+ * 130 km up is displaced by `130 × tan(θ)` km from the ground under it, which
+ * is 28 km at the 12° off-nadir of a national view and 49 km at the 21° of the
+ * reference altitude — against a glyph 300 km long.
  */
-const ARC_CLEARANCE_FACTOR = 1.25;
+const ARROW_ALTITUDE_M = PRISM_MAX_HEIGHT_M + 10_000;
 /**
- * Apex floor for a border arc, down from the shared 60 km default.
+ * Raster side for the arrow texture, in device pixels.
  *
- * The shared floor exists so a short hop still bows visibly; at a 94 km chord
- * it bows 60 km, which is a croquet hoop, not a flow. 20 km leaves the ratio
- * near {@link ARC_APEX_RATIO} on every one of the five.
+ * Cesium's billboard atlas has no mipmaps, so this is a band and not a
+ * maximum: too small and the arrow is magnified into a blur, too large and it
+ * is minified into shimmer. The glyph draws at ~145 px across at the reference
+ * altitude, so 192 covers it at 0.76× and leaves headroom for the closer looks
+ * without paying for a 512 px atlas entry. ONE entry serves all five flows —
+ * the artwork is white and the colour is a per-billboard multiply.
  */
-const ARC_APEX_MIN_M = 20_000;
+const ARROW_RASTER_PX = 320;
 /**
- * The glyph's LENGTH, clamped — and length carries no data.
+ * The edge's and the halo's widths, in the box `mapIcons` pads Maki's artwork
+ * into — see {@link ARROW_VIEW_BOX}, which is wider than that pad because a
+ * halo this wide would otherwise be clipped by the canvas.
  *
- * Left free, it was pure geography: 94 km to Switzerland against 411 km to
- * Italy, so the Italian flow looked four times the Swiss one before thickness
- * said anything at all. That is a variable the reader can see and the data
- * never wrote (A3). Clamping it to a narrow band leaves thickness as the only
- * thing that varies, and the legend says the length means nothing.
+ * The prism carries its silhouette on a polygon outline, which Cesium strokes
+ * for free. A billboard has no outline, so the edge is drawn INTO the texture:
+ * one stroke pass over the same path, at {@link PRISM_TOP_ALPHA}, over a fill
+ * at {@link PRISM_BODY_ALPHA}.
  *
- * The band is not arbitrary either: 170 km is three heads of the widest tube,
- * so no border can collapse into a lozenge, and 340 km keeps every glyph
- * ending INSIDE the market it names — checked for all five.
+ * THE HALO IS THE PART THE PRISM DOES NOT NEED. A prism separates itself from
+ * what is behind it by being a volume with a lit silhouette against ground.
+ * This mark is a flat overlay, and what is behind it is OTHER MARKS OF THE
+ * SAME HUE — a teal arrow crosses teal prisms, teal market outlines and a teal
+ * coastline. Measured on the reader's own screenshot, a body at 0.62 with a
+ * 0.55-unit edge and no halo is indistinguishable from the outline of the
+ * country under it. So the two prism passes keep their alphas exactly, and a
+ * wide dark stroke goes UNDER them to give them an edge to be translucent
+ * against. It is the same discipline the three icon packs already record, for
+ * the same reason.
  */
-const ARC_LENGTH_MIN_M = 170_000;
-const ARC_LENGTH_MAX_M = 340_000;
+const ARROW_EDGE_UNITS = 1.0;
+const ARROW_HALO_UNITS = 2.4;
+/**
+ * Halo ink. Black, and NOT opaque: at 0.72 it darkens what is behind the mark
+ * instead of punching a hole in the map, which is what the label plates do
+ * three lines away. It also survives the tint — Cesium multiplies
+ * `billboard.color` into the texture and `0 × c = 0`.
+ */
+const ARROW_HALO_COLOR = 'rgba(0,0,0,0.72)';
+/**
+ * The arrow's canvas, padded past `MAP_ICON_VIEW_BOX`.
+ *
+ * Maki authors to `0 0 15 15` and draws to the edges; `mapIcons` pads one unit
+ * for its own 1.72-unit halo. This halo is 2.4 units, so it strokes 1.2 units
+ * outward and needs 1.6 of clearance. Padding the canvas moves no path
+ * coordinate — the artwork is still Maki's, unrescaled.
+ */
+const ARROW_VIEW_BOX = '-1.6 -1.6 18.2 18.2';
+/**
+ * A quarter turn that makes Maki's arrow point UP in the texture.
+ *
+ * Not a preference — a CONTRACT. `iconOrientation.screenProjectedRotation()` is
+ * this project's answer to "point a camera-facing quad along a real-world
+ * course", written for the flight and AIS layers and proven in the field, and
+ * its contract is `rotation = 0` ⇒ the icon points SCREEN-UP. `aisLiveVessels`
+ * records the same thing in one line: « The shape points north (up) so
+ * billboard rotation maps directly to heading. » Maki's arrow points RIGHT, so
+ * it is turned once here and the shared helper is then used verbatim, with no
+ * quarter-turn fudge at the call site to get wrong.
+ *
+ * An SVG `transform` moves no path coordinate — the artwork reaches the
+ * rasteriser exactly as Mapbox published it, which is what `licenses/maki/
+ * NOTICE` claims. The rotation is about the centre of Maki's own 15-unit box,
+ * so a square canvas stays square.
+ *
+ * IT ALSO SWAPS THE BILLBOARD'S AXES. The glyph's long side is now the
+ * texture's HEIGHT: `width` carries the depth and `height` the length. See
+ * `repaintArcs`.
+ */
+const ARROW_UPRIGHT_TRANSFORM = 'rotate(-90 7.5 7.5)';
 
 /**
  * The true perimeter of a région, drawn on the ground under its prism.
@@ -1048,17 +1197,22 @@ export function regionAnchor(codes, departements) {
 }
 
 /**
- * Turn the national exchange list into drawable arcs.
+ * Turn the national exchange list into drawable flow arrows.
  *
  * Direction is the direction the electricity travels: a POSITIVE `mw` is an
- * import into France, so the arc starts abroad and ends on the French
- * frontier, and the arrow head lands on France. Zero flows produce no arc.
+ * import into France, so the arrow points AT the frontier and its tail is
+ * abroad. A zero flow produces no arrow — an arrow of nothing is nothing.
+ *
+ * Every arrow spans the same {@link ARROW_LENGTH_M} from the frontier along the
+ * great circle toward its market's reference point. The far end is a BEARING
+ * and not a destination, which is why it can be one constant for all five
+ * markets whose reference points are 94 km to 411 km away.
  *
  * The French end is the FRONTIER point for that market when one is known —
  * see the header on why five arrows leaving Berry was the wrong drawing. It
  * falls back to `BORDER_ANCHORS.france` only when the geometry has not loaded,
- * because an arc drawn from slightly the wrong place still says which way the
- * power is going, and a missing arc says nothing at all.
+ * because an arrow drawn from slightly the wrong place still says which way the
+ * power is going, and a missing arrow says nothing at all.
  *
  * @param {Array<object>|null|undefined} exchanges From `/api/energy-fr`.
  * @param {Map<string, number[]>|null} [frontier] From {@link frontierAnchors}.
@@ -1076,35 +1230,17 @@ export function buildBorderArcs(exchanges, frontier = null) {
     const style = importing ? BALANCE_STYLES.importer : BALANCE_STYLES.exporter;
     const home = frontier?.get?.(key) || BORDER_ANCHORS.france;
 
-    // The far end is a BEARING, not a destination: the glyph is a fixed-length
-    // flow leaving the border toward its market, and its length says nothing.
-    const lengthM = Math.min(
-      ARC_LENGTH_MAX_M,
-      Math.max(ARC_LENGTH_MIN_M, greatCircleDistanceM(home, anchor)),
-    );
-    const outer = greatCircleWaypoint(home, anchor, lengthM) || anchor;
-    const from = importing ? outer : home;
-    const to = importing ? home : outer;
+    // One length for every border, STRADDLING the frontier: 190 km on the
+    // bearing of the market, 110 km back into France. See the header for the
+    // two measurements that fix those numbers.
+    const abroad = greatCircleWaypoint(home, anchor, ARROW_ABROAD_M) || anchor;
+    // Walk the WHOLE length back from the far end, through the frontier and
+    // out the other side. Same great circle, rather than a reflection of two
+    // longitudes — the difference is tens of kilometres at this latitude.
+    const inland = greatCircleWaypoint(abroad, home, ARROW_LENGTH_M) || home;
 
     const magnitude = Math.min(Math.abs(mw), ARC_SATURATION_MW) / ARC_SATURATION_MW;
-    const radiusM = ARC_RADIUS_MIN_M + (ARC_RADIUS_MAX_M - ARC_RADIUS_MIN_M) * magnitude;
-    const headLengthM = radiusM * ARC_HEAD_LENGTH_FACTOR;
-    const path = greatCircleArc(from, to, { apexMinM: ARC_APEX_MIN_M });
-    // Lift the whole glyph clear of the ground. The sine bow is zero at both
-    // ends, which would bury the lower half of the tube exactly where a reader
-    // looks: on the frontier, and on the market.
-    const clearanceM = radiusM * ARC_CLEARANCE_FACTOR;
-    for (let i = 2; i < path.length; i += 3) path[i] += clearanceM;
-
-    // Split the path: the tube stops where the cone starts, or the cone is
-    // swallowed by the volume it is supposed to terminate.
-    const samples = path.length / 3;
-    const perSampleM = lengthM / (samples - 1);
-    const dropped = Math.min(
-      samples - 2,
-      Math.max(1, Math.round(headLengthM / perSampleM)),
-    );
-    const shaft = path.slice(0, (samples - dropped) * 3);
+    const depthM = ARROW_DEPTH_MIN_M + (ARROW_DEPTH_MAX_M - ARROW_DEPTH_MIN_M) * magnitude;
 
     arcs.push({
       key,
@@ -1112,27 +1248,167 @@ export function buildBorderArcs(exchanges, frontier = null) {
       mw,
       importing,
       style,
-      // Recorded so a test — and an analyst — can tell an arc that left the
+      // Recorded so a test — and an analyst — can tell an arrow that left the
       // frontier from one that fell back to the centre of the country.
       fromFrontier: Boolean(frontier?.get?.(key)),
-      lengthM,
-      radiusM,
-      headRadiusM: radiusM * ARC_HEAD_RADIUS_FACTOR,
-      headLengthM,
-      positions: shaft,
-      // The cone: its TIP is where the power arrives, and `base` is the last
-      // point of the shaft, so the direction is one subtraction away and the
-      // layer never has to re-derive a bearing on the ellipsoid.
-      head: {
-        tip: [path.at(-3), path.at(-2), path.at(-1)],
-        base: [shaft.at(-3), shaft.at(-2), shaft.at(-1)],
-      },
-      // Midpoint of the SHAFT, near the apex — where a label sits clear of
-      // both the frontier and the market.
-      anchorIndex: Math.floor((samples - dropped) / 2),
+      lengthM: ARROW_LENGTH_M,
+      depthM,
+      altitudeM: ARROW_ALTITUDE_M,
+      // The two ends, in the order the artwork reads: tail → tip. An import
+      // runs abroad → France, an export France → abroad, and the pair is what
+      // {@link borderArrowRotation} projects to aim the billboard.
+      tail: importing ? abroad : inland,
+      tip: importing ? inland : abroad,
+      // The MIDDLE of the glyph, which is 40 km ABROAD of the frontier — the
+      // straddle is 190/110, not 150/150. A billboard is placed by its centre,
+      // so this has to be the centre and not the frontier, or the whole arrow
+      // slides 40 km inland.
+      anchor: greatCircleWaypoint(abroad, home, ARROW_LENGTH_M / 2) || home,
+      // The frontier itself, kept because it is the fact the glyph is built
+      // from and the thing a harness has to be able to check.
+      frontier: home,
+      // The label rides on the far end instead, out over the market. At 300 km
+      // a label on the centre sits ON the shaft, and abroad is the one place
+      // this layer draws nothing else — no prism, no région label.
+      labelAt: abroad,
     });
   }
   return arcs;
+}
+
+/** @type {Map<number, ?string>} Raster size → the arrow's data URI. */
+const _arrowGlyphCache = new Map();
+
+const _b64 = (text) => (typeof btoa === 'function'
+  ? btoa(text)
+  : Buffer.from(text, 'utf8').toString('base64'));
+
+/**
+ * Maki's arrow, drawn in the PRISM's grammar rather than the icon packs'.
+ *
+ * Every other billboard in this project is white line-art over a wide black
+ * halo, because those marks are pictograms sitting on a photograph and the halo
+ * is what separates them from it. This one is not a pictogram. It is the third
+ * mark of a layer whose other two — the prism and the région perimeter — say
+ * everything they say with ONE treatment: a translucent body carrying the
+ * colour at {@link PRISM_BODY_ALPHA}, a near-opaque edge carrying the
+ * silhouette at {@link PRISM_TOP_ALPHA}. The flow now says it the same way, on
+ * the reader's own instruction, and the two alphas are IMPORTED rather than
+ * retyped so the three marks cannot drift apart.
+ *
+ * A prism gets its edge free — Cesium strokes a polygon outline. A billboard
+ * has no outline, so the edge is a second pass over the same path, baked into
+ * the texture.
+ *
+ * TINT-SAFE the same way the halo packs are, and for the same reason: the
+ * artwork is WHITE and the two alphas live in the SVG, so `billboard.color`
+ * multiplies all four channels — white × c = c, 0.62 × 1 = 0.62 — and one
+ * atlas entry serves the teal export and the orange import. Baking the hue in
+ * would cost two entries and would fight the tint.
+ *
+ * @param {number} px Raster side, in device pixels.
+ * @returns {?string} `data:image/svg+xml;base64,…`, or null if the artwork went.
+ */
+export function borderArrowGlyph(px = ARROW_RASTER_PX) {
+  const cached = _arrowGlyphCache.get(px);
+  if (cached !== undefined) return cached;
+  const geometry = mapIconGeometry('maki', 'arrow');
+  // Null rather than a fallback shape, which is `mapIcons`' own rule: a glyph
+  // that vanished upstream is a bug, and drawing a substitute hides it behind
+  // a picture of the wrong thing.
+  const uri = geometry
+    ? `data:image/svg+xml;base64,${_b64(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}"`
+      + ` viewBox="${ARROW_VIEW_BOX}">`
+      + `<g transform="${ARROW_UPRIGHT_TRANSFORM}">`
+      // Halo first, under everything: the same geometry, stroked wide and
+      // dark, so the two translucent passes have something to sit against.
+      + `<g fill="${ARROW_HALO_COLOR}" stroke="${ARROW_HALO_COLOR}"`
+      + ` stroke-width="${ARROW_HALO_UNITS}" stroke-linejoin="round"`
+      + ` stroke-linecap="round">${geometry}</g>`
+      + `<g fill="#ffffff" fill-opacity="${PRISM_BODY_ALPHA}"`
+      + ` stroke="#ffffff" stroke-opacity="${PRISM_TOP_ALPHA}"`
+      + ` stroke-width="${ARROW_EDGE_UNITS}" stroke-linejoin="round"`
+      + ` stroke-linecap="round">${geometry}</g>`
+      + '</g></svg>',
+    )}`
+    : null;
+  _arrowGlyphCache.set(px, uri);
+  return uri;
+}
+
+/**
+ * The COURSE of a flow, in degrees clockwise from north, at the point the
+ * glyph is drawn.
+ *
+ * Measured from the glyph's own centre toward its tip rather than end to end:
+ * `screenProjectedRotation` builds an east-north-up frame AT THE POSITION it is
+ * given, so the bearing has to be the local one there. Over 300 km of great
+ * circle the two differ by under a degree, and taking the local one costs
+ * nothing and cannot drift.
+ *
+ * @param {object|null|undefined} arc One entry from {@link buildBorderArcs}.
+ * @returns {?number} Degrees in `[0, 360)`, or null when there is no course.
+ */
+export function borderArrowCourseDeg(arc) {
+  const from = Array.isArray(arc?.anchor) ? arc.anchor : null;
+  const to = Array.isArray(arc?.tip) ? arc.tip : null;
+  if (!from || !to) return null;
+  const rad = Math.PI / 180;
+  const phi1 = from[1] * rad;
+  const phi2 = to[1] * rad;
+  const dLambda = (to[0] - from[0]) * rad;
+  const y = Math.sin(dLambda) * Math.cos(phi2);
+  const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLambda);
+  // Two ends on the same point define no course, and `atan2(0, 0)` would
+  // quietly answer 0 — due north, which is a direction this flow never had.
+  if (Math.abs(y) < 1e-12 && Math.abs(x) < 1e-12) return null;
+  return ((Math.atan2(y, x) / rad) + 360) % 360;
+}
+
+/**
+ * The rotation one border arrow should be drawn at, this frame.
+ *
+ * ── Why this delegates instead of computing an angle ────────────────────────
+ *
+ * It used to compute one: project both ends to window coordinates, take
+ * `atan2(-dy, dx)`. The algebra was right and the mark still came out pointing
+ * the wrong way, because the convention it assumed — `rotation = 0` puts the
+ * artwork's RIGHT on screen-right — is not this project's. `iconOrientation.js`
+ * owns that question for every camera-facing quad here (commercial flights,
+ * military flights, AIS vessels), its contract is `rotation = 0` ⇒ the icon
+ * points SCREEN-UP, and it is the version that survived a playtest: it projects
+ * the course onto the camera's own right/up basis instead of probing a forward
+ * point, which is what keeps it continuous through a tracked orbit and valid
+ * when an end is off-screen or behind the camera.
+ *
+ * So the artwork is turned to point up once, at
+ * {@link ARROW_UPRIGHT_TRANSFORM}, and the shared helper is used verbatim.
+ * A layer inventing its own screen-space convention next to a module written
+ * for it is how a mark ends up pointing at the wrong country.
+ *
+ * The previous value is passed through twice over: `screenProjectedRotation`
+ * returns it when the course is edge-on to the camera and there is no angle to
+ * read, and {@link stabilizeScreenRotation} holds it through sub-degree
+ * projection noise, so a still camera does not make the arrow shiver.
+ *
+ * @param {Cesium.Scene|null|undefined} scene
+ * @param {object|null|undefined} arc One entry from {@link buildBorderArcs}.
+ * @param {number} [previous=0] Rotation the arrow already had.
+ * @returns {number} Radians.
+ */
+export function borderArrowRotation(scene, arc, previous = 0) {
+  const courseDeg = borderArrowCourseDeg(arc);
+  // A stub scene — the unit harness hands this layer one — has no camera to
+  // project with, and a layer that threw inside a render callback would take
+  // the frame down with it.
+  if (!scene?.camera || courseDeg === null) return previous;
+  const position = Cesium.Cartesian3.fromDegrees(
+    arc.anchor[0], arc.anchor[1], Number.isFinite(arc.altitudeM) ? arc.altitudeM : 0,
+  );
+  const next = screenProjectedRotation(scene, position, courseDeg, previous);
+  const held = stabilizeScreenRotation(previous, next);
+  return Number.isFinite(held) ? held : previous;
 }
 
 /**
@@ -1150,10 +1426,11 @@ export function regionLabelText(record) {
 }
 
 /**
- * Label text for a border arc. The verb and "vers"/"depuis" state the
- * direction in words, because an arrow head is the first thing lost at a
- * shallow camera angle — and "vers" alone left the reader to infer which side
- * of the frontier the megawatts came from.
+ * Label text for a border flow. The verb and "vers"/"depuis" state the
+ * direction in words. That used to be because a cone loses its sense at a
+ * shallow camera angle; the billboard that replaced it does not, and the words
+ * stay anyway — "vers" alone left the reader to infer which side of the
+ * frontier the megawatts came from, which is a different failure.
  * @param {object} arc
  * @returns {string}
  */
@@ -1287,29 +1564,36 @@ function fr(value) {
 }
 
 /**
- * The two-part legend: the height ruler, then the colour key (D1).
+ * The legend: TWO ROWS, and nothing else.
  *
- * Written here rather than taken from `choroplethPrism.prismLegend()`, and the
- * reason is not convenience. That helper publishes, verbatim, « Un rapport,
- * donc une variation de valeur : c'est ce que la couleur a le droit de dire »
- * — true of the three count layers it was written for, and FALSE here, where
- * the colour is a nominal sign and its licence comes from B4, not B1. Its
- * height blurb likewise promises that the colour answers « rapporté à quoi ? »,
- * which this layer's colour cannot do. A legend that misdescribes its own
- * channel is worse than no legend, so the entries are composed from the same
- * primitives (`prismHeightM`, `prismHeightGlyph`, `prismTally`, the frozen
- * scale) with sentences that are true of this map.
+ * It used to publish nine: a height ruler with three ticks, a row explaining
+ * the shrunken footprint, a row explaining what colour is allowed to mean, a
+ * clipped-domain row, a measured-zero row, a « non publié » row naming the
+ * régions, a row on the flow glyph and a row on the market outlines. Every one
+ * of them was TRUE, several were hard-won, and together they were a page of
+ * prose in the corner of a globe. The reader's instruction was explicit:
+ * « simplifie énormément la légende, ne garder que les informations vraiment
+ * simples à comprendre […] simplement savoir si c'est excédentaire ou
+ * déficitaire, il n'y a rien d'autre. »
  *
- * Entry shape is the repo's: `{ label, color, count?, blurb?, glyph? }`.
- * `color: null` renders an aligned empty swatch and marks a row that is not a
- * colour key; `glyph` is masked with `color`, so the height ticks hand over a
- * BAR whose height is the datum while all three share one constant colour —
- * any variation there would be a second, false encoding.
+ * So: excédentaire, déficitaire, their counts, one short line each. That is
+ * what someone who is not an electricity analyst came to find out.
+ *
+ * WHAT THAT COSTS, because it is a real cost and not a tidy-up. Three claims
+ * the map still makes now go unexplained on screen: the prism's HEIGHT is the
+ * balance in megawatts on a frozen 12 000 MW domain, the striped flat shapes
+ * are régions éCO2mix did not publish, and the arrows' thickness is the
+ * exchanged power. They are all still true, still tested, and still written
+ * down — in this file's header, which is where a reader who wants them will
+ * now have to go. The rows that said so are deleted rather than hidden,
+ * because a collapsed row is still a row.
+ *
+ * Entry shape stays the repo's: `{ label, color, count?, blurb? }`.
  *
  * @param {Array<object>} records From {@link buildRegionRecords}.
- * @returns {Array<{label:string,color:?string,blurb?:string,count?:number,glyph?:string}>}
+ * @returns {Array<{label:string,color:?string,blurb?:string,count?:number}>}
  */
-export function energyPrismLegend(records, { markets = 0, borders = 0 } = {}) {
+export function energyPrismLegend(records) {
   const list = Array.isArray(records) ? records : [];
   if (!list.length) return [];
   const scale = ENERGY_PRISM_SCALE;
@@ -1318,135 +1602,21 @@ export function energyPrismLegend(records, { markets = 0, borders = 0 } = {}) {
     value: Number.isFinite(record?.netPhysical) ? Math.abs(record.netPhysical) : null,
     ratio: Number.isFinite(record?.netPhysical) ? record.netPhysical : null,
   })), scale);
-  // Counted from the KNOWN régions, not from the rows the payload happened to
-  // carry. `tally.noValue` sees a région with a null figure and is blind to a
-  // région the feed dropped, which is how the legend came to say « non publié
-  // 1 » under a map with two unpainted régions — see `unmeasuredRegions`.
-  // `noValue` and `noRatio` are the same régions in this layer (both halves
-  // come from the one `ech_physiques` field), so the row is labelled after the
-  // height, which is the variable a reader misses first.
-  const missing = unmeasuredRegions(list);
-  const unpublished = missing.length;
 
-  const entries = [{
-    label: `Hauteur — ${scale.heightLabel}`,
-    color: null,
-    blurb: `Échelle linéaire, domaine gelé à ${fr(scale.domainMax)} ${scale.heightUnit} pour `
-      + `${Math.round(scale.maxHeightM / 1000)} km : deux fois plus haut vaut deux fois plus, `
-      + `d’un relevé à l’autre. C’est la VALEUR ABSOLUE du solde — la couleur dit le sens. `
-      + `UN prisme par région, jamais un par département : aucun n’est mesuré séparément.`,
-  }, {
-    // The footprint is not the région, and the reader is told so on the map
-    // rather than in a source file. See the header: this is what pays for the
-    // gap that keeps twelve volumes from composing into one mesa.
-    label: 'Socle — emprise réduite d’un dixième',
-    color: null,
-    blurb: `Toute marque est posée sur la région rétrécie de `
-      + `${Math.round((1 - PRISM_FOOTPRINT_SCALE) * 100)} %, pour que deux voisines ne se `
-      + `touchent pas. Le PÉRIMÈTRE EXACT est le trait au sol, dessous et de la même couleur.`,
-  }];
-
-  for (const tick of scale.heightTicks) {
-    const heightM = prismHeightM(tick, scale);
-    entries.push({
-      label: `${fr(tick)} ${scale.heightUnit}`,
-      color: PRISM_HEIGHT_SWATCH_COLOR,
-      glyph: prismHeightGlyph((heightM ?? 0) / scale.maxHeightM),
-      blurb: `${Math.round((heightM ?? 0) / 1000)} km de haut.`,
-    });
-  }
-
-  if (tally.clipped) {
-    // A5 — above the frozen domain the mark stops measuring. Say how many.
-    entries.push({
-      label: `au-dessus de ${fr(scale.domainMax)} ${scale.heightUnit}`,
-      color: null,
-      count: tally.clipped,
-      blurb: 'Prisme dessiné à la hauteur maximale : il ne dit plus combien. Le domaine reste '
-        + 'gelé pour que la même donnée fasse la même hauteur d’une session à l’autre.',
-    });
-  }
-
-  if (tally.zero) {
-    entries.push({
-      label: 'mesuré à zéro',
-      color: BALANCE_STYLES.balanced.color,
-      count: tally.zero,
-      blurb: 'Emprise à plat, remplie et opaque, sans prisme. Zéro est une mesure : elle ne se '
-        + 'dessine pas comme une absence de mesure.',
-    });
-  }
-
-  entries.push({
-    label: `Couleur — ${scale.ratioLabel}`,
-    color: null,
-    blurb: 'Deux couleurs franches, aucun dégradé : une teinte différencie, elle n’ordonne pas '
-      + '— c’est la hauteur qui classe. Teal et ambre survivent à une deutéranopie, et chaque '
-      + 'étiquette répète le verbe : la couleur n’est jamais seule à porter le sens.',
-  });
-
-  scale.ratioColors.forEach((color, index) => {
+  const entries = [];
+  // Index 0 and 2 of the ratio ladder, never 1: the middle class is « sous
+  // 1 MW », which is a deadband and not a thing a reader came to learn.
+  for (const index of [0, 2]) {
     const count = tally.ratioCounts[index] || 0;
-    if (!count) return;
-    const spec = [BALANCE_STYLES.exporter, BALANCE_STYLES.balanced, BALANCE_STYLES.importer][index];
+    if (!count) continue;
+    const spec = index === 0 ? BALANCE_STYLES.exporter : BALANCE_STYLES.importer;
     entries.push({
       label: scale.ratioClassLabels[index],
-      color,
+      color: scale.ratioColors[index],
       count,
       blurb: spec.blurb,
     });
-  });
-
-  entries.push({
-    label: `${scale.heightLabel} — non publié`,
-    color: PRISM_NO_RATIO_COLOR,
-    glyph: PRISM_NO_RATIO_GLYPH,
-    count: unpublished,
-    // NAMED, not just counted. A striped shape with no label is exactly what
-    // sent the first reader looking for the missing région by hand.
-    blurb: `${missing.map((region) => region.name).join(', ')} — emprise à plat et hachurée, `
-      + 'jamais un prisme court. La Corse tient son propre réseau et n’est jamais publiée ; '
-      + 'une autre région dans cette liste est une région qu’éCO2mix n’a pas publiée sur ce '
-      + 'relevé. Un motif et non une teinte — sur un globe photoréaliste il n’existe aucune '
-      + 'couleur neutre.',
-  });
-
-  // D1 for the flow, which had no row at all while it was a hairline and needs
-  // one now that it is the loudest mark on the map. Not a colour key — the
-  // flows take the two classes already listed above.
-  if (Number.isFinite(borders) && borders > 0) {
-    entries.push({
-      label: 'Flux — échange commercial aux frontières',
-      color: null,
-      blurb: `L’ÉPAISSEUR du tube est la puissance échangée, saturée à `
-        + `${fr(ARC_SATURATION_MW)} MW : c’est la seule chose qui varie. Sa LONGUEUR ne dit `
-        + `rien — elle est fixe, sans quoi la géographie ferait passer un flux suisse pour `
-        + `quatre fois moins qu’un flux italien. Le cône opaque marque l’ARRIVÉE : le sens se `
-        + `lit à l’extrémité la plus vive, et l’étiquette le répète en toutes lettres. Corps `
-        + `translucide et arête vive, comme les prismes — et la hauteur du cintre est un `
-        + `dessin, elle ne mesure rien.`,
-    });
   }
-
-  // D1 for the third mark. It is not a colour key — the outlines take the arc
-  // colours already listed above — it is the row that says why they are empty.
-  //
-  // Conditional, and that is A1 again: the market file is allowed to fail
-  // without taking the layer down, and a legend that promised outlines nobody
-  // drew would be describing a map that is not on screen.
-  const marketCount = Number.isFinite(markets) ? Math.max(0, Math.floor(markets)) : 0;
-  if (marketCount > 0) {
-    entries.push({
-      label: 'Contour — zone de marché voisine',
-      color: null,
-      count: marketCount,
-      blurb: 'Un trait, jamais un aplat : de l’autre côté de la frontière, rien n’est mesuré. '
-        + 'Il prend la couleur du flux, ardoise si rien ne passe. La flèche part du point de la '
-        + 'frontière le plus proche, jamais d’un poste d’interconnexion : un solde commercial '
-        + 'entre deux zones ne dit rien du câble.',
-    });
-  }
-
   return entries;
 }
 
@@ -1513,41 +1683,6 @@ export function energyClassificationTypeForStack(activeId) {
 }
 
 /**
- * The rotation that aims a Cesium cone down a flow direction.
- *
- * `CylinderGraphics` is built along its own +Z and `entity.orientation` is the
- * rotation from that body frame into the fixed frame, so the whole job is a
- * basis whose third column IS the direction. The other two are any orthonormal
- * pair — a cone of revolution does not care how it is rolled.
- *
- * The seed axis is swapped near the poles for the usual reason: crossing the
- * direction with a nearly parallel vector gives a near-zero vector, and
- * normalising that yields NaN and an arrowhead that disappears. The threshold
- * is on the ECEF z component, so it fires over the Arctic and never over
- * France — but a layer that draws only France is exactly where nobody would
- * notice the bug until it moved.
- *
- * @param {Cesium.Cartesian3} direction Unit vector, fixed frame.
- * @returns {Cesium.Quaternion}
- */
-export function arrowOrientation(direction) {
-  const seed = Math.abs(direction.z) < 0.99
-    ? Cesium.Cartesian3.UNIT_Z
-    : Cesium.Cartesian3.UNIT_X;
-  const right = Cesium.Cartesian3.normalize(
-    Cesium.Cartesian3.cross(seed, direction, new Cesium.Cartesian3()),
-    new Cesium.Cartesian3(),
-  );
-  const up = Cesium.Cartesian3.cross(direction, right, new Cesium.Cartesian3());
-  // Matrix3 takes ROW-major arguments, and the basis is wanted by COLUMN.
-  return Cesium.Quaternion.fromRotationMatrix(new Cesium.Matrix3(
-    right.x, up.x, direction.x,
-    right.y, up.y, direction.y,
-    right.z, up.z, direction.z,
-  ));
-}
-
-/**
  * @param {object} [options]
  * @returns {object} Data-manager layer module.
  */
@@ -1580,12 +1715,24 @@ export function createFranceEnergyLayer({
   /** @type {Map<string, Cesium.Entity[]>} Market key → its ground outline rings. */
   let _marketEntities = new Map();
   /**
-   * Border key → its two entities. The flow is a tube AND a cone, and they are
-   * kept together because they are one mark: hiding one without the other
-   * leaves an arrowhead floating over an empty border.
-   * @type {Map<string, {shaft: Cesium.Entity, head: Cesium.Entity}>}
+   * Border key → the one billboard that carries its flow.
+   *
+   * ONE entity where there used to be two. The tube and the cone were a pair
+   * that had to be shown and hidden together or a reader got an arrowhead
+   * floating over an empty border; a ready-made arrow has no such seam.
+   * @type {Map<string, Cesium.Entity>}
    */
   let _arcEntities = new Map();
+  /**
+   * Border key → the flow record its billboard should aim down, RIGHT NOW.
+   *
+   * Separate from `_arcEntities` because the two have different lifetimes: an
+   * entity is created once and reused, while the record behind it is replaced
+   * on every refresh. The rotation callback reads this table rather than
+   * closing over a record, so a flow that reverses turns its arrow round.
+   * @type {Map<string, object>}
+   */
+  let _arcAim = new Map();
   let _shapesPromise = null;
   let _records = [];
   let _arcs = [];
@@ -1609,9 +1756,9 @@ export function createFranceEnergyLayer({
    * A prism is skipped, deliberately and by test: an extruded polygon is built
    * as an ordinary primitive and reads `classificationType` into a field it
    * never uses. Writing it there would cost a geometry rebuild to change
-   * nothing at all. The border arcs are skipped too, and for the opposite
-   * reason — they ride 20 to 85 km above the ground and are not clamped to
-   * anything.
+   * nothing at all. The border arrows are skipped too, and for the opposite
+   * reason — they are billboards riding 30 km above the ellipsoid and are not
+   * clamped to anything.
    */
   function applyClassification(next) {
     if (next === undefined || next === _classificationType) return;
@@ -1878,105 +2025,97 @@ export function createFranceEnergyLayer({
   }
 
   /**
-   * The shaft's cross-section: a regular polygon of `radiusM`.
+   * Rebuild the border flows: one ready-made arrow each, aimed down the flow.
    *
-   * A POLYGON and not a ribbon, because a ribbon has an orientation and the
-   * globe does not respect it — Cesium sweeps the shape along a Frenet frame,
-   * so a flat band lies horizontal and vanishes the moment the camera drops to
-   * an oblique. A regular section is as thick from every angle there is.
+   * The image is built once, for every border and every colour: the artwork is
+   * white and Cesium multiplies `billboard.color` into all four channels, so
+   * the teal export and the orange import share a single atlas entry and both
+   * carry the prism's translucent body and near-opaque edge. A hue baked into
+   * the texture would need two entries and would fight the tint.
+   *
+   * ROTATION IS A CALLBACK, and it is the only property here that is. The
+   * angle an arrow must be drawn at depends on where the camera is, so it is
+   * re-derived on every frame the scene paints — inside the same update that
+   * paints it, which is what keeps the arrow from lagging a moving camera by a
+   * frame. `borderArrowRotation` says which module owns that angle and why it
+   * is not this one.
+   *
+   * The aim reads from `_arcAim` rather than from the `arc` in hand: the
+   * entity outlives the refresh that made it, and a callback closed over a
+   * stale record would keep aiming at last hour's flow after it reversed.
    */
-  function tubeShape(radiusM) {
-    const shape = [];
-    for (let i = 0; i < ARC_SHAPE_SIDES; i += 1) {
-      const angle = (i / ARC_SHAPE_SIDES) * Math.PI * 2;
-      shape.push(new Cesium.Cartesian2(
-        radiusM * Math.cos(angle),
-        radiusM * Math.sin(angle),
-      ));
-    }
-    return shape;
-  }
-
-  /** Rebuild the border flows: a translucent tube, and the cone that ends it. */
   function repaintArcs() {
     if (!_dataSource) return;
+    const image = borderArrowGlyph(ARROW_RASTER_PX);
     const live = new Set();
     for (const arc of _arcs) {
       live.add(arc.key);
+      _arcAim.set(arc.key, arc);
       const color = Cesium.Color.fromCssColorString(arc.style.color);
-      const body = color.withAlpha(ARC_BODY_ALPHA);
-      const edge = color.withAlpha(ARC_EDGE_ALPHA);
-      const head = color.withAlpha(ARC_HEAD_ALPHA);
-      const positions = Cesium.Cartesian3.fromDegreesArrayHeights(arc.positions);
-      const shape = tubeShape(arc.radiusM);
+      const position = Cesium.Cartesian3.fromDegrees(
+        arc.anchor[0], arc.anchor[1], arc.altitudeM,
+      );
 
-      let pair = _arcEntities.get(arc.key);
-      if (!pair) {
-        pair = {
-          shaft: _dataSource.entities.add({
-            id: `energy-fr:arc:${arc.key}`,
-            properties: { code: arc.key, kind: 'arc' },
-            polylineVolume: {
-              positions,
-              shape,
-              cornerType: Cesium.CornerType.ROUNDED,
-              material: new Cesium.ColorMaterialProperty(body),
-              outline: true,
-              outlineColor: new Cesium.ConstantProperty(edge),
-              outlineWidth: 1,
-            },
-          }),
-          head: _dataSource.entities.add({
-            id: `energy-fr:arc-head:${arc.key}`,
-            properties: { code: arc.key, kind: 'arc-head' },
-            cylinder: {
-              // A cone: `topRadius: 0` puts the apex on the local +Z, which is
-              // the axis `arrowOrientation` aims down the flow.
-              topRadius: 0,
-              bottomRadius: arc.headRadiusM,
-              length: arc.headLengthM,
-              material: new Cesium.ColorMaterialProperty(head),
-              outline: true,
-              outlineColor: new Cesium.ConstantProperty(edge),
-              outlineWidth: 1,
-              numberOfVerticalLines: 0,
-            },
-          }),
-        };
-        _arcEntities.set(arc.key, pair);
+      let entity = _arcEntities.get(arc.key);
+      if (!entity) {
+        const key = arc.key;
+        let lastRotation = 0;
+        entity = _dataSource.entities.add({
+          id: `energy-fr:arc:${key}`,
+          // The two ends and the frontier they straddle travel on the entity,
+          // not just in the model. A billboard is ONE position, so without
+          // them nothing reading the live scene — the browser harness, a pick,
+          // an inspector — could tell an arrow that crosses its own border
+          // from one that does not.
+          properties: {
+            code: key,
+            kind: 'arc',
+            tail: arc.tail,
+            tip: arc.tip,
+            frontier: arc.frontier,
+          },
+          position,
+          billboard: {
+            image,
+            // Metres, like every other mark in this layer. A screen size would
+            // leave the flow a fixed hairline while the prisms beside it grow.
+            sizeInMeters: true,
+            // SWAPPED, and it is the upright transform that swaps them: the
+            // artwork's long side runs up the texture now, so `height` is the
+            // glyph's length and `width` its depth.
+            width: arc.depthM,
+            height: arc.lengthM,
+            color,
+            rotation: new Cesium.CallbackProperty(() => {
+              lastRotation = borderArrowRotation(
+                _viewer?.scene, _arcAim.get(key), lastRotation,
+              );
+              return lastRotation;
+            }, false),
+            // The arrow rides 30 km up and is read from above: it must be
+            // occluded by the globe behind it, which is the default, and must
+            // NOT be punched through terrain in front of it.
+            heightReference: Cesium.HeightReference.NONE,
+          },
+        });
+        _arcEntities.set(key, entity);
       } else {
-        pair.shaft.polylineVolume.positions = positions;
-        pair.shaft.polylineVolume.shape = shape;
-        pair.shaft.polylineVolume.material = new Cesium.ColorMaterialProperty(body);
-        pair.shaft.polylineVolume.outlineColor = new Cesium.ConstantProperty(edge);
-        pair.head.cylinder.bottomRadius = arc.headRadiusM;
-        pair.head.cylinder.length = arc.headLengthM;
-        pair.head.cylinder.material = new Cesium.ColorMaterialProperty(head);
-        pair.head.cylinder.outlineColor = new Cesium.ConstantProperty(edge);
+        entity.position = position;
+        entity.properties.tail = arc.tail;
+        entity.properties.tip = arc.tip;
+        entity.properties.frontier = arc.frontier;
+        entity.billboard.width = arc.depthM;
+        entity.billboard.height = arc.lengthM;
+        entity.billboard.color = color;
       }
-
-      const tip = Cesium.Cartesian3.fromDegrees(...arc.head.tip);
-      const base = Cesium.Cartesian3.fromDegrees(...arc.head.base);
-      const direction = Cesium.Cartesian3.normalize(
-        Cesium.Cartesian3.subtract(tip, base, new Cesium.Cartesian3()),
-        new Cesium.Cartesian3(),
-      );
-      // A Cesium cylinder is centred on its own position, so the cone sits half
-      // its length back from the tip — otherwise the apex overshoots the flow
-      // by 29 km and the arrow points past its own market.
-      pair.head.position = Cesium.Cartesian3.add(
-        tip,
-        Cesium.Cartesian3.multiplyByScalar(direction, -arc.headLengthM / 2, new Cesium.Cartesian3()),
-        new Cesium.Cartesian3(),
-      );
-      pair.head.orientation = arrowOrientation(direction);
-      pair.shaft.show = true;
-      pair.head.show = true;
+      entity.show = true;
     }
-    for (const [key, pair] of _arcEntities) {
+    for (const [key, entity] of _arcEntities) {
       if (live.has(key)) continue;
-      pair.shaft.show = false;
-      pair.head.show = false;
+      entity.show = false;
+      // Dropped from the aim table too: a hidden arrow must not keep a
+      // callback alive on a flow the feed no longer publishes.
+      _arcAim.delete(key);
     }
   }
 
@@ -2035,11 +2174,12 @@ export function createFranceEnergyLayer({
       ));
     }
     for (const arc of _arcs) {
-      const i = arc.anchorIndex * 3;
-      if (!Number.isFinite(arc.positions[i])) continue;
+      if (!Number.isFinite(arc.labelAt?.[0])) continue;
+      // The far end of the glyph, at the height the arrow is drawn at, so the
+      // label sits beside its mark rather than across it or 30 km under it.
       entries.push(createBorderOverlayEntry(
         arc,
-        Cesium.Cartesian3.fromDegrees(arc.positions[i], arc.positions[i + 1], arc.positions[i + 2]),
+        Cesium.Cartesian3.fromDegrees(arc.labelAt[0], arc.labelAt[1], arc.altitudeM),
       ));
     }
     overlayHost.setEntries(
@@ -2178,6 +2318,7 @@ export function createFranceEnergyLayer({
       _perimeterEntities = new Map();
       _marketEntities = new Map();
       _arcEntities = new Map();
+      _arcAim = new Map();
       _shapesPromise = null;
       _records = [];
       _arcs = [];
@@ -2219,10 +2360,7 @@ export function createFranceEnergyLayer({
     getRowControls() {
       return {
         chips: [],
-        legend: energyPrismLegend(_records, {
-          markets: _marketEntities.size,
-          borders: _arcs.length,
-        }),
+        legend: energyPrismLegend(_records),
         surfaceFill: false,
       };
     },
@@ -2232,10 +2370,12 @@ export function createFranceEnergyLayer({
       return {
         // Régions actually drawn as prisms. Corse is excluded upstream, so 12
         // is a full house and reporting 13 would imply a coverage that is not
-        // there — it gets its striped footprint and its legend row instead.
+        // there — it gets its striped footprint, and `unpublishedRegions`
+        // below counts it.
         count: _records.length,
-        // A5, in the HUD as well as in the legend: how many prisms are stuck
-        // at the top of the frozen domain and have stopped saying how much.
+        // A5, and the HUD is now the ONLY place it is said: how many prisms
+        // are stuck at the top of the frozen domain and have stopped saying
+        // how much.
         clippedRegions: rows.filter((row) => row.clipped).length,
         // Régions carrying no figure, Corse INCLUDED — counted from the known
         // set, so a région the feed dropped entirely is in it. The old count

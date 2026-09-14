@@ -15,12 +15,12 @@
  *   ii.  the sign convention survives all the way to the globe — Île-de-France
  *        (a net importer) is amber and Auvergne-Rhône-Alpes (a net exporter)
  *        is teal, read back off the rendered material, not off the model
- *   iii. the five border flows are drawn as RAISED VOLUMES pointing the way
- *        the power travels — a translucent tube whose radius is the megawatts,
- *        a near-opaque cone on the receiving end — leaving the FRONTIER rather
- *        than the middle of the country, with the direction repeated in words
+ *   iii. the five border flows are drawn as READY-MADE ARROWS pointing the way
+ *        the power travels — Maki's `arrow`, vendored and sized in metres, its
+ *        depth the megawatts — leaving the FRONTIER rather than the middle of
+ *        the country, with the direction repeated in words
  *   iv.  the five neighbouring markets are outlined, and never filled
- *   v.   a border that falls to zero hides its arc instead of drawing a
+ *   v.   a border that falls to zero hides its arrow instead of drawing a
  *        hairline — and KEEPS its market outline, in slate
  *
  * Screenshots are written under the gitignored `qa-shots/energy-fr/`.
@@ -151,7 +151,7 @@ async function shoot(page, name) {
  *
  * Deliberately reads the ENTITIES, not the layer's own model: the point of a
  * browser proof is that the paint reached the globe, so the colours here come
- * off `polygon.material` and the arcs off `polyline.positions`.
+ * off `polygon.material` and the flow arrows off `billboard.width`.
  */
 function sceneProbe(page) {
   return page.evaluate(() => {
@@ -169,7 +169,6 @@ function sceneProbe(page) {
 
     const polygons = [];
     const arcs = [];
-    const heads = [];
     const lines = [];
     for (const entity of collection ? collection.entities.values : []) {
       const id = String(entity.id);
@@ -188,50 +187,47 @@ function sceneProbe(page) {
           topM: entity.polygon.extrudedHeight?.getValue?.() ?? null,
           material: material ? 'color' : 'motif',
         });
-      } else if (entity.polylineVolume) {
-        const positions = entity.polylineVolume.positions?.getValue?.() || [];
-        const shape = entity.polylineVolume.shape?.getValue?.() || [];
-        const material = entity.polylineVolume.material?.color?.getValue?.();
-        arcs.push({
-          id,
-          code,
-          shown: entity.show !== false,
-          vertices: positions.length,
-          // World radius, in metres. The old mark carried a screen width, and
-          // that is exactly what this harness must refuse to accept back.
-          radiusM: shape.length ? Math.round(Math.hypot(shape[0].x, shape[0].y)) : null,
-          sides: shape.length,
-          color: hex(material),
-          alpha: material ? Math.round(material.alpha * 100) / 100 : null,
-          outlineAlpha: entity.polylineVolume.outlineColor?.getValue?.()
-            ? Math.round(entity.polylineVolume.outlineColor.getValue().alpha * 100) / 100
-            : null,
-          ends: positions.length
-            ? [positions[0], positions[positions.length - 1]].map((p) => {
-              const c = gev.viewer.scene.globe.ellipsoid.cartesianToCartographic(p);
-              return [c.longitude * 180 / Math.PI, c.latitude * 180 / Math.PI, c.height];
-            })
-            : [],
-        });
-      } else if (entity.cylinder) {
-        const material = entity.cylinder.material?.color?.getValue?.();
+      } else if (entity.billboard) {
+        const material = entity.billboard.color?.getValue?.();
         const position = entity.position?.getValue?.(gev.viewer.clock.currentTime);
         const carto = position
           ? gev.viewer.scene.globe.ellipsoid.cartesianToCartographic(position)
           : null;
-        heads.push({
+        arcs.push({
           id,
           code,
           shown: entity.show !== false,
-          topRadius: entity.cylinder.topRadius?.getValue?.() ?? null,
-          bottomRadius: Math.round(entity.cylinder.bottomRadius?.getValue?.() ?? 0),
-          length: Math.round(entity.cylinder.length?.getValue?.() ?? 0),
-          alpha: material ? Math.round(material.alpha * 100) / 100 : null,
+          // Metres, not pixels. The first mark was 3.85 px for 366 MW and this
+          // is the check that refuses to let a screen size come back.
+          sizeInMeters: entity.billboard.sizeInMeters?.getValue?.() === true,
+          // SWAPPED by the upright transform the shared orientation module
+          // needs: the artwork's long side runs up the texture, so `height` is
+          // the glyph's LENGTH and `width` its depth.
+          widthM: Math.round(entity.billboard.height?.getValue?.() ?? 0),
+          heightM: Math.round(entity.billboard.width?.getValue?.() ?? 0),
+          // Ready-made artwork, not a shape the layer builds. An SVG data URI
+          // is what a vendored glyph looks like; a primitive is not.
+          vendored: String(entity.billboard.image?.getValue?.() ?? '')
+            .startsWith('data:image/svg+xml'),
+          // The PRISM's grammar, read back off the texture that reached the
+          // globe: a translucent body under a near-opaque edge, and no halo.
+          svg: (() => {
+            const uri = String(entity.billboard.image?.getValue?.() ?? '');
+            const b64 = uri.split(',')[1];
+            try { return b64 ? atob(b64) : ''; } catch { return ''; }
+          })(),
+          rotation: entity.billboard.rotation?.getValue?.(gev.viewer.clock.currentTime) ?? null,
+          rotates: entity.billboard.rotation?.isConstant === false,
           color: hex(material),
-          oriented: Boolean(entity.orientation),
+          alpha: material ? Math.round(material.alpha * 100) / 100 : null,
           at: carto
             ? [carto.longitude * 180 / Math.PI, carto.latitude * 180 / Math.PI, carto.height]
             : null,
+          // The two ends, carried on the entity so this harness can prove the
+          // arrow leaves the frontier rather than the centre of the country.
+          tail: entity.properties?.tail?.getValue?.() ?? null,
+          tip: entity.properties?.tip?.getValue?.() ?? null,
+          frontier: entity.properties?.frontier?.getValue?.() ?? null,
         });
       } else if (entity.polyline) {
         const positions = entity.polyline.positions?.getValue?.() || [];
@@ -261,7 +257,6 @@ function sceneProbe(page) {
       controls: module.getRowControls(),
       polygons,
       arcs,
-      heads,
       lines,
       sourceFound: Boolean(collection),
     };
@@ -426,77 +421,93 @@ async function main() {
       && named.length >= 2,
       probe.controls.legend.map((entry) => entry.label).join(' · '));
 
-    // ── iii. the border arcs ───────────────────────────────────────────────
-    console.log('[qa] iii. five raised border arcs, leaving the frontier');
-    check('five arcs are drawn', probe.arcs.filter((arc) => arc.shown).length === 5,
-      `${probe.arcs.filter((arc) => arc.shown).length} arcs`);
-    check('each arc is a sampled curve, not a two-point line',
-      probe.arcs.every((arc) => arc.vertices > 8),
-      probe.arcs.map((arc) => arc.vertices).join(','));
-    // A VOLUME in metres, not a stroke in pixels. The old mark was 3.85 px for
-    // 366 MW and this is the check that refuses to let it come back.
-    check('the flow is a world-sized volume, not a screen-width line',
-      probe.arcs.every((arc) => arc.radiusM >= 9000 && arc.radiusM <= 22000 && arc.sides >= 6),
-      probe.arcs.map((arc) => `${arc.code}:${arc.radiusM}m/${arc.sides}`).join(' '));
-    check('thickness tracks the flow', new Set(probe.arcs.map((arc) => arc.radiusM)).size > 1,
-      probe.arcs.map((arc) => arc.radiusM).join(','));
-    // The prism grammar the reader asked the arrow to borrow.
-    check('translucent body, near-opaque edge — the prism grammar',
-      probe.arcs.every((arc) => arc.alpha < 0.5 && arc.outlineAlpha > arc.alpha),
-      probe.arcs.map((arc) => `${arc.alpha}/${arc.outlineAlpha}`).join(' '));
-    check('and it is lifted clear of the ground at BOTH ends',
-      probe.arcs.every((arc) => arc.ends.every(([, , h]) => h > arc.radiusM)),
-      probe.arcs.map((arc) => arc.ends.map(([, , h]) => Math.round(h)).join('/')).join(' '));
+    // ── iii. the five flow arrows ──────────────────────────────────────────
+    console.log('[qa] iii. five ready-made arrows, leaving the frontier');
+    const shown = probe.arcs.filter((arc) => arc.shown);
+    check('five arrows are drawn', shown.length === 5, `${shown.length} arrows`);
+    // READY-MADE. The two marks before this one were built out of Cesium
+    // primitives here — a tapering stroke, then a swept tube and a cone — and
+    // the reader's verdict on the second was « moches ». This is the check
+    // that refuses to let a hand-built arrow come back.
+    check('the arrow is vendored artwork, not a primitive this layer builds',
+      shown.length === 5 && shown.every((arc) => arc.vendored),
+      shown.map((arc) => `${arc.code}:${arc.vendored}`).join(' '));
+    // A world size, not a screen width. 366 MW was once 3.85 px.
+    check('the flow is world-sized, not a screen-width mark',
+      shown.every((arc) => arc.sizeInMeters && arc.widthM === 300_000),
+      shown.map((arc) => `${arc.code}:${arc.widthM}m/${arc.sizeInMeters}`).join(' '));
+    // The reader asked for the prism's transparency on this mark, so the
+    // texture that reached the globe has to carry it — not a black halo.
+    check('the arrow wears the prism grammar: translucent body, near-opaque edge',
+      shown.every((arc) => /fill-opacity="0\.62"/.test(arc.svg)
+        && /stroke-opacity="0\.95"/.test(arc.svg)
+        && /rgba\(0,0,0,0\.72\)/.test(arc.svg)),
+      shown.map((arc) => arc.svg.slice(0, 0) + arc.code).join(' '));
+    check('thickness tracks the flow, and length never does',
+      new Set(shown.map((arc) => arc.heightM)).size > 1
+      && new Set(shown.map((arc) => arc.widthM)).size === 1,
+      shown.map((arc) => `${arc.code}:${arc.heightM}m`).join(' '));
+    check('and it is never taller than it is long — past that it stops being an arrow',
+      shown.every((arc) => arc.heightM >= 150_000 && arc.heightM <= arc.widthM),
+      shown.map((arc) => `${arc.code}:${arc.heightM}/${arc.widthM}`).join(' '));
+    // ABOVE the tallest prism this layer can draw. At 30 km the mark sat under
+    // a 0.95-opaque prism top face and the reader could not see it at all.
+    check('the arrow rides above every prism, not just above the ground',
+      shown.every((arc) => (arc.at?.[2] ?? 0) > 120_000),
+      shown.map((arc) => Math.round(arc.at?.[2] ?? 0)).join(' '));
 
-    console.log('[qa] iii-bis. the sense is a cone, and it is the brightest end');
-    check('every flow ends in a cone', probe.heads.length === 5
-      && probe.heads.every((head) => head.shown && head.topRadius === 0),
-      `${probe.heads.length} heads`);
-    check('the cone is FAT — a head barely wider than its shaft is a taper',
-      probe.heads.every((head) => {
-        const shaft = probe.arcs.find((arc) => arc.code === head.code);
-        return shaft && head.bottomRadius > shaft.radiusM * 1.5;
-      }),
-      probe.heads.map((head) => `${head.code}:${head.bottomRadius}m`).join(' '));
-    check('and it is the brightest end of the mark — that is where the sense is',
-      probe.heads.every((head) => {
-        const shaft = probe.arcs.find((arc) => arc.code === head.code);
-        return head.alpha > 0.8 && shaft && head.alpha > shaft.alpha;
-      }),
-      probe.heads.map((head) => `${head.code}:${head.alpha}`).join(' '));
-    check('each cone is aimed, not left on the local vertical',
-      probe.heads.every((head) => head.oriented && head.at));
+    console.log('[qa] iii-bis. the sense is the artwork, and it tracks the camera');
+    // The angle depends on where the camera is, so it CANNOT be a constant —
+    // and it is not `alignedAxis` either, whose shader trigonometry is off by
+    // up to 15° between the cardinal screen directions.
+    check('the artwork is turned to point UP, which is what iconOrientation wants',
+      shown.every((arc) => /transform="rotate\(-90 7\.5 7\.5\)"/.test(arc.svg)),
+      shown.map((arc) => arc.code).join(' '));
+    check('each arrow is aimed by a live rotation, not a frozen one',
+      shown.every((arc) => arc.rotates && Number.isFinite(arc.rotation)),
+      shown.map((arc) => `${arc.code}:${arc.rotates}`).join(' '));
+    // Five borders radiate in five directions, so five equal angles would mean
+    // the projection silently failed and every arrow fell back to the same
+    // default. This is the check that the camera was actually consulted.
+    check('and they point five different ways, so the projection really ran',
+      new Set(shown.map((arc) => Math.round(arc.rotation * 100))).size >= 4,
+      shown.map((arc) => `${arc.code}:${(arc.rotation * 180 / Math.PI).toFixed(1)}°`).join(' '));
+    check('the aim is spent on colour, not on translucency',
+      shown.every((arc) => arc.alpha === 1),
+      shown.map((arc) => `${arc.code}:${arc.alpha}`).join(' '));
     // The fix the reader asked for, proved at the pixel's own coordinates: no
-    // arc may touch down anywhere near 2.60 E / 46.60 N, which is where all
+    // arrow may touch down anywhere near 2.60 E / 46.60 N, which is where all
     // five used to start.
     const BERRY = [2.60, 46.60];
-    const nearBerry = probe.arcs.filter((arc) => [
-      ...arc.ends,
-      probe.heads.find((head) => head.code === arc.code)?.at,
-    ].filter(Boolean).some(([lon, lat]) => (
-      Math.hypot(lon - BERRY[0], lat - BERRY[1]) < 1
-    )));
-    check('no arc leaves the middle of the country any more',
-      probe.arcs.length === 5 && nearBerry.length === 0,
-      nearBerry.map((arc) => `${arc.id} ${arc.ends.map((e) => e.map((v) => v.toFixed(2)).join('/'))}`).join(' '));
-    // And each one touches down on the French frontier facing its own market.
-    const frenchEnd = (key) => {
-      const arc = probe.arcs.find((entry) => entry.id.endsWith(`:${key}`));
-      const head = probe.heads.find((entry) => entry.id.endsWith(`:${key}`));
-      const inFrance = ([lon, lat]) => lon > -5.2 && lon < 8.3 && lat > 42.2 && lat < 51.2;
-      // Either end can be the French one: the cone lands on France for an
-      // import and abroad for an export.
-      return [...(arc?.ends || []), head?.at].filter(Boolean).find(inFrance);
-    };
-    check('the British arc leaves the Channel coast, not the Mediterranean',
-      (frenchEnd('angleterre')?.[1] ?? 0) > 50,
-      String(frenchEnd('angleterre')));
-    check('the Spanish arc leaves the Pyrénées',
-      (frenchEnd('espagne')?.[1] ?? 90) < 44,
-      String(frenchEnd('espagne')));
-    check('the Italian arc leaves the Alps, not Corsica',
-      (frenchEnd('italie')?.[0] ?? 0) > 6.5 && (frenchEnd('italie')?.[1] ?? 0) > 43.5,
-      String(frenchEnd('italie')));
+    const nearBerry = shown.filter((arc) => [arc.tail, arc.tip, arc.frontier, arc.at]
+      .filter(Boolean)
+      .some(([lon, lat]) => Math.hypot(lon - BERRY[0], lat - BERRY[1]) < 1));
+    check('no arrow leaves the middle of the country any more',
+      shown.length === 5 && nearBerry.length === 0,
+      nearBerry.map((arc) => arc.id).join(' '));
+    // The glyph STRADDLES its frontier — 190 km abroad, 110 km back into
+    // France — so both of those distances are checkable off the live scene.
+    const km = ([alon, alat], [blon, blat]) => Math.round(Math.hypot(
+      (blon - alon) * 111.32 * Math.cos(((alat + blat) / 2) * Math.PI / 180),
+      (blat - alat) * 111.32,
+    ));
+    check('each arrow crosses its frontier, 190 km out and 110 km back',
+      shown.every((arc) => {
+        const ends = [arc.tail, arc.tip].map((end) => km(arc.frontier, end)).sort((a, b) => a - b);
+        return Math.abs(ends[0] - 110) < 12 && Math.abs(ends[1] - 190) < 12;
+      }),
+      shown.map((arc) => `${arc.code}:${[arc.tail, arc.tip].map((e) => km(arc.frontier, e)).join('/')}`).join(' '));
+    // And each frontier point is the one facing its own market.
+    const frontierOf = (key) => shown.find((entry) => entry.id.endsWith(`:${key}`))?.frontier;
+    check('the British arrow crosses the Channel coast, not the Mediterranean',
+      (frontierOf('angleterre')?.[1] ?? 0) > 50,
+      String(frontierOf('angleterre')));
+    check('the Spanish arrow crosses the Pyrénées',
+      (frontierOf('espagne')?.[1] ?? 90) < 44,
+      String(frontierOf('espagne')));
+    check('the Italian arrow crosses the Alps, not Corsica',
+      (frontierOf('italie')?.[0] ?? 0) > 6.5 && (frontierOf('italie')?.[1] ?? 0) > 43.5,
+      String(frontierOf('italie')));
     check('the physical and commercial national balances are reported separately',
       probe.stats.netExportMw !== probe.stats.netCommercialExportMw,
       `${probe.stats.netExportMw} vs ${probe.stats.netCommercialExportMw}`);
@@ -524,7 +535,7 @@ async function main() {
     await shoot(page, '04-markets.png');
 
     // ── v. a border that falls to zero ─────────────────────────────────────
-    console.log('[qa] v. a zero border hides its arc and keeps its outline');
+    console.log('[qa] v. a zero border hides its arrow and keeps its outline');
     const arcsBefore = probe.arcs.length;
     payload = energyPayload({ zeroBorder: 'suisse' });
     await page.evaluate(() => window.__godsEyeView.dataManager.refreshLayer?.('france-energy'));
@@ -540,13 +551,15 @@ async function main() {
       `${after.arcs.filter((arc) => arc.shown).length} shown`);
     check('and it is hidden, not destroyed', after.arcs.length === arcsBefore,
       `${after.arcs.length} entities vs ${arcsBefore}`);
-    check('the Swiss arc specifically is the one hidden',
+    check('the Swiss arrow specifically is the one hidden',
       after.arcs.find((arc) => arc.id.endsWith(':suisse'))?.shown === false);
-    check('the other four kept their geometry',
-      after.arcs.filter((arc) => arc.shown).every((arc) => arc.vertices > 8));
-    check('and the Swiss cone went with its shaft — no orphan arrowhead',
-      after.heads.find((head) => head.code === 'suisse')?.shown === false,
-      after.heads.map((head) => `${head.code}:${head.shown}`).join(' '));
+    check('the other four kept their artwork',
+      after.arcs.filter((arc) => arc.shown).every((arc) => arc.vendored && arc.widthM === 300_000));
+    // ONE entity per flow now, so there is no second half that could be left
+    // behind: the tube and the cone used to have to be hidden together or the
+    // reader got an arrowhead floating over an empty border.
+    check('and nothing is left floating where the Swiss flow was',
+      after.arcs.filter((arc) => arc.id.endsWith(':suisse')).length === 1);
     // The outline is NOT an arc: an arc is a direction and a direction of
     // nothing is nothing, while "who is on the other side" stays true at zero.
     const swissOutline = after.lines.filter((line) => line.code === 'suisse');

@@ -20,7 +20,9 @@ import {
   REGION_DEPARTEMENTS,
   REGION_NAMES,
   UNCOVERED_REGIONS,
-  arrowOrientation,
+  borderArrowGlyph,
+  borderArrowRotation,
+  borderArrowCourseDeg,
   balanceStyle,
   borderLabelText,
   PRISM_FOOTPRINT_SCALE,
@@ -47,6 +49,7 @@ import {
 import { parseDepartements } from './meteoFranceVigilance.js';
 import { ringArea } from './polygonDissolve.js';
 import { greatCircleDistanceM } from './greatCircleArc.js';
+import { MAKI_PATHS } from './mapIcons.js';
 
 /** Ray casting, so a test can say "this point is inside that country". */
 function pointInRing([lon, lat], ring) {
@@ -300,136 +303,173 @@ test('the région label anchor lands inside its own région', () => {
 
 // ── The arcs ────────────────────────────────────────────────────────────────
 
-test('the CONE lands where the power arrives, whichever way it flows', () => {
-  // The head is the mark that carries the sense, so this is the assertion that
+test('the POINT lands where the power arrives, whichever way it flows', () => {
+  // The tip is the mark that carries the sense, so this is the assertion that
   // stands for "the reader can see which way it goes".
   const [imported] = buildBorderArcs([{ key: 'espagne', label: 'Espagne', mw: 500 }]);
   assert.equal(imported.importing, true);
   assert.equal(imported.style.key, 'importer');
-  assert.ok(Math.abs(imported.head.tip[0] - BORDER_ANCHORS.france[0]) < 1e-6);
-  assert.ok(Math.abs(imported.head.tip[1] - BORDER_ANCHORS.france[1]) < 1e-6);
-  // …and it starts out over Spain, on the bearing of the Spanish reference
-  // point rather than on the point itself: the glyph has a fixed length.
-  assert.ok(imported.positions[1] < BORDER_ANCHORS.france[1], 'the flow comes from the south');
+  // An import runs abroad → France, so the TIP is the inland end and the tail
+  // is out on the bearing of the Spanish reference point.
+  assert.ok(imported.tip[1] > imported.frontier[1], 'the tip lands inland');
+  assert.ok(imported.tail[1] < imported.frontier[1], 'the flow comes from the south');
 
   const [exported] = buildBorderArcs([{ key: 'italie', label: 'Italie', mw: -2537 }]);
   assert.equal(exported.importing, false);
   assert.equal(exported.style.key, 'exporter');
-  assert.ok(Math.abs(exported.positions[0] - BORDER_ANCHORS.france[0]) < 1e-6);
-  assert.ok(exported.head.tip[0] > BORDER_ANCHORS.france[0], 'the flow heads east');
+  assert.ok(exported.tail[0] < exported.frontier[0], 'the tail starts inland');
+  assert.ok(exported.tip[0] > exported.frontier[0], 'the flow heads east');
 
-  // The cone sits at the END of the shaft, never inside it: `base` is the last
-  // sample of the tube and the tip is one head-length beyond.
   for (const arc of [imported, exported]) {
-    assert.deepEqual(arc.head.base, [
-      arc.positions.at(-3), arc.positions.at(-2), arc.positions.at(-1),
-    ]);
-    assert.ok(greatCircleDistanceM(arc.head.base, arc.head.tip) > arc.headLengthM * 0.5);
+    // The glyph STRADDLES its frontier: 190 km abroad, 110 km back into
+    // France. Anything else and it is a mark that leaves a border rather than
+    // one that crosses it.
+    const abroad = arc.importing ? arc.tail : arc.tip;
+    const inland = arc.importing ? arc.tip : arc.tail;
+    assert.ok(Math.abs(greatCircleDistanceM(arc.frontier, abroad) - 190_000) < 2_000);
+    assert.ok(Math.abs(greatCircleDistanceM(arc.frontier, inland) - 110_000) < 2_000);
+    assert.ok(Math.abs(greatCircleDistanceM(arc.tail, arc.tip) - arc.lengthM) < 2_000);
+    // A billboard is placed by its CENTRE, and the straddle is not symmetric,
+    // so the centre is 40 km abroad of the frontier — not on it.
+    assert.ok(Math.abs(greatCircleDistanceM(arc.tail, arc.anchor) - arc.lengthM / 2) < 2_000);
+    assert.ok(Math.abs(greatCircleDistanceM(arc.anchor, arc.tip) - arc.lengthM / 2) < 2_000);
+    // The label rides on the far end, out over the market, where this layer
+    // draws nothing else. On the centre it would sit across the shaft.
+    assert.deepEqual(arc.labelAt, abroad);
   }
 });
 
-test('the glyph is a VOLUME, and its length is not a variable', () => {
+test('the glyph is a READY-MADE arrow, and its length is not a variable', () => {
+  // The artwork is Maki's, CC0, vendored verbatim — this file draws no arrow
+  // of its own any more. Pinned here because a redraw upstream is a redraw of
+  // the loudest mark on the map.
+  assert.ok(MAKI_PATHS.arrow.startsWith('M8.29289 2.29289C8.68342 1.90237'));
+  assert.ok(MAKI_PATHS.arrow.endsWith('C7.90237 3.31658 7.90237 2.68342 8.29289 2.29289Z'));
+
   const arcs = buildBorderArcs(PAYLOAD.national.exchanges, frontierAnchors(BUNDLED));
-  // Thickness is the only thing that moves. Left free, length was geography:
-  // 94 km to Switzerland against 411 km to Italy, so the Italian flow read
-  // four times the Swiss one before a megawatt was consulted.
-  const lengths = arcs.map((arc) => arc.lengthM);
-  assert.ok(Math.max(...lengths) / Math.min(...lengths) <= 2.1, lengths.join(','));
+  // Length is ONE constant now. The tube clamped it to [170, 340] km, which
+  // still left a 2:1 ratio between Switzerland and Spain that the data never
+  // wrote — geography the reader could see and could not use.
+  const lengths = new Set(arcs.map((arc) => arc.lengthM));
+  assert.equal(lengths.size, 1, [...lengths].join(','));
+  assert.equal([...lengths][0], 300_000);
   for (const arc of arcs) {
-    assert.ok(arc.lengthM >= 170_000 && arc.lengthM <= 340_000, `${arc.key} ${arc.lengthM}`);
-    // A world radius, not a screen width: the rest of the layer measures in
-    // metres and a hairline that never grows is what made this unreadable.
-    assert.ok(arc.radiusM >= 9_000 && arc.radiusM <= 22_000, `${arc.key} ${arc.radiusM}`);
-    assert.ok(arc.headRadiusM > arc.radiusM * 1.5, 'a head barely wider than its shaft is a taper');
-    // Lifted clear of the ground at BOTH ends, or the lower half of a 22 km
-    // tube is buried exactly where the reader looks.
-    assert.ok(arc.positions[2] > arc.radiusM, `${arc.key} starts at ${arc.positions[2]} m`);
-    assert.ok(arc.head.tip[2] > arc.radiusM, `${arc.key} ends at ${arc.head.tip[2]} m`);
+    // Depth is the only channel, in METRES: the rest of the layer measures in
+    // metres, and a hairline that never grows is what made this unreadable.
+    assert.ok(arc.depthM >= 150_000 && arc.depthM <= 300_000, `${arc.key} ${arc.depthM}`);
+    // Never TALLER than it is long: past that, Maki's arrow stops reading as
+    // an arrow, which is the one distortion the anisotropic draw must not make.
+    assert.ok(arc.depthM <= arc.lengthM, `${arc.key} ${arc.depthM} > ${arc.lengthM}`);
+    // Flat, at one altitude that ramps with nothing — the sine bow is gone.
+    // ABOVE the tallest prism this layer can draw, which is a Z-ORDER and not
+    // a height: at 30 km the mark was hidden under a 0.95-opaque prism top.
+    assert.equal(arc.altitudeM, PRISM_MAX_HEIGHT_M + 10_000);
+    assert.ok(arc.altitudeM > PRISM_MAX_HEIGHT_M);
   }
 });
 
-test('every flow glyph ends INSIDE the market it names', () => {
-  // The clamp is only legitimate if it never points past its own country. The
-  // far end is a bearing, so a glyph that overshoots Switzerland lands in Italy
-  // and says the opposite of what its label says.
+test('the arrow wears the PRISM\'s transparency, not the icon packs\' halo', () => {
+  const svg = Buffer.from(borderArrowGlyph(320).split(',')[1], 'base64').toString('utf8');
+  // The two alphas are the prism's own, imported rather than retyped, so the
+  // three marks of this layer cannot drift apart.
+  assert.match(svg, new RegExp(`fill-opacity="${PRISM_BODY_ALPHA}"`));
+  assert.match(svg, new RegExp(`stroke-opacity="${PRISM_TOP_ALPHA}"`));
+  assert.ok(PRISM_TOP_ALPHA > PRISM_BODY_ALPHA, 'translucent body, near-opaque edge');
+  // WHITE, and only white: Cesium multiplies `billboard.color` into all four
+  // channels, so one atlas entry serves the teal export and the orange import.
+  // A hue baked in would cost two and would fight the tint.
+  assert.equal(svg.match(/#ffffff/g).length, 2);
+  // The halo is NOT the prism's — a prism separates itself from the ground by
+  // being a lit volume, and this mark is a flat overlay whose background is
+  // other marks OF THE SAME HUE. Without it, measured on the reader's own
+  // screenshot, a teal arrow over teal prisms is the outline of the country.
+  assert.match(svg, /rgba\(0,0,0,0\.72\)/);
+  assert.ok(svg.indexOf('rgba(0,0,0') < svg.indexOf('#ffffff'), 'the halo goes UNDER the art');
+  assert.ok(svg.includes(MAKI_PATHS.arrow), 'the vendored path, verbatim');
+  // Cached per raster size, because it is rebuilt on every refresh.
+  assert.equal(borderArrowGlyph(320), borderArrowGlyph(320));
+  assert.notEqual(borderArrowGlyph(320), borderArrowGlyph(64));
+});
+
+test('every flow arrow points at the market it names, and four end inside it', () => {
+  // The far end is a BEARING and not a destination, which is what lets one
+  // length serve five markets whose reference points are 94 km to 411 km away.
+  // Four of the five still land inside their own outline; the fifth is
+  // recorded rather than hidden — see the header at ARROW_ABROAD_M.
   const frontier = frontierAnchors(BUNDLED);
   const arcs = buildBorderArcs(PAYLOAD.national.exchanges, frontier);
   const outlines = new Map(buildMarketOutlines(MARKET_AREAS).map((m) => [m.key, m.rings]));
+  const inside = new Set();
   for (const arc of arcs) {
-    const abroad = arc.importing
-      ? [arc.positions[0], arc.positions[1]]
-      : [arc.head.tip[0], arc.head.tip[1]];
+    const abroad = arc.importing ? arc.tail : arc.tip;
+    if (outlines.get(arc.key).some((ring) => pointInRing(abroad, ring))) inside.add(arc.key);
+    // Whether or not it lands inside, it is nearer its OWN market's reference
+    // point than any other's — which is the claim the label makes.
+    const own = greatCircleDistanceM(abroad, BORDER_ANCHORS[arc.key]);
+    for (const [key, anchor] of Object.entries(BORDER_ANCHORS)) {
+      if (key === 'france' || key === arc.key) continue;
+      assert.ok(
+        own < greatCircleDistanceM(abroad, anchor),
+        `${arc.key} ends nearer ${key} than ${arc.key}`,
+      );
+    }
+    // And the inland half lands in FRANCE, which is the other half of the
+    // straddle: a mark that crosses a border has to have a side on each side.
+    const inland = arc.importing ? arc.tip : arc.tail;
     assert.ok(
-      outlines.get(arc.key).some((ring) => pointInRing(abroad, ring)),
-      `${arc.key} ends at ${abroad.map((v) => v.toFixed(2)).join('/')}, outside its own market`,
+      BUNDLED.features.some((f) => {
+        const g = f.geometry;
+        const polys = g.type === 'Polygon' ? [g.coordinates] : g.coordinates;
+        return polys.some((poly) => pointInRing(inland, poly[0]));
+      }),
+      `${arc.key} inland end ${inland.map((v) => v.toFixed(2)).join('/')} is not in France`,
     );
+  }
+  // Italie is the one that does not: the great circle from the Alpine frontier
+  // to central Italy crosses the Ligurian Sea, so 190 km out is water off
+  // Genoa. Reaching further would only move the failure onto Switzerland,
+  // whose reference point is 94 km from the border.
+  assert.deepEqual([...inside].sort(), [
+    'allemagne_belgique', 'angleterre', 'espagne', 'suisse',
+  ]);
+});
+
+test('no two flow glyphs cross each other', () => {
+  // The reach INTO France is what decides whether the reader sees five marks
+  // or four and a knot. The Swiss and the Allemagne + Belgique frontier points
+  // are 234 km apart and their inland bearings CONVERGE: at 190 km inland the
+  // two axes cross, so each 200 km-deep head lands on the other's shaft. The
+  // 110 km ceiling is what stops them short of the crossing, and this is the
+  // assertion that keeps it there.
+  const arcs = buildBorderArcs(PAYLOAD.national.exchanges, frontierAnchors(BUNDLED));
+  // Orientation test on [lon, lat] — a plane approximation, which is what a
+  // reader's eye applies to 300 km of glyph anyway.
+  const side = ([ax, ay], [bx, by], [cx, cy]) => Math.sign(
+    (bx - ax) * (cy - ay) - (by - ay) * (cx - ax),
+  );
+  const crosses = (p1, p2, q1, q2) => (
+    side(p1, p2, q1) !== side(p1, p2, q2) && side(q1, q2, p1) !== side(q1, q2, p2)
+  );
+  for (let i = 0; i < arcs.length; i += 1) {
+    for (let j = i + 1; j < arcs.length; j += 1) {
+      assert.ok(
+        !crosses(arcs[i].tail, arcs[i].tip, arcs[j].tail, arcs[j].tip),
+        `${arcs[i].key} crosses ${arcs[j].key}`,
+      );
+    }
   }
 });
 
-test('the arcs leave the FRONTIER, not the middle of the country', () => {
-  const frontier = frontierAnchors(BUNDLED);
-  // Five markets, five frontier points, and Corsica excluded from the search:
-  // Bonifacio is nearer Rome than Menton is, and the Franco-Italian commercial
-  // border is the Alps.
-  assert.equal(frontier.size, 5);
-  const italy = frontier.get('italie');
-  assert.ok(italy[0] > 6.5 && italy[1] > 43.5, `Italie → ${italy}`);
-  const spain = frontier.get('espagne');
-  assert.ok(spain[1] < 44 && spain[1] > 42, `Espagne → ${spain}`);
-
-  const arcs = buildBorderArcs(PAYLOAD.national.exchanges, frontier);
-  for (const arc of arcs) {
-    assert.equal(arc.fromFrontier, true);
-    // The French end: the cone's TIP on an import, the shaft's first sample on
-    // an export. Either way it is the frontier point, not Berry.
-    const home = arc.importing
-      ? [arc.head.tip[0], arc.head.tip[1]]
-      : [arc.positions[0], arc.positions[1]];
-    const anchor = frontier.get(arc.key);
-    assert.ok(Math.abs(home[0] - anchor[0]) < 1e-6, `${arc.key} lon ${home[0]}`);
-    assert.ok(Math.abs(home[1] - anchor[1]) < 1e-6, `${arc.key} lat ${home[1]}`);
-    // And nowhere near Berry, which is where all five used to start.
-    assert.ok(
-      Math.hypot(home[0] - BORDER_ANCHORS.france[0], home[1] - BORDER_ANCHORS.france[1]) > 1,
-      `${arc.key} still starts in the middle of France`,
-    );
-  }
-});
-
-test('a missing frontier costs the arc its start, never its existence', () => {
-  // The geometry has not loaded. An arc drawn from slightly the wrong place
-  // still says which way the power is going; a missing arc says nothing.
+test('a missing frontier costs the arrow its start, never its existence', () => {
+  // The geometry has not loaded. An arrow drawn from slightly the wrong place
+  // still says which way the power is going; a missing arrow says nothing.
   const arcs = buildBorderArcs(PAYLOAD.national.exchanges, new Map());
   assert.equal(arcs.length, 5);
   assert.ok(arcs.every((arc) => arc.fromFrontier === false));
-  // Suisse is an IMPORT on this snapshot, so the French end is the cone's tip.
   const swiss = arcs.find((arc) => arc.key === 'suisse');
   assert.ok(swiss.importing);
-  assert.ok(
-    Math.abs(swiss.head.tip[0] - BORDER_ANCHORS.france[0]) < 1e-9,
-    String(swiss.head.tip[0]),
-  );
+  assert.deepEqual(swiss.frontier, BORDER_ANCHORS.france);
   assert.deepEqual(frontierAnchors({ features: [] }), new Map());
-});
-
-test('a shorter glyph gets a shorter bow, or the arc is a croquet hoop', () => {
-  const frontier = frontierAnchors(BUNDLED);
-  const apexOf = (arcs, key) => {
-    const arc = arcs.find((entry) => entry.key === key);
-    return Math.max(...arc.positions.filter((_, i) => i % 3 === 2));
-  };
-  const near = buildBorderArcs(PAYLOAD.national.exchanges, frontier);
-  const far = buildBorderArcs(PAYLOAD.national.exchanges);
-  // From Berry the Swiss glyph spans ~590 km and the shared 60 km apex floor is
-  // proportionate; from the frontier it is clamped to 170 km, where 60 km of
-  // bow is an archway. The apex has to come down with the span.
-  assert.ok(apexOf(near, 'suisse') < apexOf(far, 'suisse'));
-  // The clearance lift is on top of the bow, so the floor is the apex plus it.
-  const swiss = near.find((arc) => arc.key === 'suisse');
-  assert.ok(
-    apexOf(near, 'suisse') <= 45_000 + swiss.radiusM,
-    `${apexOf(near, 'suisse')} m`,
-  );
 });
 
 test('a zero border is no arc at all, and an unknown border is dropped', () => {
@@ -439,15 +479,63 @@ test('a zero border is no arc at all, and an unknown border is dropped', () => {
   assert.deepEqual(buildBorderArcs(null), []);
 });
 
-test('arc thickness ramps with the flow and saturates', () => {
+test('arrow thickness ramps with the flow and saturates', () => {
   const [thin] = buildBorderArcs([{ key: 'suisse', label: 'Suisse', mw: 50 }]);
   const [thick] = buildBorderArcs([{ key: 'suisse', label: 'Suisse', mw: 2900 }]);
   const [clamped] = buildBorderArcs([{ key: 'suisse', label: 'Suisse', mw: 25_000 }]);
-  assert.ok(thick.radiusM > thin.radiusM);
-  assert.ok(clamped.radiusM >= thick.radiusM && clamped.radiusM <= 22_000);
-  // And the head follows the shaft, so a weak border is not given a huge head.
-  assert.ok(thin.headRadiusM < thick.headRadiusM);
-  assert.ok(thin.headLengthM < thick.headLengthM);
+  assert.ok(thick.depthM > thin.depthM);
+  assert.ok(clamped.depthM >= thick.depthM && clamped.depthM <= 300_000);
+  // The head follows the shaft for free: scaling the quad is rigid in image
+  // space, so Maki's 5.6:1 head-to-shaft ratio survives every flow. What the
+  // ramp changes is the ASPECT — a weak border is a long thin arrow.
+  assert.ok(thin.depthM / thin.lengthM < 0.6);
+  assert.equal(clamped.depthM, clamped.lengthM, 'the strongest flow draws the artwork undistorted');
+  // Length is untouched by the megawatts, which is the whole point of it.
+  assert.equal(thin.lengthM, thick.lengthM);
+});
+
+test('the course is the compass bearing of the flow, read at the glyph', () => {
+  const arcs = buildBorderArcs(PAYLOAD.national.exchanges, frontierAnchors(BUNDLED));
+  const course = (key) => Math.round(borderArrowCourseDeg(arcs.find((a) => a.key === key)));
+  // Degrees CLOCKWISE FROM NORTH, which is what `screenProjectedRotation`
+  // builds its east-north-up probe from. An export heads for its market; an
+  // import heads back into France.
+  assert.equal(arcs.find((a) => a.key === 'angleterre').importing, false);
+  assert.ok(course('angleterre') > 290 && course('angleterre') < 340, `${course('angleterre')}`);
+  assert.equal(arcs.find((a) => a.key === 'italie').importing, false);
+  assert.ok(course('italie') > 80 && course('italie') < 130, `${course('italie')}`);
+  assert.equal(arcs.find((a) => a.key === 'espagne').importing, true);
+  assert.ok(course('espagne') > 10 && course('espagne') < 60, `${course('espagne')}`);
+  assert.equal(arcs.find((a) => a.key === 'suisse').importing, true);
+  assert.ok(course('suisse') > 290 && course('suisse') < 340, `${course('suisse')}`);
+
+  // An import and an export across the SAME frontier are 180° apart, which is
+  // the property that would have caught the mark pointing at the wrong country.
+  const [out] = buildBorderArcs([{ key: 'espagne', label: 'Espagne', mw: -500 }]);
+  const [back] = buildBorderArcs([{ key: 'espagne', label: 'Espagne', mw: 500 }]);
+  const apart = Math.abs(borderArrowCourseDeg(out) - borderArrowCourseDeg(back));
+  assert.ok(Math.abs(apart - 180) < 1, String(apart));
+
+  assert.equal(borderArrowCourseDeg(null), null);
+  assert.equal(borderArrowCourseDeg({ anchor: [2, 46] }), null);
+  assert.equal(borderArrowCourseDeg({ anchor: [2, 46], tip: [2, 46] }), null);
+});
+
+test('the arrow is aimed by the shared orientation module, not by this layer', () => {
+  // `iconOrientation.js` owns screen-space aim for every camera-facing quad in
+  // this project, and its contract is `rotation = 0` ⇒ the icon points UP. The
+  // artwork is turned once to match it; a layer that invented its own
+  // convention next to that module is how this mark came to point at the wrong
+  // country. So the texture must carry the quarter turn…
+  const svg = Buffer.from(borderArrowGlyph(64).split(',')[1], 'base64').toString('utf8');
+  assert.match(svg, /transform="rotate\(-90 7\.5 7\.5\)"/);
+
+  // …and a scene that cannot project keeps the rotation the arrow already had,
+  // rather than snapping it north.
+  const [arc] = buildBorderArcs([{ key: 'espagne', label: 'Espagne', mw: 500 }]);
+  assert.equal(borderArrowRotation({ globe: {} }, arc, 0.5), 0.5);
+  assert.equal(borderArrowRotation(null, arc, 0.5), 0.5);
+  assert.equal(borderArrowRotation({ camera: {} }, null, 0.5), 0.5);
 });
 
 test('the five real borders all resolve, Allemagne+Belgique as one arc', () => {
@@ -525,18 +613,10 @@ test('a région the feed DROPS is counted and named, not silently lost', () => {
   const missing = unmeasuredRegions(records);
   assert.deepEqual(missing.map((region) => region.code), ['28', '94']);
   assert.deepEqual(missing.map((region) => region.name), ['Normandie', 'Corse']);
-  // The arithmetic a reader can do on the legend now closes.
-  const legend = energyPrismLegend(records);
-  const row = legend.find((entry) => /non publié/.test(entry.label));
-  assert.equal(row.count, 2);
-  const classes = legend
-    .filter((entry) => Object.values(BALANCE_STYLES).some((s) => s.color === entry.color))
-    .reduce((sum, entry) => sum + entry.count, 0);
-  assert.equal(classes + row.count, Object.keys(REGION_DEPARTEMENTS).length);
-  // And it NAMES them, because a striped shape with no label is what sent the
-  // reader hunting along the coastline.
-  assert.match(row.blurb, /Normandie/);
-  assert.match(row.blurb, /Corse/);
+  // The legend no longer names them — it is two rows now, by instruction — so
+  // the arithmetic a reader could once do on it is done here instead: eleven
+  // measured plus two unmeasured is the thirteen régions this layer knows.
+  assert.equal(records.length + missing.length, 13);
 });
 
 test('a published NULL and a dropped région are the same absence', () => {
@@ -566,34 +646,6 @@ test('the name table covers the grouping exactly, or a région goes anonymous', 
     if (!REGION_NAMES[region.code]) continue;
     assert.equal(REGION_NAMES[region.code], region.name, `région ${region.code}`);
   }
-});
-
-test('the cone is aimed down the flow, and never at a pole', () => {
-  const aim = (x, y, z) => {
-    const direction = Cesium.Cartesian3.normalize(
-      new Cesium.Cartesian3(x, y, z), new Cesium.Cartesian3(),
-    );
-    const rotation = Cesium.Matrix3.fromQuaternion(arrowOrientation(direction));
-    // The cone is built along its own +Z, so the third column of the basis has
-    // to come back as the direction it was given.
-    return { direction, z: Cesium.Matrix3.getColumn(rotation, 2, new Cesium.Cartesian3()) };
-  };
-  for (const axis of [[1, 0, 0], [0, 1, 0], [0.3, -0.5, 0.8], [1, 1, 1]]) {
-    const { direction, z } = aim(...axis);
-    assert.ok(Cesium.Cartesian3.distance(direction, z) < 1e-9, axis.join(','));
-  }
-  // Straight up the ECEF Z: crossing with UNIT_Z gives a zero vector, and
-  // normalising that is NaN and an arrowhead that vanishes. The seed swaps.
-  const { direction, z } = aim(0, 0, 1);
-  assert.ok(Cesium.Cartesian3.distance(direction, z) < 1e-9);
-  const rotation = Cesium.Matrix3.fromQuaternion(arrowOrientation(direction));
-  for (let i = 0; i < 9; i += 1) assert.ok(Number.isFinite(rotation[i]), `element ${i}`);
-  // And the basis stays orthonormal, or the cone is sheared.
-  const x = Cesium.Matrix3.getColumn(rotation, 0, new Cesium.Cartesian3());
-  const y = Cesium.Matrix3.getColumn(rotation, 1, new Cesium.Cartesian3());
-  assert.ok(Math.abs(Cesium.Cartesian3.magnitude(x) - 1) < 1e-9);
-  assert.ok(Math.abs(Cesium.Cartesian3.dot(x, y)) < 1e-9);
-  assert.ok(Math.abs(Cesium.Cartesian3.dot(x, z)) < 1e-9);
 });
 
 test('labels carry the verb and the megawatts, never colour alone', () => {
@@ -658,94 +710,41 @@ test('border labels outrank régions in the collision cohort', () => {
   assert.deepEqual(selectEnergyOverlayCohort(null), []);
 });
 
-test('the legend publishes the height ruler AND the colour key (D1)', () => {
+test('the legend is TWO ROWS: excédentaire, déficitaire, and nothing else', () => {
+  // Asked for in those words, and it is a deletion rather than a collapse: a
+  // hidden row is still a row. What went: the height ruler and its three
+  // ticks, the reduced-footprint row, the "what colour is allowed to mean"
+  // row, the clipped-domain row, the measured-zero row, the « non publié »
+  // row, the flow row and the market-outline row. Nine became two.
   const records = buildRegionRecords(PAYLOAD, parseDepartements(BUNDLED));
   const legend = energyPrismLegend(records);
-  const labels = legend.map((entry) => entry.label);
+  assert.equal(legend.length, 2, legend.map((e) => e.label).join(' · '));
 
-  // Height first — it is the primary variable now — with a title row and
-  // numbered ticks, because a length without a ruler says nothing.
-  assert.match(labels[0], /^Hauteur — /);
-  // And immediately after it, the row that admits the footprint is not the
-  // région. The prism is drawn on a reduced emprise, and the reader is told so
-  // on the map rather than in a source file.
-  assert.match(labels[1], /^Socle — /);
-  assert.match(legend[1].blurb, /PÉRIMÈTRE EXACT/);
-  assert.equal(legend[1].color, null);
-  let swatch = null;
-  for (const tick of ENERGY_PRISM_SCALE.heightTicks) {
-    const row = legend.find((entry) => entry.label.startsWith(`${tick.toLocaleString('fr-FR').replace(/[\u00a0\u202f]/g, ' ')} `));
-    assert.ok(row, `no tick row for ${tick}`);
-    // One constant colour for all three: in these rows the datum is the bar's
-    // HEIGHT, so a varying swatch colour would be a second, false encoding.
-    assert.ok(row.glyph.startsWith('data:image/svg+xml;base64,'));
-    swatch = swatch ?? row.color;
-    assert.equal(row.color, swatch);
-  }
-  // Then the colour key, counted.
-  const colourTitle = labels.findIndex((label) => label.startsWith('Couleur — '));
-  assert.ok(colourTitle > 0);
-  const exporters = legend.find((entry) => entry.color === BALANCE_STYLES.exporter.color);
-  const importers = legend.find((entry) => entry.color === BALANCE_STYLES.importer.color);
-  assert.equal(exporters.count, 5);
-  assert.equal(importers.count, 7);
-  // The balanced class is real but never fires on this snapshot, so it is not
-  // shown: a colour a reader is told to look for and can never find is noise.
-  assert.ok(!legend.some((entry) => entry.color === BALANCE_STYLES.balanced.color));
+  const [surplus, deficit] = legend;
+  assert.match(surplus.label, /^Excédentaire/);
+  assert.equal(surplus.color, BALANCE_STYLES.exporter.color);
+  assert.equal(surplus.count, 5);
+  assert.equal(surplus.blurb, BALANCE_STYLES.exporter.blurb);
+  assert.match(deficit.label, /^Déficitaire/);
+  assert.equal(deficit.color, BALANCE_STYLES.importer.color);
+  assert.equal(deficit.count, 7);
+  assert.equal(deficit.blurb, BALANCE_STYLES.importer.blurb);
 
-  // And Corsica, which is NOT in `records` and would otherwise be forgotten by
-  // a legend that only counted what the join returned.
-  const missing = legend.find((entry) => /non publié/.test(entry.label));
-  assert.equal(missing.count, UNCOVERED_REGIONS.length);
-  assert.equal(missing.color, PRISM_NO_RATIO_COLOR);
-  assert.ok(missing.glyph, 'the absence is a motif, not just a tint (D3)');
-  assert.match(missing.blurb, /Corse/);
-
-  // The third mark: the neighbours are delimited and never filled, and the
-  // legend has to say why they are empty or an empty outline reads as a bug.
-  // It is CONDITIONAL — the market file may fail without taking the layer
-  // down, and a legend cannot promise a mark nobody drew.
-  assert.ok(!legend.some((entry) => /^Contour — /.test(entry.label)));
-  const full = energyPrismLegend(records, { markets: 5, borders: 5 });
-  const outline = full.at(-1);
-  assert.match(outline.label, /^Contour — /);
-  assert.equal(outline.color, null, 'the outline row keys no colour of its own');
-  assert.equal(outline.count, 5);
-  assert.match(outline.blurb, /jamais un aplat/);
-  assert.match(outline.blurb, /le plus proche/);
-
-  // The flow had no legend row at all while it was a hairline. It is now the
-  // loudest mark on the map, so D1 applies to it: what the thickness means,
-  // what the length does NOT mean, and where the sense is read.
-  const flow = full.find((entry) => /^Flux — /.test(entry.label));
-  assert.ok(flow, 'the loudest mark on the map needs a key');
-  assert.equal(flow.color, null);
-  assert.ok(!('count' in flow), 'a row that names a CHANNEL carries no count');
-  assert.match(flow.blurb, /ÉPAISSEUR/);
-  assert.match(flow.blurb, /LONGUEUR ne dit\s+rien|LONGUEUR ne dit rien/);
-  assert.match(flow.blurb, /ARRIVÉE/);
-  assert.ok(!energyPrismLegend(records, { markets: 5 }).some((e) => /^Flux — /.test(e.label)));
-
-  // Every entry is the repo's shape, and no ratio is asserted anywhere: this
-  // legend must never claim the colour is « un rapport ».
+  // One line each, and a concrete one: what a région that is not an
+  // electricity analyst's is actually being told.
   for (const entry of legend) {
-    assert.equal(typeof entry.label, 'string');
-    assert.ok('color' in entry);
-    assert.ok(!/rapport/.test(entry.blurb || ''), entry.label);
+    assert.ok(entry.blurb.length < 60, entry.blurb);
+    assert.ok(!/rapport/.test(entry.blurb));
+    assert.ok(!('glyph' in entry), 'no ruler bars survive');
   }
-  assert.deepEqual(energyPrismLegend([]), []);
-});
 
-test('the legend declares a clipped prism when there is one (A5)', () => {
-  const records = buildRegionRecords({
-    regions: PAYLOAD.regions.map((region) => (
-      region.code === '84' ? { ...region, netPhysical: -14_000 } : region
-    )),
-  }, parseDepartements(BUNDLED));
-  const clipped = energyPrismLegend(records).find((entry) => /au-dessus de/.test(entry.label));
-  assert.ok(clipped, 'a value over the frozen domain must be announced');
-  assert.equal(clipped.count, 1);
-  assert.match(clipped.blurb, /hauteur maximale/);
+  // The deadband class is real and is NOT shown: « sous 1 MW » is a threshold,
+  // not something a reader came to learn.
+  assert.ok(!legend.some((entry) => entry.color === BALANCE_STYLES.balanced.color));
+  // And no second argument is consulted any more — markets and borders had
+  // rows and no longer do.
+  assert.deepEqual(energyPrismLegend(records, { markets: 5, borders: 5 }), legend);
+  assert.deepEqual(energyPrismLegend([]), []);
 });
 
 test('the low-carbon share is taken against GENERATION, not consumption', () => {
@@ -1059,20 +1058,6 @@ test('a market file that fails costs the outlines and nothing else', async () =>
   }
 });
 
-test('the legend gains its outline row once the markets are on the globe', async () => {
-  const h = createHarness([PAYLOAD]);
-  try {
-    h.layer.init(h.viewer);
-    h.layer.enable(h.viewer);
-    await h.layer.update(h.viewer);
-    const row = h.layer.getRowControls().legend.find((entry) => /^Contour — /.test(entry.label));
-    assert.ok(row);
-    assert.equal(row.count, 2, 'the two markets the fixture carries');
-  } finally {
-    h.restore();
-  }
-});
-
 test('a market whose flow dies keeps its outline, in slate', async () => {
   // An arc is a DIRECTION and a direction of nothing is nothing, so it goes.
   // An outline answers "who is on the other side", which stays true at zero.
@@ -1181,9 +1166,10 @@ test('the three marks A1 asks for are three different marks', async () => {
     assert.ok(zero.polygon.classificationType);
     assert.equal(zero.polygon.height, undefined);
 
-    // And the legend counts the zero rather than swallowing it.
-    const legend = h.layer.getRowControls().legend;
-    assert.ok(legend.some((entry) => entry.label === 'mesuré à zéro' && entry.count === 1));
+    // The legend no longer counts the zero — it is two rows now — but the
+    // three marks are still three, which is what A1 asks for and what this
+    // test is named after. The count lives on in `getStats()`.
+    assert.equal(h.layer.getRowControls().legend.length, 2);
     // Corse, and Corse alone: counted from the KNOWN 13 régions rather than
     // from the rows the payload carried, which is what used to lose a région
     // the feed had dropped.
@@ -1215,7 +1201,7 @@ test('a région the upstream drops becomes striped, not stale', async () => {
   }
 });
 
-test('the five border flows are drawn as translucent volumes with a solid head', async () => {
+test('the five border flows are drawn as one ready-made arrow each', async () => {
   const h = createHarness([PAYLOAD]);
   try {
     h.layer.init(h.viewer);
@@ -1223,40 +1209,41 @@ test('the five border flows are drawn as translucent volumes with a solid head',
     await h.layer.update(h.viewer);
 
     const arcs = h.entities().filter((entity) => String(entity.id).startsWith('energy-fr:arc:'));
-    const heads = h.entities().filter((entity) => String(entity.id).startsWith('energy-fr:arc-head:'));
     assert.equal(arcs.length, 5);
-    assert.equal(heads.length, 5, 'a flow without a head has no sense');
+    // ONE entity per flow. The tube and the cone were a pair that had to be
+    // shown and hidden together; nothing here draws a second half.
+    assert.equal(
+      h.entities().filter((e) => String(e.id).startsWith('energy-fr:arc-head:')).length,
+      0,
+    );
     for (const arc of arcs) {
       assert.ok(arc.show);
-      // A VOLUME, not a stroke: the reader called the old pixel line « quasi
-      // illisible », and a screen width also refuses to grow when the prisms
-      // beside it do.
-      assert.ok(arc.polylineVolume, 'the shaft is a polyline volume');
-      assert.equal(arc.polyline, undefined);
-      assert.ok(arc.polylineVolume.positions.getValue().length > 2);
-      const shape = arc.polylineVolume.shape.getValue();
-      assert.ok(shape.length >= 6, 'a regular section, as thick from every angle');
-      const radius = Math.hypot(shape[0].x, shape[0].y);
-      assert.ok(radius >= 9_000 && radius <= 22_000, `${radius} m`);
-      // The prism's own grammar: translucent body, near-opaque edge.
-      const body = arc.polylineVolume.material.color.getValue();
-      assert.ok(body.alpha < 0.5, `body alpha ${body.alpha}`);
-      assert.equal(arc.polylineVolume.outline.getValue(), true);
-      assert.ok(arc.polylineVolume.outlineColor.getValue().alpha > body.alpha);
-    }
+      assert.ok(arc.billboard, 'the flow is a billboard');
+      assert.equal(arc.polylineVolume, undefined, 'the swept tube is gone');
+      assert.equal(arc.cylinder, undefined, 'and so is the cone');
+      // Maki's artwork, not a shape this layer builds. The data URI is the
+      // SAME string for all five: white art tinted by a per-billboard multiply
+      // costs one atlas entry, a baked hue would cost two.
+      assert.equal(arc.billboard.image.getValue(), borderArrowGlyph(320));
 
-    for (const head of heads) {
-      assert.ok(head.show);
-      // A CONE — `topRadius: 0` — and a fat one, because a head barely wider
-      // than its shaft is a taper and not an arrow.
-      assert.equal(head.cylinder.topRadius.getValue(), 0);
-      const shaft = arcs.find((entity) => String(entity.id).endsWith(String(head.id).split(':').at(-1)));
-      const radius = Math.hypot(...['x', 'y'].map((k) => shaft.polylineVolume.shape.getValue()[0][k]));
-      assert.ok(head.cylinder.bottomRadius.getValue() > radius * 1.5);
-      // And it is the BRIGHTEST end of the mark: that is where the sense is.
-      assert.ok(head.cylinder.material.color.getValue().alpha > 0.8);
-      assert.ok(head.position, 'the cone is placed on the flow');
-      assert.ok(head.orientation, 'and aimed down it');
+      // METRES, like every other mark here — a screen size would leave the
+      // flow a hairline while the prisms beside it grow.
+      assert.equal(arc.billboard.sizeInMeters.getValue(), true);
+      // SWAPPED by the upright transform: the artwork's long side runs up the
+      // texture, so `height` is the glyph's length and `width` its depth.
+      assert.equal(arc.billboard.height.getValue(), 300_000);
+      const depth = arc.billboard.width.getValue();
+      assert.ok(depth >= 150_000 && depth <= 300_000, `${depth} m`);
+
+      // Aimed by a CALLBACK, because the angle depends on where the camera
+      // is — and NOT by `alignedAxis`, whose shader trigonometry is off by up
+      // to 15° between the cardinal directions.
+      assert.equal(arc.billboard.alignedAxis, undefined);
+      assert.equal(arc.billboard.rotation.isConstant, false);
+      assert.ok(Number.isFinite(arc.billboard.rotation.getValue(Cesium.JulianDate.now())));
+      // Opaque: the mark IS the sense now, so nothing is spent on translucency.
+      assert.equal(arc.billboard.color.getValue().alpha, 1);
+      assert.ok(arc.position, 'the arrow is placed on the flow');
     }
   } finally {
     h.restore();

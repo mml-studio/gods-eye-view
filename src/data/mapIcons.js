@@ -157,6 +157,19 @@ export const MAKI_PATHS = Object.freeze({
   // `transitVehicleIcons.js` for the `aerial` class; the note there records
   // what it replaced and why.
   aerialway: 'M13,5H8V2.6c0.1854-0.1047,0.3325-0.2659,0.42-0.46L13.5,1.5C13.7761,1.5,14,1.2761,14,1s-0.2239-0.5-0.5-0.5L8.28,1.15 C8.0954,0.9037,7.8077,0.7562,7.5,0.75C7.0963,0.752,6.7334,0.9966,6.58,1.37L1.5,2C1.2239,2,1,2.2239,1,2.5S1.2239,3,1.5,3 l5.22-0.65C6.7967,2.4503,6.8917,2.5351,7,2.6V5H2C1.4477,5,1,5.4477,1,6v7c0,0.5523,0.4477,1,1,1h11c0.5523,0,1-0.4477,1-1V6 C14,5.4477,13.5523,5,13,5z M7,11H3V7h4V11z M12,11H8V7h4V11z',
+  // A right-pointing arrow: a rounded shaft and a chevron head, one path, in
+  // Maki's own 15-unit box. Used by `franceEnergy.js` for the five commercial
+  // exchanges at the frontiers, which used to be a hand-built tube swept along
+  // a great circle and terminated by a Cesium cone. The reader's verdict on
+  // that pair was that they were « moches », and the drawing agrees: an
+  // eight-sided `polylineVolume` with `outline: true` draws its eight
+  // longitudinal edges, so the shaft read as corrugated hose, and a cone seen
+  // from anywhere other than side-on is an ellipse, which reads as a blob.
+  //
+  // The head is 5.6× the shaft here (11.0 units against 2.0), which is the
+  // ratio that layer spent a paragraph arguing for and could only reach by
+  // inventing a `ARC_HEAD_RADIUS_FACTOR`. It comes free with the artwork.
+  arrow: 'M8.29289 2.29289C8.68342 1.90237 9.31658 1.90237 9.70711 2.29289L14.2071 6.79289C14.5976 7.18342 14.5976 7.81658 14.2071 8.20711L9.70711 12.7071C9.31658 13.0976 8.68342 13.0976 8.29289 12.7071C7.90237 12.3166 7.90237 11.6834 8.29289 11.2929L11 8.5H1.5C0.947715 8.5 0.5 8.05228 0.5 7.5C0.5 6.94772 0.947715 6.5 1.5 6.5H11L8.29289 3.70711C7.90237 3.31658 7.90237 2.68342 8.29289 2.29289Z',
   // An anchor, drawn as one solid mass with a hole in its stock. Used by
   // `militarySiteIcons.js` for `military=naval_base`, where it replaced
   // Material's `directions_boat` — a civil ferry seen head-on, which said
