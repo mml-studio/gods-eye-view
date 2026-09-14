@@ -224,17 +224,56 @@ import { isOwnedByOtherLayer, registerPickOwner, unregisterPickOwner } from './p
  *     #141 did to the buoy scale and #166 to the road ladder: a graduated
  *     ruler of one ink whose rows differ only in size is not a key, it is the
  *     mark reprinted n times, and one line stating its bounds replaces it.
- *   · THE CARD answers « what is THIS event », on click, with the caveat
- *     attached to the very number it qualifies: this magnitude is not this
- *     energy, this ruler length is not this focus position. A sentence read
- *     next to the number it is about is a sentence that lands; the same
- *     sentence in a permanent block is furniture.
+ *   · THE CARD answers « what is THIS event », on click, in the words of
+ *     someone who has never read a seismology page: how hard it shook, where,
+ *     when, how deep.
  *
  * The A1 fallbacks split the same way. « profondeur non publiée » keeps its
  * key row, because a hollow ring is a shape a reader decodes WRONG without a
  * key — they read it as a small event. « tige plancher » and the label cap do
  * not: neither is visible on the map as anything, both are disclosures, and
  * disclosures have their own slot (`note`) under the classes they qualify.
+ *
+ * ── D3 · the card stopped explaining its own rendering ─────────────────────
+ *
+ * The card shipped by #175 opened on « 13,2 px : la magnitude, pas l’énergie —
+ * +1 sur l’échelle vaut ×31,6 d’énergie », closed on « us7000th81 », and told
+ * the reader between the two that « la tige porte cette longueur VERS LE
+ * HAUT ». Three of its six lines were about the MARK. A reader who clicks a
+ * dot is asking about an earthquake, not about a disc: the pixel diameter of
+ * the thing they just clicked is the one fact they can already see, the USGS
+ * event id is an opaque string with nowhere to paste it, and the ruler's
+ * direction is a property of the drawing.
+ *
+ * None of that is lost, because none of it was ever the card's to hold: the
+ * key already publishes « Ni énergie, ni emprise » under the magnitude row and
+ * « À l’échelle 1:1, et vers le haut » under the depth row, `buildEarthquakeNote`
+ * already carries the 1 km floor rupture, and the event id still travels as the
+ * overlay entry's own `id` (`earthquake-card:us7000th81`). What the card prints
+ * now is what only the card can say about THIS event, plus the two things that
+ * turn a number into a fact for a reader who does not know the scale:
+ *
+ *   · A PLAIN-LANGUAGE CLASS for the magnitude ({@link EARTHQUAKE_MAGNITUDE_CLASSES})
+ *     and one sentence of what that class does at the surface. « M4,9 » is a
+ *     number no one outside the field can place; « secousse modérée — ressentie
+ *     sur place, dégâts rares » is the same measurement, decoded.
+ *   · A GAUGE ({@link magnitudeGauge}) spanning the layer's own frozen domain,
+ *     M2.5…M9.5, so the card and the key agree on where the scale stops. Full
+ *     cells filled against empty ones, never the `▁▂▃▄` ramp `sparkline.js`
+ *     owns: bars of differing HEIGHT mean a series over time everywhere else
+ *     in this repo, and one magnitude is not a series.
+ *
+ * The depth line keeps the datum wording it had — « sous le niveau de la mer »,
+ * signed, never a double negative — and trades the ruler's direction for the
+ * one thing depth changes for a reader: shallow shakes harder
+ * ({@link EARTHQUAKE_DEPTH_CLASSES}, the 70/300 km boundaries seismology uses).
+ *
+ * The clock moved from UTC to the READER's local day, against the D2 argument
+ * below that two readers of one share link must read the same card. D2 loses
+ * here: « 2026-09-13 19:41 UTC » is unreadable at a glance for the audience
+ * this fork is in French for, and the ambiguity it trades into — whose evening
+ * is 21 h 41 — is closed by naming the clock on the line (« chez vous »)
+ * instead of by making everyone read Zulu.
  *
  * ── F1 · occlusion policy: regime (a), occluded ────────────────────────────
  *
@@ -503,8 +542,11 @@ export function buildEarthquakeLegend(tally) {
   entries.push({
     label: `Point — magnitude, M${fr(EARTHQUAKE_MAG_FLOOR)} à M${fr(EARTHQUAKE_MAG_DOMAIN_MAX)}`,
     color: null,
+    // The energy ratio lives here and nowhere else since D3: it qualifies the
+    // MARK's scale, which is what this row keys, not any one event.
     blurb: `${EARTHQUAKE_MAG_BASE_PX} px au plancher, +${EARTHQUAKE_MAG_PX_PER_UNIT} px `
-      + `par unité, à toute distance. Ni énergie, ni emprise.`,
+      + `par unité, à toute distance. Ni énergie — +1 vaut `
+      + `×${decimal(EARTHQUAKE_ENERGY_RATIO_PER_UNIT)} —, ni emprise.`,
   });
   entries.push({
     label: `Tige — profondeur du foyer, 0 à ${fr(EARTHQUAKE_DEPTH_MAX_KM)} km`,
@@ -643,8 +685,20 @@ export const EARTHQUAKE_SELECTED_OVERLAY_SOURCE_OPTIONS = Object.freeze({
  * as a fifth age — the same argument the « âge non publié » slate is chosen on.
  */
 export const EARTHQUAKE_SELECTED_COLOR = '#7ee8fa';
-/** Reading measure for the card, under the host's 420 px ceiling. */
-export const EARTHQUAKE_CARD_MAX_WIDTH_PX = 300;
+/**
+ * Reading measure for the card, under the host's 420 px ceiling.
+ *
+ * 300 px while the card was six terse lines; 320 since D3 made it prose.
+ * Measured in Chrome at `fontDetail`, the padding leaves 296 px, and every
+ * line the card GENERATES sets inside it — the place line (278 px) and the
+ * source line (277 px) were each overflowing 300 px by a pixel or two, which
+ * costs a whole rendered line for nothing. What can still wrap is a place
+ * string long enough to need it (« 1 234 km à l’est-nord-est d’Ambon,
+ * Indonesia »), which is the feed's, not the layout's. Still far under 420: at
+ * this size a 420 px measure runs past comfortable reading width while covering
+ * a band of globe the reader is looking at.
+ */
+export const EARTHQUAKE_CARD_MAX_WIDTH_PX = 320;
 /** Pixels the selection ring clears the mark by, so the disc stays readable. */
 const SELECTION_RING_MARGIN_PX = 9;
 /** How deep to look for one of our marks under a click. */
@@ -655,34 +709,227 @@ function decimal(value) {
   return Number(value).toFixed(1).replace('.', ',');
 }
 
+/**
+ * A depth in km, without the decimal USGS pads whole numbers with.
+ *
+ * A magnitude always keeps its decimal — M5 and M5,0 are different claims about
+ * precision, and the scale is read to a tenth. A depth is not: « 10,0 km » and
+ * « 520,0 km » spend a character on a zero that carries nothing, on the one
+ * line of the card a reader is most likely to quote out loud.
+ * @param {number} km Absolute depth, km.
+ * @returns {string}
+ */
+function depthText(km) {
+  return Number.isInteger(km) ? fr(km) : decimal(km);
+}
+
 /** Two-digit clock field. */
 function pad2(value) {
   return String(value).padStart(2, '0');
 }
 
+/** Month names, hand-held rather than left to ICU — see below. */
+const MONTHS_FR = Object.freeze([
+  'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+  'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
+]);
+
+/** Local midnight opening the calendar day an instant falls in. */
+function localMidnight(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+}
+
 /**
- * The instant the event happened, in UTC.
+ * The instant the event happened, on the READER's calendar.
  *
- * UTC and not a local clock: the feed is worldwide, two readers of one share
- * link must read the same card (D2), and the HUD above already stamps its own
- * clock with a Z. Assembled from the UTC getters rather than through
+ * The feed is worldwide and this used to print Zulu for that reason (D2). D3
+ * overrules it: a date-time stamp in UTC is the single most technical thing a
+ * non-specialist can be handed, and this fork's reader is reading French. What
+ * UTC bought — one unambiguous clock — is bought back for four characters by
+ * naming whose clock it is, « chez vous », which also forestalls the misreading
+ * UTC never fixed either: that 21 h 41 was the evening WHERE IT SHOOK.
+ *
+ * Assembled from the getters and {@link MONTHS_FR} rather than through
  * `toLocaleString`, because `hour: '2-digit'` renders midnight as `24` on some
- * ICU builds — the trap `fraicheurFeed.js` documents.
+ * ICU builds — the trap `fraicheurFeed.js` documents. The hour is deliberately
+ * NOT zero-padded: French writes « 9 h 05 », not « 09 h 05 ».
+ *
  * @param {number} timeMs Epoch ms.
- * @returns {string} `2026-09-10 20:14 UTC`.
+ * @param {number} [nowMs] Reference instant deciding aujourd’hui / hier.
+ * @returns {string} `hier à 21 h 41 chez vous`.
  */
-export function formatEarthquakeInstant(timeMs) {
+export function formatEarthquakeInstant(timeMs, nowMs = Date.now()) {
   const d = new Date(timeMs);
-  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())} `
-    + `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())} UTC`;
+  const clock = `${d.getHours()} h ${pad2(d.getMinutes())}`;
+  // Rounded, not floored: a DST day is 23 or 25 hours long, and « hier » must
+  // not become « le 13 septembre » twice a year.
+  const days = Math.round((localMidnight(new Date(nowMs)) - localMidnight(d)) / 86_400_000);
+  if (days === 0) return `aujourd’hui à ${clock} chez vous`;
+  if (days === 1) return `hier à ${clock} chez vous`;
+  return `le ${d.getDate()} ${MONTHS_FR[d.getMonth()]} à ${clock} chez vous`;
+}
+
+// ---------------------------------------------------------------------------
+// Decoding the numbers for a reader who does not know the scales (D3)
+// ---------------------------------------------------------------------------
+
+/**
+ * What a magnitude MEANS, in descending order — first match wins.
+ *
+ * The bands are the whole-unit ones every agency publishes, and the effects are
+ * hedged on purpose (« peut », « rares »): what a given magnitude does at the
+ * surface depends on depth, distance and what is built there, and two of those
+ * three are on the card already.
+ */
+export const EARTHQUAKE_MAGNITUDE_CLASSES = Object.freeze([
+  { min: 8, label: 'séisme dévastateur', effect: 'Destruction sur des centaines de km.' },
+  { min: 7, label: 'séisme majeur', effect: 'Dégâts graves sur toute une région.' },
+  { min: 6, label: 'séisme destructeur', effect: 'Bâtiments endommagés jusqu’à 100 km.' },
+  { min: 5, label: 'secousse forte', effect: 'Peut endommager les bâtiments fragiles.' },
+  { min: 4, label: 'secousse modérée', effect: 'Ressentie sur place, dégâts rares.' },
+  { min: 3, label: 'secousse faible', effect: 'Ressentie près de l’épicentre, sans dégât.' },
+  { min: Number.NEGATIVE_INFINITY, label: 'secousse très faible', effect: 'Rarement ressentie, sans dégât.' },
+]);
+
+/**
+ * The class one magnitude falls in.
+ * @param {number} magnitude USGS magnitude.
+ * @returns {{min:number,label:string,effect:string}|null} Null when unmeasured.
+ */
+export function classifyEarthquakeMagnitude(magnitude) {
+  if (typeof magnitude !== 'number' || !Number.isFinite(magnitude)) return null;
+  return EARTHQUAKE_MAGNITUDE_CLASSES.find((band) => magnitude >= band.min) ?? null;
+}
+
+/** Cells in the magnitude gauge — 14 over 7 units of domain, so one cell is 0,5. */
+export const EARTHQUAKE_GAUGE_CELLS = 14;
+const GAUGE_FILLED = '█';
+/**
+ * The EMPTY cell, chosen against five candidates rendered at 10.5 px in Chrome
+ * with the shipped JetBrains Mono fallback chain.
+ *
+ * `─` wins because it is the only one that reads as ONE object with the filled
+ * cells: a solid slab that continues as a thin rule, i.e. « filled up to here,
+ * and the track goes on to there ». `░` — the obvious first choice — dithers
+ * into visual static at this size and sits within a hair of `█`'s lightness, so
+ * the bar reads as a grey smear rather than a measurement. `▁` puts the empty
+ * track on the BASELINE, so the bar looks like it drops a step, and it is the
+ * sparkline ramp besides. `▪`/`▯` leave gaps and read as a row of items. A
+ * space leaves the track's extent invisible, which is the one thing a gauge
+ * exists to show.
+ */
+const GAUGE_EMPTY = '─';
+
+/**
+ * A gauge placing one magnitude inside the layer's frozen domain.
+ *
+ * FULL-height cells, filled against empty — never the `▁▂▃▄▅▆▇█` ramp that
+ * `sparkline.js` owns, where a differing HEIGHT means a sample in a series. One
+ * magnitude is not a series, and a reader who has seen the comptage sparklines
+ * elsewhere in this app would read a ramp as twelve hours of history.
+ *
+ * The domain is {@link EARTHQUAKE_MAG_FLOOR}…{@link EARTHQUAKE_MAG_DOMAIN_MAX},
+ * i.e. exactly what the key publishes, so the two surfaces cannot disagree about
+ * where the scale stops. An event sitting ON the floor still lights one cell,
+ * for `choroplethPrism`'s reason: an empty bar reads as « no data », and this
+ * one is data.
+ *
+ * @param {number} magnitude USGS magnitude.
+ * @returns {string|null} `█████░░░░░░░░░`, or null when unmeasured.
+ */
+export function magnitudeGauge(magnitude) {
+  if (typeof magnitude !== 'number' || !Number.isFinite(magnitude)) return null;
+  const span = EARTHQUAKE_MAG_DOMAIN_MAX - EARTHQUAKE_MAG_FLOOR;
+  const clamped = Math.min(EARTHQUAKE_MAG_DOMAIN_MAX, Math.max(EARTHQUAKE_MAG_FLOOR, magnitude));
+  const filled = Math.min(
+    EARTHQUAKE_GAUGE_CELLS,
+    Math.max(1, Math.round(((clamped - EARTHQUAKE_MAG_FLOOR) / span) * EARTHQUAKE_GAUGE_CELLS)),
+  );
+  return GAUGE_FILLED.repeat(filled) + GAUGE_EMPTY.repeat(EARTHQUAKE_GAUGE_CELLS - filled);
+}
+
+/**
+ * What a depth changes for someone standing above it — descending, first match wins.
+ *
+ * 70 km and 300 km are the boundaries seismology already uses for shallow /
+ * intermediate / deep, so the card is not inventing a classification.
+ */
+export const EARTHQUAKE_DEPTH_CLASSES = Object.freeze([
+  // Kept to one short clause each, and to within a few characters of one
+  // another: the depth sentence is the only line of the card that wraps, and a
+  // long qualifier turns its two rendered lines into three.
+  { min: 300, label: 'très profond, rarement ressenti en surface' },
+  { min: 70, label: 'profondeur moyenne, secousse atténuée' },
+  { min: Number.NEGATIVE_INFINITY, label: 'peu profond, donc ressenti plus fort' },
+]);
+
+/**
+ * The surface consequence of one published depth.
+ * @param {number} depthKm Depth below sea level, in km, as USGS publishes it.
+ * @returns {string|null} Null when depth is not published.
+ */
+export function describeEarthquakeDepth(depthKm) {
+  if (typeof depthKm !== 'number' || !Number.isFinite(depthKm)) return null;
+  return EARTHQUAKE_DEPTH_CLASSES.find((band) => depthKm >= band.min)?.label ?? null;
+}
+
+/** The sixteen compass points USGS abbreviates, in French. */
+const COMPASS_FR = Object.freeze({
+  N: 'nord', NNE: 'nord-nord-est', NE: 'nord-est', ENE: 'est-nord-est',
+  E: 'est', ESE: 'est-sud-est', SE: 'sud-est', SSE: 'sud-sud-est',
+  S: 'sud', SSW: 'sud-sud-ouest', SW: 'sud-ouest', WSW: 'ouest-sud-ouest',
+  W: 'ouest', WNW: 'ouest-nord-ouest', NW: 'nord-ouest', NNW: 'nord-nord-ouest',
+});
+
+/** `86 km SSW of Isangel, Vanuatu` — the shape most of the feed arrives in. */
+const USGS_BEARING_PLACE = /^(\d+(?:[.,]\d+)?)\s*km\s+([NSEW]{1,3})\s+of\s+(.+)$/i;
+
+/**
+ * USGS's place string, in French where its grammar is mechanical.
+ *
+ * Only the bearing form is translated, because only it has a grammar rather
+ * than a vocabulary: a distance, one of sixteen abbreviations, and a proper
+ * noun that stays exactly as its own country writes it. The other forms the
+ * feed carries — « South of the Fiji Islands », « off the east coast of
+ * Honshu, Japan », « Balleny Islands region » — would need a phrasebook and a
+ * gazetteer of endonyms to translate without inventing places, so they are
+ * passed through untouched rather than half-guessed. On the 24 h M2.5+ feed the
+ * bearing form is the large majority of events.
+ *
+ * The two elisions French needs are both mechanical here: « à l’est » /
+ * « au nord » on the bearing's initial vowel, and « d’Isangel » / « de
+ * Mraighah » on the place's. An initial `h` takes « de », which is right for
+ * « de Honiara » and wrong for « d’Hawaï » — the rarer case, and a wrong
+ * apostrophe is worse than a missing one.
+ *
+ * @param {string} place Raw USGS `properties.place`.
+ * @returns {string} French where recognised, verbatim otherwise.
+ */
+export function frenchEarthquakePlace(place) {
+  const text = String(place ?? '').trim();
+  const match = USGS_BEARING_PLACE.exec(text);
+  if (!match) return text;
+  const bearing = COMPASS_FR[match[2].toUpperCase()];
+  if (!bearing) return text;
+  const distance = fr(Number(String(match[1]).replace(',', '.')));
+  const toward = /^[eo]/.test(bearing) ? 'à l’' : 'au ';
+  const name = match[3].trim();
+  const of = /^[aeiouyàâäéèêëîïôöûü]/i.test(name) ? 'd’' : 'de ';
+  return `${distance} km ${toward}${bearing} ${of}${name}`;
 }
 
 /**
  * How long ago.
  *
- * Minutes are kept past the hour rather than rounded away: the narrowest age
- * band is one hour, so « il y a 2 h » for a 90-minute-old event would put the
- * card on the far side of a band boundary from the colour beside it.
+ * Hours are FLOORED, never rounded: the narrowest age band is one hour, so
+ * « il y a 2 h » for a 90-minute-old event would put the card on the far side
+ * of a band boundary from the colour beside it. Flooring cannot do that.
+ *
+ * The minutes past the hour used to be printed too — « il y a 11 h 11 ». On a
+ * line that now also carries a wall clock (« hier à 21 h 41 chez vous »), a
+ * second `h`-separated pair reads as a second time of day. The precision it
+ * carried is not lost: the exact instant is on the same line, three words to
+ * the left.
  * @param {number} ageMs Milliseconds since the event.
  * @returns {string}
  */
@@ -690,70 +937,89 @@ function formatAgo(ageMs) {
   const minutes = Math.max(0, Math.floor(ageMs / 60_000));
   if (minutes < 1) return 'à l’instant';
   if (minutes < 60) return `il y a ${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return rest ? `il y a ${hours} h ${pad2(rest)}` : `il y a ${hours} h`;
+  return `il y a ${Math.floor(minutes / 60)} h`;
 }
 
+/** Printed under the gauge's top end: 9,5 is Valdivia 1960, and nothing since. */
+const GAUGE_TOP_NOTE = 'record mondial';
+/** The publisher, expanded once — « USGS » names nothing to a French reader. */
+const EARTHQUAKE_SOURCE_LINE = 'Source : USGS, institut géologique américain';
+
 /**
- * The explanatory card for one clicked event.
+ * The card for one clicked event.
  *
- * Every line pairs a MEASUREMENT with the caveat that belongs to that
- * measurement and to nothing else, which is the whole reason this exists
- * rather than four paragraphs in the key (header, D1). The order is the order
- * of the questions a reader actually asks: how big, where, when, how deep.
+ * Seven lines answering, in order, the questions a reader actually asks: how
+ * hard did it shake, how does that compare, what does that do, where, when, how
+ * deep. Nothing here describes the mark the reader just clicked — see the
+ * header under D3 for what moved out and where each piece went.
  *
  * Kept as a newline-joined string, like every sibling card in the repo, so the
- * overlay host owns the wrapping and the first line is the title.
+ * overlay host owns the wrapping and the first line is the title. One sentence
+ * per line and none of them hand-wrapped, with the single deliberate exception
+ * the depth block documents below.
  *
  * @param {object} record `{id, magnitude, depthKm, place, timeMs}`.
- * @param {number} nowMs Reference instant for the age line.
+ * @param {number} nowMs Reference instant for the clock and age lines.
  * @returns {string} Title on the first line, details below.
  */
 export function buildEarthquakeCard(record, nowMs) {
-  const mag = Number(record?.magnitude);
-  // One sentence per line, never pre-wrapped: the overlay host measures and
-  // breaks against `maxWidthPx`, and a hand-broken continuation line would be
-  // re-broken on top of its own indent at any other width.
-  const lines = [`M${decimal(mag)}`];
+  // `Number(null)` is 0 and `Number(undefined)` is NaN — the A1 asymmetry
+  // {@link magnitudePixelSize} guards against, and the one that would put
+  // « secousse très faible » on an event nobody measured. Numeric strings are
+  // still accepted; absence is not.
+  const rawMag = record?.magnitude;
+  const mag = rawMag === null || rawMag === undefined || rawMag === ''
+    ? Number.NaN
+    : Number(rawMag);
+  const magClass = classifyEarthquakeMagnitude(mag);
 
-  // The disc, and the gap between what it says and what the ground released.
-  // One magnitude unit is ×31.6 of seismic moment against +3 px of diameter;
-  // that ratio is the single most misread thing about this mark, and it is
-  // only sayable next to a number.
-  lines.push(`◈ ${fr(magnitudePixelSize(mag))} px : la magnitude, pas l’énergie — `
-    + `+1 sur l’échelle vaut ×${decimal(EARTHQUAKE_ENERGY_RATIO_PER_UNIT)} d’énergie. `
-    + `Le point ne dessine aucune emprise.`);
+  // The title carries the number AND its class, because the number alone is
+  // the thing this whole rewrite exists to stop shipping bare.
+  const lines = [magClass
+    ? `Magnitude ${decimal(mag)} — ${magClass.label}`
+    : 'Magnitude non publiée'];
 
-  const place = String(record?.place ?? '').trim();
+  const gauge = magnitudeGauge(mag);
+  if (gauge) {
+    lines.push(`${fr(EARTHQUAKE_MAG_FLOOR)} ${gauge} `
+      + `${fr(EARTHQUAKE_MAG_DOMAIN_MAX)} ${GAUGE_TOP_NOTE}`);
+  }
+  if (magClass) lines.push(magClass.effect);
+
+  const place = frenchEarthquakePlace(record?.place);
   if (place) lines.push(`📍 ${place}`);
 
   const timeMs = record?.timeMs;
   if (typeof timeMs === 'number' && Number.isFinite(timeMs)) {
     // E1 — the instant REPRESENTED, then the distance to now. Both, because
     // one alone is either unreadable at a glance or unanchored in the day.
-    lines.push(`🕐 ${formatEarthquakeInstant(timeMs)} · ${formatAgo(nowMs - timeMs)}`);
+    lines.push(`🕐 ${formatEarthquakeInstant(timeMs, nowMs)} · ${formatAgo(nowMs - timeMs)}`);
   } else {
-    lines.push('🕐 horodatage non publié — la couleur est hors rampe');
+    lines.push('🕐 date non publiée par l’USGS');
   }
 
   const depthKm = record?.depthKm;
   if (typeof depthKm !== 'number' || !Number.isFinite(depthKm)) {
-    lines.push('↧ profondeur non publiée — aucune tige, et le point est creux');
+    // Why the point is a hollow ring stays in the key, where the shape is:
+    // what the card owes THIS event is that the number does not exist.
+    lines.push('↓ profondeur non publiée par l’USGS');
   } else {
     // USGS publishes negative depths for foci above sea level, so the datum is
     // named with the sign rather than assumed: « −1,2 km sous le niveau de la
     // mer » would be a double negative describing a hillside.
     const datum = depthKm < 0 ? 'au-dessus du niveau de la mer' : 'sous le niveau de la mer';
-    lines.push(`↧ foyer à ${decimal(Math.abs(depthKm))} km ${datum} — la tige porte `
-      + `cette longueur VERS LE HAUT.`);
-    if (depthKm * 1000 <= EARTHQUAKE_DEPTH_FLOOR_M) {
-      lines.push(`   tige au plancher d’1 km : le 1:1 s’arrête là`);
-    }
+    // Two lines, hand-set, and the only place on this card the host's wrap is
+    // pre-empted. Joined into one sentence this measures 491–542 px against a
+    // 296 px measure, so it ALWAYS wrapped — and the host wraps flush left, so
+    // the continuation « profond, donc ressenti plus fort » started a column
+    // of its own and read as a fifth bullet. Two complete lines, the second
+    // indented under the first, is what the shipped card already did for its
+    // « tige au plancher » continuation. Both fit, at every class.
+    lines.push(`↓ foyer à ${depthText(Math.abs(depthKm))} km ${datum}`);
+    lines.push(`   ${describeEarthquakeDepth(depthKm)}`);
   }
 
-  const usgsId = String(record?.id ?? '').trim();
-  if (usgsId) lines.push(`⌗ ${usgsId} · USGS`);
+  lines.push(EARTHQUAKE_SOURCE_LINE);
   return lines.join('\n');
 }
 
