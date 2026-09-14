@@ -85,41 +85,67 @@
  *
  * The HEIGHT is the same number on a channel the perspective does not eat.
  *
- * ── The parcel becomes a volume ─────────────────────────────────────────────
+ * ── The dossier stands a column, and the parcel stays flat ─────────────────
  *
  * A dwelling count is an ABSOLUTE quantity, and the doctrine gives an absolute
  * exactly one honest channel: size. On a globe the screen-size channel is
- * already spent on depth, so what is left is extrusion — and this layer is
- * standing on the one thing that makes extrusion legal here, which is that it
- * already draws the EXACT PARCEL the permit names. Extruding a parcel claims
- * only what the register claims: this plot, this many dwellings.
+ * already spent on depth, so what is left is extrusion.
+ *
+ * THE FIRST VERSION EXTRUDED THE PARCEL ITSELF, and that was wrong in a way its
+ * own paragraph did not notice: a prism is a VOLUME, volume is base × height,
+ * so the ink on screen was the dwelling count MULTIPLIED BY THE SIZE OF THE
+ * PLOT — a number the register says nothing about. Measured on the packs this
+ * header already quotes, over the parcels actually extruded, the base area ran
+ * p50 403 m² / max 40 400 m² in Paris, p50 395 m² / max 153 173 m² in Nantes
+ * (388× the median), p50 637 m² / max 24 955 m² in Ustaritz. Two permits for
+ * one dwelling each drew marks 388 apart, and the biggest single mark in Nantes
+ * was 25 426 754 m³ of opaque colour for one file.
+ *
+ * The report that ended it came from Ustaritz: dossier 06454721B0037, 45
+ * logements over three adjoining parcels, drawn as one 45 m block of 404 000 m³
+ * over a village of 8 m houses — « un gros rectangle qui n'a aucun sens ». The
+ * register's own `SURFACE_PLANCHER_CREEE` for that file is 3 308 m².
+ *
+ * AND THE HEIGHT WAS DRAWN ONCE PER PARCEL, so a dossier naming three plots
+ * claimed its dwellings three times: ×1.87 in Ustaritz (932 dwellings of prism
+ * for 499 authorised), ×1.73 in Nantes, ×1.30 in Paris.
+ *
+ * So the two claims are separated, which is what they always were. The PARCEL
+ * keeps the ground: a classified wash in its lifecycle colour, its own edge,
+ * its own card — that is "this plot". The DOSSIER stands a COLUMN of
+ * {@link SITADEL_PRISM_BASE_M} metres square on its anchor, one per permit —
+ * that is "this many dwellings". Volume is then proportional to the count and
+ * to nothing else. `choroplethPrism.js` calls this option (b), NORMALISE THE
+ * BASE, and rejects it for départements because there the polygon IS the map;
+ * here the polygon is still drawn under the mark, so the objection does not
+ * apply and the exactness is free.
  *
  * WHY 1 METRE PER DWELLING, LINEARLY. The dot uses a square root because a disc
- * encodes through its AREA, and doubling a radius quadruples the ink. A prism's
- * height is a LENGTH: it reads directly, twice as tall is twice as many, and
- * square-rooting it would make the tallest prism claim 14 times a 1-dwelling
- * one instead of 200. The unit is chosen so the prism can be read against the
- * city it stands in rather than against itself: a Nantes block is 10–30 m of
- * BD TOPO volume, so a 27-dwelling permit is a 27 m prism — the size of the
- * thing it replaces — and the commune's largest, at 553, is clipped at 200 m,
- * which is 56 m above the Tour Bretagne. Anything steeper would put a housing
- * estate through the cloud layer; anything flatter would make 57 % of permits
- * (the ones creating exactly one dwelling) an invisible film.
+ * encodes through its AREA, and doubling a radius quadruples the ink. A
+ * column's height is a LENGTH: it reads directly, twice as tall is twice as
+ * many, and square-rooting it would make the tallest column claim 14 times a
+ * 1-dwelling one instead of 200. The unit is chosen so the column can be read
+ * against the city it stands in rather than against itself: a Nantes block is
+ * 10–30 m of BD TOPO volume, so a 27-dwelling permit is a 27 m column — the
+ * size of the thing it replaces — and the commune's largest, at 553, is clipped
+ * at 200 m, which is 56 m above the Tour Bretagne. Anything steeper would put a
+ * housing estate through the cloud layer; anything flatter would make 57 % of
+ * permits (the ones creating exactly one dwelling) an invisible film.
  *
  * The ceiling is {@link SITADEL_SIZE_CEILING_LGT} — the feed's own measured
  * constant, 99th percentile 190 dwellings over 22 474 permits, largest 659 —
- * so the dot and the prism saturate on the same number. Every clipped prism is
- * counted on the row and the card still prints the true count (A5).
+ * so the dot and the column saturate on the same number. Every clipped column
+ * is counted on the row and the card still prints the true count (A5).
  *
  * WHY THE DOT KEEPS ITS SIZE ANYWAY. Two channels for one datum is redundancy,
  * and redundancy is only defensible when the two are legible at different
  * distances — which here is arithmetic, not taste. At the 12 000 m gate a 60°
  * FOV over a 720 px canvas covers 13 856 m of ground: 19.2 m per pixel, so a
- * 200 m prism is 10 px of screen height and the median 1-dwelling prism is
+ * 200 m column is 10 px of screen height and the median 1-dwelling column is
  * 0.05 px. At 300 m the same canvas covers 346 m: 0.48 m per pixel, the
- * 1-dwelling prism is 2 px and the 800 m² parcel under it is ~58 px across.
- * The dot is the layer at the top of the range, the prism is the layer at the
- * bottom, and neither is doing the other's job.
+ * 1-dwelling column is 2 px tall and 25 px wide, and the 800 m² parcel it
+ * stands on is ~58 px across. The dot is the layer at the top of the range, the
+ * column is the layer at the bottom, and neither is doing the other's job.
  *
  * ── A permit with no height, and why it is not drawn at zero ────────────────
  *
@@ -136,7 +162,7 @@
  *   none is blank; the row says "aucun logement créé ou non publié" rather than
  *   choosing one of the two.
  *
- * Neither gets a prism of height 0, which would be an invisible claim. They
+ * Neither gets a column of height 0, which would be an invisible claim. They
  * keep the ground fill and the parcel outline they have always had — a
  * ground-classified surface at {@link SITADEL_FILL_ALPHA}, which is a drawn,
  * clickable, coloured object and not an absence — and their PARCEL EDGE is
@@ -151,28 +177,33 @@
  * make with the GPU's non-existent constructible envelope.
  *
  * Measured on the Nantes pack shipped as fixtures — 9 placed permits over 14
- * parcels — 10 plots stand up, 3 belong to the two demolitions and 1 to a
- * déclaration préalable creating zero dwellings. Tallest prism 27 m, nothing
- * clipped. The row prints all four numbers.
+ * parcels — 6 dossiers stand a column, 2 are demolitions and 1 is a
+ * déclaration préalable creating zero dwellings. Tallest column 27 m, nothing
+ * clipped. The wash is still drawn under all 14 plots, and the row prints both
+ * totals: the parcels washed, and the dossiers that carry a height.
  *
- * ── A prism needs a floor, and a cold floor is not a floor ──────────────────
+ * ── A column needs a floor, and a cold floor is not a floor ─────────────────
  *
  * A `GroundPrimitive` is clamped by the renderer; an extruded polygon is not —
  * it is placed at absolute ellipsoidal heights and it has to be told where the
- * ground is. That comes from `sitadelFloorM`, read at the parcel's own anchor.
- * When no source can answer the parcel is left FLAT rather than extruded from
- * the ellipsoid, which in metropolitan France is 44–55 m underground and would
- * draw a 27-dwelling permit as a hole. One retry three seconds later, once per
+ * ground is. That comes from `sitadelFloorM`, read at the DOSSIER's own anchor,
+ * which is also where its dot stands — one permit, one floor, two marks that
+ * cannot disagree. (It used to be read per parcel, because the volume was the
+ * parcel; a permit naming three plots across a slope had three floors and could
+ * sink two of them. One column removes the question.) When no source can answer
+ * the dossier stands NO column rather than one extruded from the ellipsoid,
+ * which in metropolitan France is 44–55 m underground and would draw a
+ * 27-dwelling permit as a hole. One retry three seconds later, once per
  * commune, in the shape `bdtopoBuildings.js` already uses for the same problem.
  *
  * THE DOTS NEEDED THE SAME DISCIPLINE AND DID NOT HAVE IT (2026-09-14). The
  * paragraph above used to say the dots "already stand on" that grid. They did
- * not: they took `0` for a cold cell — the ellipsoid — and, unlike a prism,
+ * not: they took `0` for a cold cell — the ellipsoid — and, unlike a column,
  * nothing ever moved them afterwards. Measured over Paris, all 4 753 of them
  * sat at ellipsoidal height 1.0 m for a whole session while the drawn mesh
  * under them read 76.7–96.9 m, and because they paint through depth they slid
  * across the rooftops with every camera move. `sitadelFloorM` is the floor all
- * four marks now read — dot, prism, card, DETECT callout — and `reanchorPoints`
+ * four marks now read — dot, column, card, DETECT callout — and `reanchorPoints`
  * is the pass that moves a dot already on screen once its floor lands.
  *
  * ── What changes under the photorealistic stack ─────────────────────────────
@@ -182,13 +213,13 @@
  * `surfaceFillNotice.js` describes, which is why `getRowControls` declares
  * `surfaceFill` whenever any parcel is still flat.
  *
- * The PRISMS do not have that defect at all, and this is the part worth stating
- * plainly: an extruded polygon is not a classification volume, it carries no
- * `classificationType`, and it is not draped on anything. It is opaque geometry
- * in the world, depth-tested against the photoreal mesh — so a 12 m prism
- * behind a 30 m tileset building is HIDDEN by it instead of painted on it
- * (CARTOGRAPHIE F1(a), F4). The colour a reader decodes off a prism is the
- * colour that was declared, on every stack. Going 3D removes the constraint
+ * The COLUMNS do not have that defect at all, and this is the part worth
+ * stating plainly: an extruded polygon is not a classification volume, it
+ * carries no `classificationType`, and it is not draped on anything. It is
+ * opaque geometry in the world, depth-tested against the photoreal mesh — so a
+ * 12 m column behind a 30 m tileset building is HIDDEN by it instead of painted
+ * on it (CARTOGRAPHIE F1(a), F4). The colour a reader decodes off a column is
+ * the colour that was declared, on every stack. Going 3D removes the constraint
  * rather than adding one; the batched-`GroundPrimitive`-colours-by-bounding-
  * rectangle trap does not exist here either, because per-instance colour on a
  * plain `Primitive` addresses the polygon itself.
@@ -363,8 +394,8 @@ const PARCEL_EDGE_WIDTH_PX = 1.5;
  * The edge of a plot that carries NO height, in its own band colour.
  *
  * The second sign of "this file publishes no dwelling count", and the one that
- * survives a nadir camera — from straight above a prism and a flat plot look
- * alike, and an outline does not. Brighter and half a pixel wider than the
+ * survives a nadir camera — from straight above a column and a plot with none
+ * look alike, and an outline does not. Brighter and half a pixel wider than the
  * neutral edge so it reads as a deliberate stroke rather than as the shared one
  * tinted by the fill under it.
  */
@@ -381,20 +412,68 @@ export const SITADEL_POINT_MIN_PX = 5;
 export const SITADEL_POINT_MAX_PX = 22;
 
 /**
- * Metres of prism per dwelling authorised. LINEAR — see the header.
+ * Metres of column per dwelling authorised. LINEAR — see the header.
  *
- * One metre is a scale a reader can hold: a prism is as many metres tall as the
- * permit creates dwellings, so it can be read against the BD TOPO volumes
+ * One metre is a scale a reader can hold: a column is as many metres tall as
+ * the permit creates dwellings, so it can be read against the BD TOPO volumes
  * beside it (a Nantes block is 10–30 m) without a ruler.
  */
 export const SITADEL_METRES_PER_DWELLING = 1;
 
 /**
- * Where the prism stops growing: {@link SITADEL_SIZE_CEILING_LGT} dwellings, so
- * 200 m. The dot and the prism saturate on the same measured number, and every
- * clipped prism is counted on the row while the card keeps the true count (A5).
+ * Where the column stops growing: {@link SITADEL_SIZE_CEILING_LGT} dwellings,
+ * so 200 m. The dot and the column saturate on the same measured number, and
+ * every clipped column is counted on the row while the card keeps the true
+ * count (A5).
  */
 export const SITADEL_PRISM_MAX_M = SITADEL_SIZE_CEILING_LGT * SITADEL_METRES_PER_DWELLING;
+
+/**
+ * The side of the square a column stands on, in metres.
+ *
+ * WHAT THIS FIXES, AND IT WAS A HOLE IN THE OWN HEADER'S ARITHMETIC. The height
+ * used to be applied to the PARCEL ITSELF — the plot extruded by its dwelling
+ * count. A prism is a volume and a volume is base × height, so the mark's ink
+ * was the dwelling count MULTIPLIED BY THE SIZE OF THE PLOT, which the register
+ * says nothing about. Measured over the three communes this header already
+ * quotes, on the parcels actually extruded:
+ *
+ *   base area, m²          p10    p50     p90      max        max ÷ p50
+ *   Paris      75056       139    403    1 717   40 400           100×
+ *   Nantes     44109       104    395    1 729  153 173           388×
+ *   Ustaritz   64547        95    637    2 176   24 955            39×
+ *
+ * So two permits creating one dwelling each drew volumes 388 apart in the same
+ * commune, and Nantes' largest single mark was 25 426 754 m³ — a quarter of a
+ * cubic kilometre of opaque colour for one file. The reported case was
+ * Ustaritz: dossier 06454721B0037, 45 logements over three adjoining parcels
+ * (8 984 m²), drawn as one 45 m block of 404 000 m³ standing over a village
+ * whose houses are 8 m tall, hiding the street it was filed on. The register's
+ * own `SURFACE_PLANCHER_CREEE` for it is 3 308 m²: the mark was ~40× the
+ * building it describes.
+ *
+ * `choroplethPrism.js` had already named the disease and the cure — « same
+ * height, different base areas », option (b) NORMALISE THE BASE. It rejects (b)
+ * as a default for départements because the polygon IS the map there. Here it
+ * is not: the parcel keeps its own ground wash and its own edge, which is what
+ * says "this plot", and the column says "this many dwellings". Two marks, two
+ * claims, neither borrowing the other's channel.
+ *
+ * WHY 12 m. It is the footprint of a small French house (144 m²), so a
+ * 1-dwelling permit is a 12 × 12 × 1 m plate and a 45-dwelling one a 45 m tower
+ * standing next to real roofs — the ruler the metre-per-dwelling scale was
+ * always meant to be read against. It sits inside the median plot everywhere
+ * measured (403 m², 395 m², 637 m²): 8.8% of Paris' columns, 6.3% of Nantes'
+ * and 4.6% of Ustaritz' are wider than the parcel they are anchored on, and
+ * that overhang claims no ground — the wash under it does, and the dot beside
+ * it already spills further (22 px is 10 m at the bottom of this layer's
+ * altitude range).
+ *
+ * At the bottom of the range (300 m camera, 0.48 m/px) a column is 25 px wide;
+ * at the 12 000 m gate it is 0.6 px, where the dot carries the layer as it
+ * always has.
+ */
+export const SITADEL_PRISM_BASE_M = 12;
 
 /**
  * How long to wait before rebuilding a pack that was extruded while the shared
@@ -520,8 +599,6 @@ let _edges = null;
 let _outline = null;
 /** @type {?Cesium.GroundPolylinePrimitive} */
 let _highlight = null;
-/** @type {?Cesium.Primitive} The selection ring on the ROOF of an extruded plot. */
-let _highlightAir = null;
 let _selectedId = null;
 let _clickHandler = null;
 let _moveEndRemover = null;
@@ -680,7 +757,7 @@ export function sitadelPermitColor(permit) {
 }
 
 /**
- * Why this permit's parcel carries no height, or null when it carries one.
+ * Why this permit carries no height, or null when it carries one.
  *
  * Two answers, and they are the SAME sentence about the register: nobody
  * counted a dwelling. A demolition is structural — 33 columns, none of them a
@@ -765,25 +842,6 @@ function frenchFloor(value) {
 }
 
 /**
- * The ellipsoidal floor a parcel's prism stands on, or null when neither the
- * shared grid nor the drawn surface has resolved that cell yet.
- *
- * Read at the parcel's OWN anchor rather than at the permit's — a permit naming
- * three plots across a slope would otherwise sink two of them. Null is a real
- * answer and the caller must not turn it into 0: the ellipsoid is 44–55 m below
- * the ground in metropolitan France, and a prism based there is a hole.
- * @param {?object} parcel One entry of `payload.parcels`.
- * @returns {?number}
- */
-export function sitadelParcelFloorM(parcel) {
-  const point = parcel?.p;
-  if (!Array.isArray(point) || !Number.isFinite(point[0]) || !Number.isFinite(point[1])) {
-    return null;
-  }
-  return sitadelFloorM(point[1], point[0]);
-}
-
-/**
  * Render records for one pack, one per PLACED permit.
  *
  * The id carries the commune, the file and the permit's ordinal, never
@@ -847,28 +905,35 @@ export function sitadelRingPositions(ring) {
 }
 
 /**
- * The same ring, lifted to an absolute ellipsoidal height.
+ * The square one permit's column stands on, in degrees, centred on its anchor.
  *
- * Used only by the selection, which has to reach the ROOF of an extruded plot:
- * a ground-clamped highlight under an opaque prism is a highlight nobody sees.
- * @param {Array<number[]>} ring
- * @param {number} heightM
- * @returns {?object}
+ * A ring rather than a Cesium box: the column is built by the same
+ * `PolygonGeometry` path as everything else here, so it carries per-instance
+ * colour, picks as the permit's id and closes its own base and top.
+ *
+ * The metres-to-degrees conversion is local and flat, which at 12 m is exact to
+ * well under a centimetre — and the column is a MARK, not a survey: its
+ * footprint claims no ground. The parcel wash under it is what does.
+ * @param {number} lon
+ * @param {number} lat
+ * @param {number} [sideM]
+ * @returns {?Array<number[]>} Four corners, anticlockwise, unclosed.
  */
-export function sitadelRingPositionsAtHeight(ring, heightM) {
-  if (!Array.isArray(ring) || ring.length < 3 || !Number.isFinite(heightM)) return null;
-  const last = ring.length - 1;
-  const closed = ring[0][0] === ring[last][0] && ring[0][1] === ring[last][1];
-  const degrees = [];
-  const stop = closed ? last : ring.length;
-  for (let i = 0; i < stop; i += 1) {
-    const point = ring[i];
-    if (!Array.isArray(point)) continue;
-    const [lon, lat] = point;
-    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
-    degrees.push(lon, lat, heightM);
-  }
-  return degrees.length >= 9 ? Cesium.Cartesian3.fromDegreesArrayHeights(degrees) : null;
+export function sitadelPrismBaseRing(lon, lat, sideM = SITADEL_PRISM_BASE_M) {
+  if (!Number.isFinite(lon) || !Number.isFinite(lat) || !(sideM > 0)) return null;
+  const cos = Math.cos(lat * Math.PI / 180);
+  // A column at a pole is not a French parcel, but a zero here would collapse
+  // the square into a line and Cesium would tessellate nothing at all.
+  if (!(cos > 1e-6)) return null;
+  const half = sideM / 2;
+  const dLat = half / 111_320;
+  const dLon = half / (111_320 * cos);
+  return [
+    [lon - dLon, lat - dLat],
+    [lon + dLon, lat - dLat],
+    [lon + dLon, lat + dLat],
+    [lon - dLon, lat + dLat],
+  ];
 }
 
 function removeGround(primitive) {
@@ -880,10 +945,6 @@ function clearHighlight() {
   if (_highlight) {
     removeGround(_highlight);
     _highlight = null;
-  }
-  if (_highlightAir) {
-    _viewer?.scene?.primitives?.remove?.(_highlightAir);
-    _highlightAir = null;
   }
 }
 
@@ -919,7 +980,7 @@ function groundLinesSupported() {
 // --- Drawing ----------------------------------------------------------------
 
 /**
- * Rebuild the three ground batches for the whole commune.
+ * Rebuild the three ground batches for the whole commune, and the columns.
  *
  * THREE primitives and not 4 500: measured 2026-09-02, Paris' pack draws 4 500
  * parcel parts and 70 766 vertices and Nantes' 3 032 parts and 47 676, which is
@@ -927,9 +988,18 @@ function groundLinesSupported() {
  * this globe. `releaseGeometryInstances` stays false so a selection can recolour
  * one instance in place instead of paying a second full tessellation to light
  * one plot.
+ *
+ * THE GROUND IS WALKED PER PARCEL AND THE HEIGHT PER PERMIT, which is the one
+ * structural change of this function and the reason the tally has two totals. A
+ * dwelling count belongs to a DOSSIER: extruding every parcel a dossier names
+ * drew the same 45 logements three times over three plots. Measured on the
+ * packs the header quotes, the height channel was overstating the register by
+ * ×1.87 in Ustaritz (932 dwellings of prism for 499 authorised), ×1.73 in
+ * Nantes and ×1.30 in Paris. One column per permit cannot do that.
  * @param {?object} payload
+ * @param {Map<string, object>} [records] Render records, keyed by id.
  */
-function drawSurfaces(payload) {
+function drawSurfaces(payload, records = _records) {
   clearSurfaces();
   _prismTally = null;
   if (!_viewer?.scene?.groundPrimitives || !payload) return;
@@ -939,6 +1009,7 @@ function drawSurfaces(payload) {
   const edgeInstances = [];
   const tally = {
     parcels: 0,
+    permits: 0,
     prisms: 0,
     clipped: 0,
     tallestM: 0,
@@ -950,28 +1021,17 @@ function drawSurfaces(payload) {
   for (let slot = 0; slot < parcels.length; slot += 1) {
     const owner = _owners.get(slot);
     if (!owner) continue;
-    const record = _records.get(recordIdFor(payload, owner));
+    const record = records.get(recordIdFor(payload, owner));
     if (!record) continue;
     tally.parcels += 1;
     const band = Cesium.Color.fromCssColorString(record.color);
     const color = band.withAlpha(SITADEL_FILL_ALPHA);
 
-    // Three outcomes for the height channel, decided once per parcel: a prism,
-    // a plot the register gave no count for, or a plot whose ground is not yet
-    // known. Only the middle one is a CLASS; the third is a loading state and
-    // must not be given the class's sign.
-    const refusal = sitadelHeightRefusal(record.permit);
-    const heightM = refusal ? 0 : sitadelPrismHeightM(record.permit);
-    const floorM = heightM > 0 ? sitadelParcelFloorM(parcels[slot]) : null;
-    const extruded = heightM > 0 && floorM !== null;
-    if (refusal === SITADEL_NO_HEIGHT_DEMOLITION) tally.demolition += 1;
-    else if (refusal === SITADEL_NO_HEIGHT_DWELLINGS) tally.noDwellings += 1;
-    else if (!extruded) tally.coldFloor += 1;
-
     // The parcel edge is the second sign, and it carries ONE thing: a plot
     // outlined in its own band colour is a plot whose file publishes no
     // dwelling count. A plot still waiting for its ground cell keeps the
-    // neutral edge, because it is going to be a prism.
+    // neutral edge, because it is going to carry a column.
+    const refusal = sitadelHeightRefusal(record.permit);
     const edgeColor = refusal
       ? band.withAlpha(PARCEL_EDGE_ALPHA_NO_HEIGHT)
       : Cesium.Color.fromCssColorString(PARCEL_EDGE_COLOR).withAlpha(PARCEL_EDGE_ALPHA);
@@ -987,9 +1047,9 @@ function drawSurfaces(payload) {
         // filled in is ground attributed to a permit that does not cover it.
         if (hole) holes.push(new Cesium.PolygonHierarchy(hole));
       }
-      // The ground wash stays under every parcel, prism or not. At the top of
-      // this layer's altitude range a 1-dwelling prism is 0.05 px of screen
-      // height and the wash is all there is; the prism is added to it, never
+      // The wash is the plot, under every parcel, column or none. At the top of
+      // this layer's altitude range a 1-dwelling column is 0.05 px of screen
+      // height and the wash is all there is; the column is added to it, never
       // substituted for it.
       fillInstances.push(new Cesium.GeometryInstance({
         id: record.id,
@@ -999,23 +1059,6 @@ function drawSurfaces(payload) {
         }),
         attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(color) },
       }));
-      if (extruded) {
-        prismInstances.push(new Cesium.GeometryInstance({
-          id: record.id,
-          geometry: new Cesium.PolygonGeometry({
-            polygonHierarchy: new Cesium.PolygonHierarchy(outer, holes),
-            height: floorM,
-            extrudedHeight: floorM + heightM,
-            vertexFormat: Cesium.PerInstanceColorAppearance.VERTEX_FORMAT,
-            closeTop: true,
-            // Closed: on a slope the base of a volume breaks the surface, and
-            // an open bottom shows the inside of the far walls through it.
-            closeBottom: true,
-          }),
-          // Opaque. See the header: translucent geometry does not write depth.
-          attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(band) },
-        }));
-      }
       for (const ring of part) {
         const positions = sitadelRingPositions(ring);
         if (!positions) continue;
@@ -1031,11 +1074,51 @@ function drawSurfaces(payload) {
         }));
       }
     }
-    if (extruded) {
-      tally.prisms += 1;
-      if (sitadelPrismClipped(record.permit)) tally.clipped += 1;
-      if (heightM > tally.tallestM) tally.tallestM = heightM;
-    }
+  }
+
+  // ── The height channel, once per dossier ──────────────────────────────────
+  for (const record of records.values()) {
+    // A permit the pack placed nowhere has no parcel, no anchor and no column.
+    if (!record.at || !(record.permit?.px || []).length) continue;
+    tally.permits += 1;
+    // Three outcomes, decided once per permit: a column, a file the register
+    // gave no count for, or a floor that has not answered yet. Only the middle
+    // one is a CLASS; the third is a loading state and must not be given the
+    // class's sign.
+    const refusal = sitadelHeightRefusal(record.permit);
+    if (refusal === SITADEL_NO_HEIGHT_DEMOLITION) { tally.demolition += 1; continue; }
+    if (refusal === SITADEL_NO_HEIGHT_DWELLINGS) { tally.noDwellings += 1; continue; }
+    const heightM = sitadelPrismHeightM(record.permit);
+    // The column stands where the dot stands — the anchor of the largest
+    // parcel the dossier names (`sitadelPermitAnchor`) — so the two marks of
+    // one permit are in one place, and the floor is the one the dot memoised.
+    // NULL is not a floor: the ellipsoid is 44–55 m under metropolitan France
+    // and a column based there is a hole.
+    const floorM = recordFloorM(record);
+    if (floorM === null) { tally.coldFloor += 1; continue; }
+    const base = sitadelPrismBaseRing(record.at.lon, record.at.lat);
+    const ring = base && sitadelRingPositions(base);
+    if (!ring) continue;
+    prismInstances.push(new Cesium.GeometryInstance({
+      id: record.id,
+      geometry: new Cesium.PolygonGeometry({
+        polygonHierarchy: new Cesium.PolygonHierarchy(ring),
+        height: floorM,
+        extrudedHeight: floorM + heightM,
+        vertexFormat: Cesium.PerInstanceColorAppearance.VERTEX_FORMAT,
+        closeTop: true,
+        // Closed: on a slope the base of a volume breaks the surface, and an
+        // open bottom shows the inside of the far walls through it.
+        closeBottom: true,
+      }),
+      // Opaque. See the header: translucent geometry does not write depth.
+      attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(
+        Cesium.Color.fromCssColorString(record.color),
+      ) },
+    }));
+    tally.prisms += 1;
+    if (sitadelPrismClipped(record.permit)) tally.clipped += 1;
+    if (heightM > tally.tallestM) tally.tallestM = heightM;
   }
 
   if (fillInstances.length) {
@@ -1501,33 +1584,17 @@ function selectPermit(id) {
     record.point.outlineWidth = 2;
   }
   const parcels = Array.isArray(_payload?.parcels) ? _payload.parcels : [];
-  // The ring goes on the ROOF of an extruded plot and on the GROUND of a flat
-  // one. A ground-clamped highlight under an opaque prism is a selection the
-  // operator cannot see, and "the plot I clicked" is the one thing the card
-  // cannot draw.
-  const heightM = sitadelPrismHeightM(record.permit);
+  // THE RING GOES ON THE GROUND, on every plot the dossier names. It used to
+  // have to climb to the ROOF of the extruded plot, because the plot itself was
+  // the volume and a ground-clamped highlight under an opaque box is a
+  // selection nobody sees. The height moved onto a 12 m column
+  // ({@link SITADEL_PRISM_BASE_M}) and the plot is a wash again, so the
+  // selection is back where the thing being selected actually is.
   const cyan = Cesium.Color.fromCssColorString(SELECTED_COLOR).withAlpha(0.85);
   const groundInstances = [];
-  const airInstances = [];
   for (const slot of record.permit?.px || []) {
-    const floorM = heightM > 0 ? sitadelParcelFloorM(parcels[slot]) : null;
-    const roofM = floorM === null ? null : floorM + heightM;
     for (const part of parcels[slot]?.g || []) {
       for (const ring of part) {
-        if (roofM !== null) {
-          const lifted = sitadelRingPositionsAtHeight(ring, roofM);
-          if (lifted) {
-            airInstances.push(new Cesium.GeometryInstance({
-              geometry: new Cesium.PolylineGeometry({
-                positions: [...lifted, lifted[0]],
-                width: SELECTED_WIDTH_PX,
-                vertexFormat: Cesium.PolylineColorAppearance.VERTEX_FORMAT,
-              }),
-              attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(cyan) },
-            }));
-            continue;
-          }
-        }
         const positions = sitadelRingPositions(ring);
         if (!positions) continue;
         groundInstances.push(new Cesium.GeometryInstance({
@@ -1545,14 +1612,6 @@ function selectPermit(id) {
       geometryInstances: groundInstances,
       appearance: new Cesium.PolylineColorAppearance({ translucent: true }),
       classificationType: _classificationType,
-    }));
-  }
-  if (airInstances.length) {
-    _highlightAir = _viewer.scene.primitives.add(new Cesium.Primitive({
-      geometryInstances: airInstances,
-      appearance: new Cesium.PolylineColorAppearance({ translucent: true }),
-      asynchronous: false,
-      allowPicking: false,
     }));
   }
   const entry = createSitadelSelectedOverlayEntry(record, _payload);
@@ -1784,13 +1843,15 @@ export function sitadelDetectType(record) {
  *
  * A height scale is not a colour, so these entries carry `color: null`, which
  * the map legend renders as an aligned "not drawn here" line rather than as a
- * class (`manager.js` handles it explicitly). Without them the prisms are a
+ * class (`manager.js` handles it explicitly). Without them the columns are a
  * relief nobody can read a number off, which is D1 applied to the one channel
  * this layer just took possession of.
  *
  * The count on each row is what makes it a legend row and not a caption: the
- * scale row counts the plots that stand up, the flat row counts the plots that
- * do not, and the sum is every parcel drawn.
+ * scale row counts the DOSSIERS that stand up, the flat row counts the dossiers
+ * that do not, and the sum is every permit drawn. Per dossier and no longer per
+ * parcel, because a dwelling count belongs to a file and not to a plot — see
+ * `drawSurfaces`, and the ×1.87 it stopped overstating.
  * @param {?object} tally From the last `drawSurfaces`.
  * @returns {Array<object>}
  */
@@ -1803,12 +1864,14 @@ export function sitadelHeightLegend(tally) {
       label: `Hauteur = logements autorisés · 1 logement = ${SITADEL_METRES_PER_DWELLING} m`,
       color: null,
       count: tally.prisms,
-      blurb: `Parcelles extrudées. Échelle linéaire — deux fois plus haut, deux fois plus de `
-        + `logements — plafonnée à ${SITADEL_PRISM_MAX_M} m (${SITADEL_SIZE_CEILING_LGT} logements, `
+      blurb: `Une colonne de ${SITADEL_PRISM_BASE_M} m de côté par dossier, plantée sur sa `
+        + `parcelle — la parcelle elle-même reste à plat, sa teinte est son état. Échelle `
+        + `linéaire — deux fois plus haut, deux fois plus de logements — plafonnée à `
+        + `${SITADEL_PRISM_MAX_M} m (${SITADEL_SIZE_CEILING_LGT} logements, `
         + `99ᵉ centile mesuré à 190 sur 22 474 permis)`
         + (tally.clipped
-          ? ` · ${fr(tally.clipped)} parcelle${tally.clipped > 1 ? 's' : ''} écrêtée${tally.clipped > 1 ? 's' : ''}, la fiche garde le vrai compte.`
-          : ' · aucune parcelle écrêtée ici.'),
+          ? ` · ${fr(tally.clipped)} colonne${tally.clipped > 1 ? 's' : ''} écrêtée${tally.clipped > 1 ? 's' : ''}, la fiche garde le vrai compte.`
+          : ' · aucune colonne écrêtée ici.'),
     });
   }
   if (flat) {
@@ -1825,12 +1888,12 @@ export function sitadelHeightLegend(tally) {
   }
   if (tally.coldFloor) {
     rows.push({
-      label: 'Sol pas encore résolu — à plat en attendant',
+      label: 'Sol pas encore résolu — sans colonne en attendant',
       color: null,
       count: tally.coldFloor,
       blurb: 'État transitoire, pas une classe : la grille d’altitude partagée n’a pas encore '
-        + 'répondu pour ces parcelles. Une seule nouvelle tentative, trois secondes plus tard. '
-        + 'Leur bordure reste neutre, parce qu’elles vont se lever.',
+        + 'répondu sous ces dossiers. Une seule nouvelle tentative, trois secondes plus tard. '
+        + 'La bordure de leur parcelle reste neutre, parce qu’ils vont se lever.',
     });
   }
   return rows;
@@ -1872,10 +1935,11 @@ export function buildSitadelLoadingLabel({
   // The scale, on the line that is visible without opening anything. A relief
   // whose unit is only in a panel is a relief nobody can read (D1).
   if (tally?.prisms) {
-    notes.push(`${fr(tally.prisms)} parcelles en volume · 1 logement = `
-      + `${SITADEL_METRES_PER_DWELLING} m, plafond ${SITADEL_PRISM_MAX_M} m`);
+    notes.push(`${fr(tally.prisms)} dossiers en volume · 1 logement = `
+      + `${SITADEL_METRES_PER_DWELLING} m sur une colonne de ${SITADEL_PRISM_BASE_M} m, `
+      + `plafond ${SITADEL_PRISM_MAX_M} m`);
     const flat = tally.demolition + tally.noDwellings;
-    if (flat) notes.push(`${fr(flat)} à plat, sans logement publié`);
+    if (flat) notes.push(`${fr(flat)} sans hauteur, sans logement publié`);
   }
   return notes.length ? `${head} · ${notes.join(' · ')}` : head;
 }
@@ -2095,9 +2159,9 @@ const sitadelFranceLayer = {
       cadastreParcels: summary?.cadastreParcels ?? null,
       millesime: _payload?.millesime ?? null,
       cadastreEdition: _payload?.cadastreEdition ?? null,
-      // The height channel, declared: how many plots stand up, how many are
-      // flat because their file counts no dwelling, and how many are flat only
-      // because the ground under them has not been resolved yet.
+      // The height channel, declared: how many DOSSIERS stand up, how many
+      // carry no height because their file counts no dwelling, and how many
+      // are waiting only because the ground under them is not resolved yet.
       prisms: _prismTally?.prisms ?? null,
       prismsClipped: _prismTally?.clipped ?? null,
       prismTallestM: _prismTally?.tallestM ?? null,
@@ -2106,6 +2170,7 @@ const sitadelFranceLayer = {
       flatColdFloor: _prismTally?.coldFloor ?? null,
       metresPerDwelling: SITADEL_METRES_PER_DWELLING,
       prismCeilingM: SITADEL_PRISM_MAX_M,
+      prismBaseM: SITADEL_PRISM_BASE_M,
     };
     const label = buildSitadelLoadingLabel();
     if (label) stats.loadingLabel = label;
@@ -2308,7 +2373,7 @@ export async function _sitadelLoadForTest(options = {}) {
 }
 
 /**
- * Build the three ground batches and the prism batch against a seeded pack.
+ * Build the three ground batches and the column batch against a seeded pack.
  *
  * `_setSitadelStateForTest` deliberately does not draw — it seeds records so the
  * card and legend paths run without a scene. This is the seam for the geometry

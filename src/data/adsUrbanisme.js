@@ -355,6 +355,79 @@ function parcelTitle(parcels) {
 }
 
 /**
+ * Who drew this outline, in the words of the register that produced it.
+ *
+ * THE DEFECT THIS REPLACES, and it was one sentence: every plot card in France
+ * ended with « emprise publiée par Bordeaux Métropole ». That line was written
+ * when Bordeaux was the only source of a shape here — its portal ships the
+ * parcel outline beside the dossier, and no other register in this layer
+ * published anything but a coordinate. Then the cadastral placement landed
+ * (`adsFeed.js`, {@link placeOnParcels}) and gave the WHOLE COUNTRY an outline:
+ * a Sitadel row names up to three parcels, and the parcels are drawable. The
+ * credit was never moved. A permit in Ustaritz, drawn on a parcel the Etalab
+ * cadastre published, was crediting a métropole 200 km away.
+ *
+ * So the line is derived from the dossiers standing on the plot rather than
+ * asserted. Two provenances exist and they are different claims:
+ *
+ * • `published` — the counter itself shipped the geometry. That is a fact
+ *   about the DOSSIER: this is the ground the file was opened on.
+ * • `parcelle` / `mere` / `enfant` — the cadastre's parcel, joined on the
+ *   reference the dossier names. That is a fact about the GROUND, and the
+ *   dossier's own caveat (a division since, a lot deduced) stays on the
+ *   marker's card where {@link adsPrecisionLine} already prints it.
+ *
+ * A geometry serving both is possible and is named as both, in that order.
+ *
+ * @param {Array<object>} permits The dossiers standing on one emprise.
+ * @returns {?string}
+ */
+export function empriseProvenanceLine(permits) {
+  const portals = new Set();
+  let cadastre = false;
+  for (const permit of permits || []) {
+    if (permit?.precision === 'published') {
+      // `Bordeaux Métropole — Dossiers d'autorisation…` and, on a dossier the
+      // two registers merged, `… + Sitadel`. The card wants the authority, so
+      // it takes the head of the label rather than a second field that could
+      // drift away from it.
+      const authority = String(permit.sourceLabel ?? '').split('—')[0].trim();
+      if (authority) portals.add(authority);
+      continue;
+    }
+    if (permit?.precision === 'parcelle' || permit?.precision === 'mere'
+      || permit?.precision === 'enfant') cadastre = true;
+  }
+  const lines = [];
+  for (const authority of portals) lines.push(`emprise publiée par ${authority}`);
+  // Named as what it is: this shape was not published with the dossier, it is
+  // the plot the dossier names, drawn from the cadastre this globe already
+  // carries.
+  if (cadastre) lines.push('emprise cadastrale — la parcelle nommée par le dossier');
+  return lines.length ? lines.join(' · ') : null;
+}
+
+/**
+ * The same provenance on a DOSSIER's card, where the parcel is already named.
+ *
+ * Shorter than the plot's line, and silent on a cadastral parcel that needs no
+ * caveat: the card above it already prints « parcelle 064547AN0081 », and
+ * {@link adsPrecisionLine} below it prints the deduction whenever the plot was
+ * divided. Repeating "cadastre" between the two would be the third copy of one
+ * fact. What it still says out loud is the portal case, because a shape the
+ * counter shipped with the file is evidence the cadastre join cannot give.
+ *
+ * @param {object} permit One normalised permit.
+ * @returns {?string}
+ */
+export function adsEmpriseLine(permit) {
+  if (!Number.isFinite(permit?.empriseId)) return null;
+  if (permit.precision !== 'published') return null;
+  const authority = String(permit.sourceLabel ?? '').split('—')[0].trim();
+  return authority ? `emprise publiée par ${authority}` : 'emprise publiée avec le dossier';
+}
+
+/**
  * The card a plot opens, which is about the LAND and not about one file.
  *
  * The crane on top already says everything about its own dossier. What only
@@ -388,10 +461,10 @@ export function empriseCard(emprise, permits) {
         : null,
       tally || null,
       latest ? `dernier dépôt le ${frenchDate(latest)}` : null,
-      // Said out loud because it is the exception: this outline exists because
-      // ONE portal in France publishes it, and every other dot in this layer
-      // is a point because its register has nothing else to give.
-      'emprise publiée par Bordeaux Métropole',
+      // Said out loud because a shape a layer DREW and a shape a counter
+      // PUBLISHED are two different claims about the same ground — see
+      // {@link empriseProvenanceLine}, which reads it off the dossiers.
+      empriseProvenanceLine(permits),
     ].filter(Boolean).join(' · '),
   };
 }
@@ -816,9 +889,9 @@ export function adsRowControls(payload) {
       + 'annulé » et une toiture peinte ne pourrait pas les distinguer.',
   });
   // The plot wash IS a ground-classified area fill, so on the photoreal stack it
-  // climbs the façades and the manager's drape notice applies — but only where a
-  // portal published a plot at all, which today is Bordeaux alone. Claimed only
-  // when there is a wash to claim it for. The theme these colours also paint is
+  // climbs the façades and the manager's drape notice applies — wherever there
+  // is a plot at all, which since the cadastral placement is most of France and
+  // not Bordeaux alone. Claimed only when there is a wash to claim it for. The theme these colours also paint is
   // NOT a drape: extruded volumes are real geometry that the mesh occludes
   // instead of receiving (`surfaceFillNotice.js`).
   return {
@@ -906,11 +979,12 @@ const adsScanLayer = createAddressScanLayer({
             : null,
           permit.purpose,
           permit.parcels?.length ? `parcelle ${permit.parcels.join(', ')}` : null,
-          // Only Bordeaux publishes the ground, so the outline under this
-          // marker is the exception rather than the rule. Saying it on the
-          // dossier's own card is what stops it reading as a shape this layer
-          // drew rather than one the portal published.
-          Number.isFinite(permit.empriseId) ? 'emprise publiée, dessinée au sol' : null,
+          // WHICH shape is under this marker, not merely that there is one: a
+          // portal's own outline and a cadastral parcel joined on a reference
+          // are two different claims, and the card that said « emprise
+          // publiée » for both credited Bordeaux for every parcel this layer
+          // draws from the Etalab cadastre. See {@link adsEmpriseLine}.
+          adsEmpriseLine(permit),
           permit.applicant,
           adsPrecisionLine(permit),
           `${permit.distanceM} m`,
@@ -951,8 +1025,9 @@ const adsScanLayer = createAddressScanLayer({
       certificates: summary.certificates ?? 0,
       certificatesCounted: Number.isFinite(summary.certificates),
       // Plots outlined on the ground, and dossiers standing on one. The gap
-      // between `permitsFound` and `withEmprise` is Sitadel, Paris and Nantes,
-      // none of which publish a shape at all.
+      // between `permitsFound` and `withEmprise` is the dossiers placed by the
+      // geocoder: a portal that ships no shape (Paris, Nantes) and a Sitadel
+      // row whose parcel reference the cadastre could not resolve.
       emprises: summary.empriseCount ?? 0,
       withEmprise: summary.withEmprise ?? 0,
       // Rows the BAN could not place better than their commune, across the
