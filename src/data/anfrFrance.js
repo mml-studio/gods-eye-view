@@ -171,12 +171,16 @@
  * and **no 5G row in this edition is ever `En service`**. The 2G/3G/4G rows
  * are `En service` (639 019) or `Projet approuvé`. So "technically operational"
  * is not a fact about one operator's rollout at one mast; it is how ANFR files
- * 5G as a whole. The CARD is where that is said — it prints which generations
- * are in which status, then ANFR's own gloss for `Techniquement opérationnel`
- * (`ANFR_STATUS_LABELS`), so a reader who asks about one mast is told a
- * national filing convention is not a local one. It is deliberately NOT in the
- * legend: a colour swatch answers what the colour means, and this paragraph
- * qualifies a status the swatch does not carry.
+ * 5G as a whole.
+ *
+ * The card USED to print it, per mast, as "la 5G est allumée ici mais pas
+ * encore déclarée ouverte au public". It no longer does, and the reason is
+ * the sentence above: a status that is true of all 120 891 5G rows in the
+ * edition is not news about the mast under the cursor, and a caveat that
+ * fires on every 5G mast in France reads as a caveat about THAT mast. The
+ * distinction is kept in the data — `svc` and `live` are still separate masks
+ * and colour still reads `live` — and it is documented here, where a
+ * register-wide convention belongs.
  *
  * ── What this map cannot show, by statute ───────────────────────────────────
  * Quoted from the canonical dataset: *"Installations radioélectriques de plus
@@ -209,10 +213,10 @@ import {
   ANFR_GENERATIONS,
   ANFR_HEIGHTLESS_NATURES,
   ANFR_HEIGHT_MISSING,
-  ANFR_STATUS_LABELS,
   anfrBand,
   anfrDecodeMask,
   anfrProjectPoint,
+  anfrUnmeasuredBands,
 } from './anfrFeed.js';
 import {
   MESH_LAT,
@@ -356,8 +360,26 @@ const SECTOR_ALPHA = 0.9;
  * dropped.
  */
 const MAX_RENDERED_SECTORS = 96;
-/** How many distinct bearings the card prints before summarising. */
-const CARD_AZIMUTH_LIMIT = 8;
+/**
+ * How many distinct bearings the card NAMES before it only counts them.
+ *
+ * Four, and it is a legibility floor rather than a width one. A three-sector
+ * mast is the textbook case and reads as `0° N · 120° SE · 240° O`, which a
+ * reader can stand under and check; past four the line becomes a list of
+ * numbers with no shape, and the count plus the mounting heights say more
+ * than the numbers would.
+ */
+const CARD_BEARING_NAME_LIMIT = 4;
+
+/**
+ * Where the card wraps, in characters — measured, not chosen.
+ *
+ * `worldOverlayDraw` wraps a detail line at a pixel width, and at the shipped
+ * detail font that lands at about 62 characters. It is used here for ONE
+ * decision only: whether two short facts fit on one line or need two. It is
+ * not a truncation limit — nothing on this card is ever cut to fit.
+ */
+const CARD_WRAP_CHARS = 62;
 
 // --- Presentation -----------------------------------------------------------
 /**
@@ -406,9 +428,14 @@ const POINT_MAX_PX = 11;
  */
 const SIZE_CEILING_OPERATORS = 5;
 
-/** How many `emr_lb_systeme` labels a card prints before summarising. */
-const CARD_SYSTEM_LIMIT = 5;
-/** How many operators a card names before summarising. */
+/**
+ * How many operators a card names before summarising.
+ *
+ * Only reachable on the FALLBACK line — the one the card prints while the
+ * detailed fiche has not arrived, from the observatoire's flat operator list.
+ * Once it lands there is one line per operator and nothing to truncate: five
+ * is the measured maximum on any mast in France.
+ */
 const CARD_OPERATOR_LIMIT = 5;
 
 /**
@@ -417,10 +444,10 @@ const CARD_OPERATOR_LIMIT = 5;
  * These used to run to four sentences on `5g` alone, the last three of them
  * about how ANFR files a status — that `Techniquement opérationnel` appears on
  * 5G rows and nothing else, so the field describes the GENERATION and not the
- * mast. That fact is true, it is load-bearing, and it is not a legend's job: it
- * qualifies ONE CLICKED MAST, and the card already prints ANFR's own gloss for
- * it (`anfrSupportCard`, via `ANFR_STATUS_LABELS`). The register-wide
- * cross-tabulation that established it is in this module's header.
+ * mast. That fact is true, it is load-bearing, and it is not a legend's job —
+ * nor, it turned out, a card's: it is true of every 5G row in the edition, so
+ * it is a note about the register and lives in this module's header, with the
+ * cross-tabulation that established it.
  *
  * What is left is the one thing a colour swatch has to answer — WHAT DOES THIS
  * COLOUR MEAN — plus the national count that puts it in proportion.
@@ -1056,32 +1083,276 @@ function drawSectors(record) {
 
 // --- Card copy --------------------------------------------------------------
 
-/**
- * Whether any generation here radiates without being declared *En service*.
- *
- * True on every 5G support in this edition and on nothing else — see the
- * module header — which is why the card explains the status rather than
- * repeating it as if it were a local fact.
- */
-export function anfrHasTechnicalGeneration(support) {
-  const live = Number(support?.live) || 0;
-  const svc = Number(support?.svc) || 0;
-  return Boolean(live & ~svc);
+// ── PLAIN FRENCH, AND WHERE IT STOPS ────────────────────────────────────────
+//
+// Everything below this line translates the register into the words a reader
+// arrived with. It is a rewrite of vocabulary and of ORDER, not of facts: no
+// sentence here says anything the previous card did not, and three of them say
+// something it held in memory and threw away.
+//
+// The rule the translation obeys is that a plainer word may not be a larger
+// claim. A band becomes "rapide" or "basse", which describes the FREQUENCY and
+// not a speed the register never measured; the card never promises a débit,
+// never says a mast covers an address, and never says a level is safe. Those
+// three are the questions people come with and the three the data cannot
+// answer, so the card answers the answerable neighbours instead: who
+// transmits, what the measured level is against its own published ceiling, and
+// what the measurement missed.
+
+/** `FREE MOBILE` → `Free Mobile`, and `SFR` stays `SFR`. */
+export function anfrOperatorName(name) {
+  const text = String(name || '').trim();
+  if (!text) return '';
+  return text
+    .split(/\s+/)
+    .map((word) => (word.length <= 3
+      ? word
+      : word.charAt(0).toUpperCase() + word.slice(1).toLocaleLowerCase('fr-FR')))
+    .join(' ');
 }
 
-/** Generations that radiate, newest first, or null. */
-export function anfrLiveGenerationsLine(support) {
+/**
+ * The brand, not the corporate name — `Free`, not `FREE MOBILE`.
+ *
+ * Only on the grouped line, where four names have to share one line's width
+ * with four rungs. The trailing word is dropped only when something is left
+ * standing, so an operator actually called `Telco OI` keeps both halves.
+ */
+export function anfrOperatorShort(name) {
+  const full = anfrOperatorName(name);
+  const short = full.replace(/\s+(Mobile|Telecom|Télécom|France)$/i, '');
+  return short || full;
+}
+
+/**
+ * The register's shouted abbreviations, spelled out.
+ *
+ * ANFR files addresses and owners in the capitals and truncations of a
+ * paper form — `30 R PETRICOT RES HORIZON`, `Ets public , Minist, Synd mixt` —
+ * and a card that reproduces them is shouting a code at the reader. Only exact
+ * whole-token matches are expanded, so a street genuinely called `Res` is
+ * untouched and an abbreviation this table has never seen degrades to itself
+ * rather than to a guess.
+ */
+const ANFR_ABBREVIATIONS = Object.freeze({
+  R: 'rue', AV: 'avenue', BD: 'boulevard', BVD: 'boulevard', CHE: 'chemin',
+  RTE: 'route', PL: 'place', ALL: 'allée', IMP: 'impasse', LD: 'lieu-dit',
+  RES: 'résidence', CRS: 'cours', SQ: 'square', QUA: 'quartier', ZA: 'ZA',
+  ETS: 'Établissement', MINIST: 'Ministère', SYND: 'Syndicat',
+  MIXT: 'mixte', COLLECT: 'collectivité', TERRIT: 'territoriale',
+  SCI: 'SCI', SA: 'SA', SARL: 'SARL', EPIC: 'EPIC',
+});
+/** Particles that stay lowercase inside a French proper name. */
+const ANFR_PARTICLES = new Set(['DE', 'DU', 'DES', 'LA', 'LE', 'LES', 'ET', 'SUR', 'SOUS', 'AUX', 'AU', 'D', 'L']);
+
+/** `30 R PETRICOT RES HORIZON` → `30 rue Petricot résidence Horizon`. */
+export function anfrPlainText(value) {
+  const text = String(value || '')
+    .replace(/\s+/g, ' ').replace(/\s+,/g, ',').replace(/'/g, '’').trim();
+  if (!text) return '';
+  // Already mixed case upstream: expand the abbreviations and leave the casing
+  // exactly as filed rather than re-casing a name somebody typed correctly.
+  const mixed = /[a-zàâçéèêëîïôûùüÿñæœ]/.test(text);
+  return text
+    .split(' ')
+    .map((word) => {
+      const bare = word.replace(/[^A-Za-zÀ-ÿ-]/g, '');
+      const expanded = ANFR_ABBREVIATIONS[bare.toUpperCase()];
+      if (expanded) return word.replace(bare, expanded);
+      if (mixed) return word;
+      if (ANFR_PARTICLES.has(bare.toUpperCase())) return word.toLocaleLowerCase('fr-FR');
+      // `6E` is the sixth arrondissement, not an initial. Ordinals keep their
+      // digits and lose the shout.
+      if (/^\d/.test(word)) return word.replace(/(\d)(E|ER|EME|ÈME)\b/gi, (_, digit, suffix) => digit + suffix.toLocaleLowerCase('fr-FR'));
+      return word.charAt(0).toUpperCase() + word.slice(1).toLocaleLowerCase('fr-FR');
+    })
+    .join(' ');
+}
+
+/**
+ * Street and commune on one short line, or `''`.
+ *
+ * The postcode and the building name are DROPPED, not forgotten: the card
+ * wraps at about 62 characters and both are redundant once the commune is
+ * named — nobody reading "Paris 6e" needs "75006" to know where they are.
+ * `Arrondissement` goes for the same reason; `Paris 6e` is how the place is
+ * called.
+ */
+export function anfrPlainAddress(site) {
+  const street = anfrPlainText(site?.address);
+  const commune = anfrPlainText(site?.commune).replace(/\s+Arrondissement$/i, '');
+  return [street, commune].filter(Boolean).join(', ');
+}
+
+/**
+ * A band in MHz, spelled the way it is spoken in France.
+ *
+ * 3500 is the only one said in gigahertz — "la 3,5 GHz" is the phrase the
+ * whole public debate about 5G uses — and every other band keeps its megahertz
+ * because "la 1,8 GHz" is nobody's name for LTE 1800.
+ */
+export function anfrMhzLabel(mhz) {
+  const value = Number(mhz);
+  if (!Number.isFinite(value)) return null;
+  if (value === 3500) return '3,5 GHz';
+  // No thousands separator: the band is a NAME, not a quantity, and nobody in
+  // France has ever called LTE 1800 "la 1 800".
+  return `${value} MHz`;
+}
+
+/**
+ * The one distinction a 5G reader actually needs.
+ *
+ * A phone shows "5G" on 700 MHz and on 3,5 GHz alike, and the two are not the
+ * same object: 3,5 GHz is the band allocated to 5G outright, the low bands are
+ * shared. Naming the RUNG rather than a speed keeps the card inside what ANFR
+ * published — the register has no throughput column and this layer will not
+ * invent one.
+ */
+export function anfrFiveGBandLabel(mhz) {
+  const value = Number(mhz);
+  if (value >= 3000) return 'rapide';
+  if (value >= 1500) return 'moyenne';
+  if (Number.isFinite(value)) return 'basse';
+  return null;
+}
+
+/** Eight-point compass, so a bearing is readable without a protractor. */
+export function anfrCardinal(deg) {
+  const value = Number(deg);
+  if (!Number.isFinite(value)) return null;
+  const points = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
+  return points[Math.round((((value % 360) + 360) % 360) / 45) % 8];
+}
+
+/**
+ * What the mast IS, with the preposition the register omits.
+ *
+ * `nat_id` resolves to one of 38 nouns, and the difference between "Immeuble"
+ * and "Pylône autostable" is the difference between a rooftop installation and
+ * a tower in a field — a reader gets that from a preposition and not from a
+ * bare noun. The register's own word is always quoted; only the framing is
+ * added, so a nature this function has never seen degrades to the noun rather
+ * than to a guess.
+ */
+export function anfrPlacementLine(nature, heightM) {
+  const noun = String(nature || '').trim();
+  const tall = Number.isFinite(heightM) && heightM > 0 ? `, ${fr(heightM)} m` : '';
+  if (!noun) return tall ? `Support${tall} — nature non publiée` : 'Nature et hauteur non publiées';
+  const lower = noun.toLocaleLowerCase('fr-FR');
+  // The 551 supports with no published height are all of them underground or
+  // indoor — see the feed's Trap 3 — so this branch is the one that explains
+  // the missing shaft rather than leaving it as a silence.
+  if (/tunnel|intérieur|souterrain|sous-terrain|galerie/i.test(lower)) {
+    return `Installation souterraine (${lower}) — aucun mât`;
+  }
+  if (/pylône|pylone|mât|mat |tour|fût|fut |éolienne|eolienne|sémaphore|phare/i.test(lower)) {
+    return tall ? `${noun}${tall}` : `${noun} — hauteur non publiée`;
+  }
+  if (/immeuble|bâtiment|batiment|monument|château|chateau|silo|local technique|dalle/i.test(lower)) {
+    const of = /^[aeiouâàéèêëîïôöûüh]/i.test(lower) ? `d’${lower}` : `de ${lower}`;
+    return tall ? `Toit ${of}${tall}` : `Toit ${of} — hauteur non publiée`;
+  }
+  if (/mobilier|signalisation|ouvrage/i.test(lower)) {
+    return tall ? `Sur ${lower}${tall}` : `Sur ${lower} — hauteur non publiée`;
+  }
+  return tall ? `${noun}${tall}` : `${noun} — hauteur non publiée`;
+}
+
+/** `les 4 opérateurs`, `Orange et SFR`, or a single name. */
+function anfrOperatorSet(names, total) {
+  const list = [...names];
+  if (total > 1 && list.length === total) return `les ${fr(total)} opérateurs`;
+  const plain = list.sort((a, b) => a.localeCompare(b, 'fr')).map(anfrOperatorShort);
+  if (plain.length === 1) return plain[0];
+  return `${plain.slice(0, -1).join(', ')} et ${plain[plain.length - 1]}`;
+}
+
+/**
+ * WHO TRANSMITS, in ONE line — grouped by what they actually offer.
+ *
+ * One row per operator was the honest shape and the wrong one: on the great
+ * majority of French masts every operator files the same ladder, so four rows
+ * were four repetitions of one fact and the reader had to diff them by eye to
+ * find the case where they differ. Grouping inverts that — identical offerings
+ * collapse to `les 4 opérateurs`, and a mast where somebody is missing the
+ * 3,5 GHz band says so in the same breath, at the width where it is visible.
+ *
+ * 5G is split by band because a phone shows "5G" on 700 MHz and on 3,5 GHz
+ * alike and the two are not the same object. Everything else is the
+ * generation, because nobody asks which 4G band they are on.
+ *
+ * @param {?object} detail Cartoradio payload.
+ * @returns {?string}
+ */
+export function anfrOperatorSummaryLine(detail) {
+  const rows = Array.isArray(detail?.antennas?.byOperator) ? detail.antennas.byOperator : [];
+  if (!rows.length) return null;
+  const total = rows.length;
+  /** Rung label → the operators that radiate it here, in ladder order. */
+  const rungs = new Map();
+  const push = (label, name) => {
+    if (!rungs.has(label)) rungs.set(label, new Set());
+    rungs.get(label).add(name);
+  };
+  // 5G first, by band, strongest band first — the rung being asked about.
+  const tiers = new Map();
+  for (const row of rows) {
+    const five = (row.generations || []).find((entry) => entry.generation === '5G');
+    if (!five) continue;
+    const mhz = (five.mhz || []).length ? five.mhz[five.mhz.length - 1] : null;
+    const key = mhz === null ? 0 : mhz;
+    if (!tiers.has(key)) tiers.set(key, []);
+    tiers.get(key).push(row.name);
+  }
+  // The adjective only where it EARNS its width: on a mast where every
+  // operator files the same 5G band there is nothing to compare, and the
+  // number alone is the name of the band. Where the mast is split, the top
+  // tier is qualified so the comparison is legible without knowing that
+  // 3,5 GHz is the band allocated to 5G outright and 700 MHz is not.
+  const ladder = [...tiers.keys()].sort((a, b) => b - a);
+  for (const key of ladder) {
+    const adjective = ladder.length > 1 && key === ladder[0] ? anfrFiveGBandLabel(key) : null;
+    const label = key === 0 ? '5G'
+      : adjective ? `5G ${adjective} (${anfrMhzLabel(key)})` : `5G ${anfrMhzLabel(key)}`;
+    for (const name of tiers.get(key)) push(label, name);
+  }
+  for (const generation of ['4G', '3G', '2G']) {
+    for (const row of rows) {
+      if ((row.generations || []).some((entry) => entry.generation === generation)) {
+        push(generation, row.name);
+      }
+    }
+  }
+  if (!rungs.size) return null;
+
+  // Rungs carried by exactly the same operators are ONE group: `5G 3,5 GHz et
+  // 4G : les 4 opérateurs` rather than the same four names printed twice.
+  const groups = [];
+  for (const [label, names] of rungs) {
+    const key = [...names].sort().join('|');
+    const found = groups.find((group) => group.key === key);
+    if (found) found.labels.push(label);
+    else groups.push({ key, labels: [label], names });
+  }
+  return groups
+    .map((group) => `${group.labels.join(' et ')} : ${anfrOperatorSet(group.names, total)}`)
+    .join(' · ');
+}
+
+/**
+ * What radiates here, said once and plainly.
+ *
+ * The fallback for the seconds before the detailed fiche lands — and the
+ * permanent line when it never does. It does NOT repeat the in-service /
+ * technically-operational split, because the sentence right under it already
+ * says which generations radiate, and a per-mast gloss on a register-wide
+ * filing convention is a note about ANFR rather than about this mast.
+ */
+export function anfrLivePlainLine(support) {
   const live = anfrDecodeMask(support?.live, ANFR_GENERATIONS).reverse();
-  if (!live.length) return null;
-  const svc = new Set(anfrDecodeMask(support?.svc, ANFR_GENERATIONS));
-  const inService = live.filter((gen) => svc.has(gen));
-  const technical = live.filter((gen) => !svc.has(gen));
-  const parts = [];
-  // The order matters: what is technically operational is the newer half in
-  // every row of this edition, and the reader should meet it first.
-  if (technical.length) parts.push(`${technical.join(' · ')} techniquement opérationnelle${technical.length > 1 ? 's' : ''}`);
-  if (inService.length) parts.push(`${inService.join(' · ')} en service`);
-  return parts.join(' — ');
+  if (!live.length) return 'Rien n’émet à cette position';
+  return `Émet en ${live.join(' · ')}`;
 }
 
 /** The approved project, named by what it would add, or null. */
@@ -1093,10 +1364,16 @@ export function anfrPlanLine(support) {
   const again = anfrDecodeMask(plan & live, ANFR_GENERATIONS).reverse();
   if (adds.length) {
     return live
-      ? `Projet approuvé : ${adds.join(' · ')} — autorisé, pas encore émis d’ici`
-      : `Projet approuvé : ${adds.join(' · ')} — autorisé, rien n’émet à cette position`;
+      ? `${adds.join(' · ')} autorisée${adds.length > 1 ? 's' : ''} en plus — pas encore installée${adds.length > 1 ? 's' : ''}`
+      : `${adds.join(' · ')} autorisée${adds.length > 1 ? 's' : ''} ici — rien n’a encore été installé`;
   }
-  return `Projet approuvé sur ${again.join(' · ')} — bande déjà à l’antenne, dossier rouvert`;
+  // A RE-FILING TAKES NO LINE. An operator lodging a fresh dossier for a band
+  // already on the air is paperwork, and the feed counted it: 11 830 of the
+  // 15 606 live supports carrying a project are exactly that. A line on 16 %
+  // of French masts that says nothing changed is the kind of noise a compact
+  // card exists to remove — the `plan` mask still rings the dot, which is
+  // where "somebody filed something" belongs.
+  return null;
 }
 
 /**
@@ -1114,54 +1391,61 @@ export function anfrPlanLine(support) {
 export function buildAnfrSelectionLabel(record, payload = null) {
   const support = record?.support || {};
   const details = [];
-  const title = support.nature
-    ? `Support ${support.id} · ${support.nature}`
-    : `Support ANFR ${support.id}`;
-
-  const generations = anfrLiveGenerationsLine(support);
-  details.push(generations || 'Aucune génération n’émet à cette position');
-  // ANFR's own gloss for the status, quoted from the feed's vocabulary rather
-  // than paraphrased here, so the register's wording and the card's cannot
-  // drift apart. It is the status a reader is most likely to misread: the
-  // carrier is switched on, it is simply not declared commercially open.
-  if (anfrHasTechnicalGeneration(support)) {
-    details.push(ANFR_STATUS_LABELS['Techniquement opérationnel']);
-  }
-
+  const detail = record?.detail || null;
   const operators = Array.isArray(support.operators) ? support.operators : [];
-  if (operators.length) {
-    const shown = operators.slice(0, CARD_OPERATOR_LIMIT).join(', ');
-    const rest = operators.length - CARD_OPERATOR_LIMIT;
-    details.push(`${fr(operators.length)} opérateur${operators.length > 1 ? 's' : ''} : ${shown}${rest > 0 ? ` +${rest}` : ''}`);
+  const top = anfrDecodeMask(support.live, ANFR_GENERATIONS).reverse()[0] || null;
+
+  // The title answers "what is it and does it matter", in that order. The
+  // SUP_ID used to lead and now closes the card: it is the one field on here
+  // nobody arrived wanting, and it is still printed because it is the handle
+  // for every other ANFR tool.
+  const title = operators.length
+    ? `Antenne-relais · ${fr(operators.length)} opérateur${operators.length > 1 ? 's' : ''}`
+      + `${top ? ` · ${top}` : ' · rien n’émet'}`
+    : 'Antenne-relais · aucun opérateur déclaré';
+
+  // 551 of the 72 700 supports publish a height of 0, which is the register's
+  // way of saying nobody filled the field in. The feed returns null for those
+  // and the card says so rather than printing "0 m".
+  // WHERE IT IS, in one line: what it is bolted to, how tall, and the street.
+  // Two lines only when the upstream forces it — the `/sites` endpoint files
+  // some addresses as a single 52-character blob with no `voie` to split on,
+  // and merging one of those produces a line that wraps to two anyway.
+  const where = anfrPlainAddress(detail?.site);
+  const placement = anfrPlacementLine(support.nature, support.heightM);
+  const merged = where ? `${placement} — ${where}` : placement;
+  if (merged.length <= CARD_WRAP_CHARS) details.push(merged);
+  else details.push(placement, where);
+  if (!Number.isFinite(support.heightM)) {
+    details.push(`Aucun fût dessiné : ${fr(ANFR_HEIGHT_MISSING)} supports du registre ne publient pas `
+      + `de hauteur, tous ${ANFR_HEIGHTLESS_NATURES.join(' · ').toLowerCase()}`);
   }
 
-  const systems = Array.isArray(support.systems) ? support.systems : [];
-  if (systems.length) {
-    const shown = systems.slice(0, CARD_SYSTEM_LIMIT).join(' · ');
-    const rest = systems.length - CARD_SYSTEM_LIMIT;
-    details.push(`${shown}${rest > 0 ? ` · +${rest} systèmes` : ''}`);
+  // WHO TRANSMITS, grouped by offering. Cartoradio is the only upstream that
+  // binds an operator to a band, so until it lands the card falls back to the
+  // observatoire's flat list rather than leaving the question unanswered.
+  const summary = anfrOperatorSummaryLine(detail);
+  if (summary) {
+    details.push(summary);
+  } else if (operators.length) {
+    const shown = operators.slice(0, CARD_OPERATOR_LIMIT).map(anfrOperatorName).join(', ');
+    const rest = operators.length - CARD_OPERATOR_LIMIT;
+    details.push(`${shown}${rest > 0 ? ` +${rest}` : ''} · ${anfrLivePlainLine(support)}`);
+  } else {
+    details.push(anfrLivePlainLine(support));
   }
 
   const plan = anfrPlanLine(support);
   if (plan) details.push(plan);
 
-  // 551 of the 72 700 supports publish a height of 0, which is the register's
-  // way of saying nobody filled the field in. The feed returns null for those
-  // and the card says so rather than printing "0 m". The sentence names what
-  // the map does about it, because the missing shaft is otherwise a silence.
-  details.push(Number.isFinite(support.heightM)
-    ? `Support de ${fr(support.heightM)} m — fût dessiné à cette hauteur`
-    : `Hauteur du support non publiée — aucun fût dessiné (${fr(ANFR_HEIGHT_MISSING)} supports du registre, tous `
-      + `${ANFR_HEIGHTLESS_NATURES.join(' · ').toLowerCase()})`);
-
   // Everything below is Cartoradio's, on demand, and is labelled as such by
   // being absent until it arrives.
   if (record?.detailPending) {
-    details.push('Cartoradio : lecture de la fiche du support…');
+    details.push('Lecture de la fiche détaillée du mât…');
   } else if (record?.detailError) {
-    details.push(`⚠ Fiche Cartoradio indisponible — ${record.detailError}`);
-  } else if (record?.detail) {
-    details.push(...anfrDetailLines(record.detail));
+    details.push(`⚠ Fiche détaillée indisponible — ${record.detailError}`);
+  } else if (detail) {
+    details.push(...anfrDetailLines(detail));
   }
 
   if (record?.coSited > 0) {
@@ -1169,7 +1453,11 @@ export function buildAnfrSelectionLabel(record, payload = null) {
   }
 
   const edition = anfrEditionLabel(payload?.edition);
-  details.push(`Observatoire ANFR du ${edition || '—'} · Licence Ouverte 2.0`);
+  // Who owns the ground the mast stands on — the question a copropriété or a
+  // council arrives with, and one line of the register answers it.
+  const owner = anfrPlainText(detail?.site?.owner);
+  if (owner) details.push(`Propriétaire : ${owner}`);
+  details.push(`ANFR n° ${support.id} · registre du ${edition || '—'} · Licence Ouverte 2.0`);
   return [title, ...details].join('\n');
 }
 
@@ -1182,62 +1470,152 @@ export function buildAnfrSelectionLabel(record, payload = null) {
  * is the private backend of ANFR's own map.
  */
 export function anfrDetailLines(detail) {
+  // ORDER IS THE DESIGN. Who transmits is already above; the level of the
+  // waves comes next because it is the second question people arrive with,
+  // and the physical description of the mast comes last because it is the
+  // only one a reader can answer by looking up.
   const lines = [];
-  const site = detail?.site;
-  if (site) {
-    const where = [site.address, site.postcode, site.commune].filter(Boolean).join(', ');
-    if (where) lines.push(where);
-    if (site.owner) lines.push(`Propriétaire : ${site.owner}`);
-    // The observatoire is public mobile ONLY. Naming the rest is how the layer
-    // admits its dot is not the whole installation.
-    if (site.otherCategories?.length) {
-      lines.push(`Porte aussi ${site.otherCategories.join(' · ')} — non tracé par cette couche`);
-    }
-  }
-  const antennas = detail?.antennas;
-  if (antennas?.antennas > 0) {
-    const parts = [`${fr(antennas.antennas)} antennes sur ${fr(antennas.stations)} stations`];
-    if (antennas.newestService) {
-      parts.push(`dernier équipement en service le ${anfrFrenchDate(antennas.newestService)}`);
-    }
-    lines.push(parts.join(' · '));
-  }
+  lines.push(...anfrExposureLines(detail));
   lines.push(...anfrAzimuthLines(detail));
-
-  const exposure = detail?.exposure;
-  if (exposure && exposure.within === 0) {
-    lines.push(`Aucune mesure d’exposition publiée dans ${fr(exposure.radiusM ?? ANFR_EXPOSURE_RADIUS_M)} m`);
-  } else if (exposure?.report) {
-    const report = exposure.report;
-    const value = Number.isFinite(report.globalVoltsPerM)
-      ? `${report.globalVoltsPerM.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} V/m`
-      : 'valeur non publiée';
-    lines.push(`Exposition mesurée ${value} à ${fr(exposure.nearest?.metres ?? 0)} m — ${anfrFrenchDate(report.measuredOn) || 'date inconnue'}`);
-    const context = [report.laboratory, report.protocol, report.setting].filter(Boolean);
-    if (context.length) lines.push(context.join(' · '));
-    // The sharpest line on this card. A measurement taken before the mast
-    // gained its current equipment is a true reading of a different
-    // installation, and printing the number without the date would be a lie
-    // by omission.
-    if (report.predatesEquipment) {
-      lines.push(`⚠ Mesure antérieure au dernier équipement installé (${anfrFrenchDate(report.newestService)})`);
-    }
-    if (report.conforming === false) lines.push('⚠ Non conforme selon le rapport ANFR');
-    if (exposure.within > 1) {
-      lines.push(`${fr(exposure.within)} mesures publiées dans ${fr(exposure.radiusM)} m — celle-ci est la plus proche`);
-    }
-    lines.push('Mesure d’un LIEU, pas de ce mât — Cartoradio (ANFR)');
-  } else if (exposure?.nearest) {
-    lines.push(`Mesure d’exposition à ${fr(exposure.nearest.metres)} m — rapport non lisible`);
-  }
 
   // A leg of the Cartoradio card that did not answer is NAMED. Measured on a
   // SUP_ID the register does not hold: `/sites/999999999` returns HTTP 200
   // with a zero-byte body, so the card would otherwise be indistinguishable
   // from a mast Cartoradio has nothing to say about.
   if (Array.isArray(detail?.degraded) && detail.degraded.length) {
-    lines.push(`⚠ Cartoradio muet sur : ${detail.degraded.join(' · ')}`);
+    lines.push(`⚠ Fiche détaillée muette sur : ${detail.degraded.join(' · ')}`);
   }
+  return lines;
+}
+
+/** Every distinct band the mast radiates, in MHz — the join key for a report. */
+export function anfrMastBandsMhz(detail) {
+  const rows = Array.isArray(detail?.antennas?.byOperator) ? detail.antennas.byOperator : [];
+  const mhz = new Set();
+  for (const row of rows) {
+    for (const entry of row.generations || []) {
+      for (const value of entry.mhz || []) mhz.add(value);
+    }
+  }
+  return [...mhz].sort((a, b) => a - b);
+}
+
+/**
+ * The report's own band name, in the reader's words.
+ *
+ * `TM 1800` is ANFR's filing code for the 1800 MHz mobile band and means
+ * nothing to anybody else; the rest of the list is already French and is left
+ * exactly as published.
+ */
+export function anfrServicePlainBand(label) {
+  const text = String(label || '').trim();
+  const mobile = /^TM\s*(\d{3,4})/.exec(text);
+  if (mobile) return `téléphonie mobile ${mobile[1]} MHz`;
+  if (/wifi|wi-fi/i.test(text)) return 'Wi-Fi';
+  if (/^Radiodiffusion sonore/i.test(text)) return 'radio FM';
+  if (/^TV$/i.test(text)) return 'télévision';
+  return text;
+}
+
+/**
+ * The same band as a four-character suffix — `700 MHz`, `Wi-Fi`.
+ *
+ * Written to ride at the end of the headline rather than take a line of its
+ * own, and deliberately gender-free (`pic : 700 MHz`, never `pic sur le…`)
+ * because the list it draws from holds masculine and feminine nouns alike.
+ */
+export function anfrShortBand(label) {
+  const mobile = /^TM\s*(\d{3,4})/.exec(String(label || '').trim());
+  return mobile ? `${mobile[1]} MHz` : anfrServicePlainBand(label);
+}
+
+/** `2025-07-18` → `07/2025`. A month is enough to date an installation. */
+export function anfrShortMonth(iso) {
+  const match = /^(\d{4})-(\d{2})/.exec(String(iso || ''));
+  return match ? `${match[2]}/${match[1]}` : 'date inconnue';
+}
+
+/**
+ * THE EXPOSURE BLOCK, and the four things it refuses to say.
+ *
+ * A number in volts per metre is meaningless to the person who came here
+ * worried, and the previous card printed one with no scale at all. The scale
+ * was already on the payload and unread: every CEM report publishes a
+ * regulatory ceiling PER BAND, 28 to 61 V/m across one report, and the ratio
+ * to the strictest of them is the one comparison a reader can act on.
+ *
+ * What it will not say: that a level is safe (a ratio is not a health
+ * verdict), that the mast is the source (a report measures a PLACE, and the
+ * bands it names may be anybody's), that the mast covers the reader's address
+ * (there is no coverage column anywhere in this upstream), or that an absent
+ * band reads as zero — the last is the reason `anfrUnmeasuredBands` exists.
+ *
+ * @param {?object} detail Cartoradio payload.
+ * @returns {Array<string>}
+ */
+export function anfrExposureLines(detail) {
+  const exposure = detail?.exposure;
+  const lines = [];
+  if (!exposure) return lines;
+  if (exposure.within === 0) {
+    lines.push(`Aucun relevé d’ondes publié dans ${fr(exposure.radiusM ?? ANFR_EXPOSURE_RADIUS_M)} m `
+      + 'autour de ce mât');
+    return lines;
+  }
+  const report = exposure.report;
+  if (!report) {
+    if (exposure.nearest) {
+      lines.push(`Un relevé d’ondes à ${fr(exposure.nearest.metres)} m — rapport illisible`);
+    }
+    return lines;
+  }
+
+  const metres = fr(exposure.nearest?.metres ?? 0);
+  const year = String(report.measuredOn || '').slice(0, 4) || '?';
+  const limit = Number(report.lowestLimitVoltsPerM);
+  const global = Number(report.globalVoltsPerM);
+  const volts = (value) => value.toLocaleString('fr-FR', { minimumFractionDigits: 2 });
+
+  // WHICH band was strongest rides the headline as a suffix, because that is
+  // how a reader learns whether the mobile network is even the dominant
+  // source at that address — and it costs four words there instead of a line.
+  const strongest = report.strongest;
+  const peak = strongest && Number.isFinite(strongest.volts)
+    ? `, pic : ${anfrShortBand(strongest.band)}` : '';
+  if (Number.isFinite(global) && global > 0) {
+    // "51× sous la limite" rather than "2 % de la limite": the two are the
+    // same fact, and a reader who is frightened reads a multiple faster than
+    // a percentage of something they have never heard of.
+    const ratio = Number.isFinite(limit) && limit > 0
+      ? ` — ${fr(Math.round(limit / global))}× sous la limite (${fr(limit)} V/m)`
+      : '';
+    lines.push(`${volts(global)} V/m à ${metres} m (${year})${ratio}${peak}`);
+  } else if (Number.isFinite(global)) {
+    // A global of zero is the protocol's floor, not a reassuring number, so
+    // the strongest band carries its real reading here rather than the zero.
+    const reading = strongest && Number.isFinite(strongest.volts)
+      ? `, pic : ${anfrShortBand(strongest.band)} à ${volts(strongest.volts)} V/m` : '';
+    lines.push(`Champ global sous le seuil mesurable, à ${metres} m (${year})${reading}`);
+  } else {
+    lines.push(`Relevé à ${metres} m (${year}) — valeur globale non publiée`);
+  }
+
+  // ONE caveat line, and it carries the two things a reader cannot supply
+  // themselves: a CEM report measures an ADDRESS on request and is never
+  // attached to a SUP_ID, and a report older than the equipment beside it is
+  // a true reading of a DIFFERENT installation. The bands it never looked at
+  // are not bands it measured at zero, and that is the sharper of the two.
+  const missing = anfrUnmeasuredBands(report, anfrMastBandsMhz(detail));
+  if (missing.length) {
+    lines.push(`⚠ Relevé chez un voisin, ${year} — ${missing.map(anfrMhzLabel).join(', ')} `
+      + 'jamais mesurés');
+  } else if (report.predatesEquipment) {
+    lines.push('⚠ Relevé chez un voisin, antérieur à l’équipement de '
+      + `${anfrShortMonth(report.newestService)}`);
+  } else {
+    lines.push('Relevé chez un voisin, pas sur le mât');
+  }
+  if (report.conforming === false) lines.push('⚠ Non conforme selon le rapport ANFR');
   return lines;
 }
 
@@ -1253,23 +1631,49 @@ export function anfrDetailLines(detail) {
  * @returns {Array<string>}
  */
 export function anfrAzimuthLines(detail) {
-  const { bearings, unplaced, unaimed } = anfrSectorRays(detail);
+  const { bearings, rays, unplaced, unaimed } = anfrSectorRays(detail);
   const lines = [];
+  const antennas = Number(detail?.antennas?.antennas) || 0;
+  // The observatoire is public mobile ONLY, and Cartoradio counts the rest.
+  // It rides this line rather than taking its own, because it is a correction
+  // to the antenna count and reads as one only while it is beside it.
+  const other = detail?.antennas?.other;
+  const alsoCount = Number(other?.antennas) || 0;
+  const also = alsoCount > 0
+    ? ` · +${fr(alsoCount)} ${other.labels?.length ? other.labels.join('/') : 'autres'} hors téléphonie`
+    : '';
   if (bearings.length) {
-    const shown = bearings.slice(0, CARD_AZIMUTH_LIMIT)
-      .map((deg) => `${deg.toLocaleString('fr-FR')}°`).join(' · ');
-    const rest = bearings.length - CARD_AZIMUTH_LIMIT;
-    lines.push(`Azimuts publiés : ${shown}${rest > 0 ? ` +${fr(rest)}` : ''} — Cartoradio`);
-    // The ray length is a drawing convention and the register has no coverage
-    // figure at all. A reader who took 60 m for a cell radius would have been
-    // misled by the map, so the map says it.
-    lines.push(`Rayons de ${fr(ANFR_SECTOR_RAY_M)} m : la direction est publiée, ni l’ouverture ni la portée`);
+    // A bare list of twelve bearings is twelve numbers nobody can use. The
+    // count leads, the compass points follow only while there are few enough
+    // to read, and the mounting heights are a RANGE rather than a count: a
+    // busy mast files one height per installation and the fixture returns
+    // sixteen distinct ones across thirty antennas, so "16 hauteurs" is true
+    // and says nothing while "31 à 49 m du sol" is a thing a reader can look
+    // at. The ray length is NOT explained here — `anfrMastLegend` publishes
+    // that convention on the legend row that appears with the rays.
+    const heights = [...new Set(rays.map((ray) => ray.heightM))].sort((a, b) => b - a);
+    const named = bearings.length <= CARD_BEARING_NAME_LIMIT
+      ? ` (${bearings.map((deg) => `${deg.toLocaleString('fr-FR')}° ${anfrCardinal(deg)}`).join(' · ')})`
+      : '';
+    // Rounded to the metre: the register publishes 30,9 and 48,8 and the
+    // tenths are precision the reader cannot use and the card cannot spare.
+    const round = (value) => fr(Math.round(value));
+    const tier = heights.length === 0 ? ''
+      : heights.length === 1
+        ? `, ${round(heights[0])} m du sol`
+        : `, ${round(heights[heights.length - 1])} à ${round(heights[0])} m du sol`;
+    lines.push(`${antennas ? `${fr(antennas)} antennes, ` : ''}`
+      + `${fr(bearings.length)} direction${bearings.length > 1 ? 's' : ''}${named}${tier}${also}`);
+  } else if (antennas > 0) {
+    lines.push(`${fr(antennas)} antennes — aucune direction publiée${also}`);
+  } else if (also) {
+    lines.push(also.replace(/^ · \+/, 'Porte '));
   }
   if (unplaced > 0) {
-    lines.push(`⚠ ${fr(unplaced)} azimut${unplaced > 1 ? 's' : ''} sans hauteur de fixation publiée — non tracé${unplaced > 1 ? 's' : ''}`);
+    lines.push(`⚠ ${fr(unplaced)} direction${unplaced > 1 ? 's' : ''} sans hauteur de fixation publiée — non dessinée${unplaced > 1 ? 's' : ''}`);
   }
   if (unaimed > 0) {
-    lines.push(`⚠ ${fr(unaimed)} antenne${unaimed > 1 ? 's' : ''} sans azimut publié — aucune direction dessinée`);
+    lines.push(`⚠ ${fr(unaimed)} antenne${unaimed > 1 ? 's' : ''} sans direction publiée`);
   }
   return lines;
 }
@@ -1296,15 +1700,16 @@ export function buildAnfrMeshLabel(record, payload = null) {
   const details = [anfrBandLabelFor(band)];
   details.push(`${fr(operators)} opérateur${operators > 1 ? 's' : ''} déclaré${operators > 1 ? 's' : ''}`);
   if (record?.lookupPending) {
-    details.push('Lecture du support dans le registre…');
+    details.push('Lecture du mât dans le registre…');
   } else if (record?.lookupError) {
     details.push(`⚠ Registre injoignable pour ce point — ${record.lookupError}`);
   } else if (record?.lookupEmpty) {
-    details.push('⚠ Aucun support du registre à cette position exacte');
+    details.push('⚠ Aucun mât du registre à cette position exacte');
   }
+  details.push('Approchez pour la fiche du mât : opérateurs, bandes et relevé d’ondes');
   const edition = anfrEditionLabel(payload?.edition);
-  details.push(`Maillage — un point par cellule · observatoire du ${edition || '—'}`);
-  return [`Support ANFR (maillage)`, ...details].join('\n');
+  details.push(`Vue d’ensemble — un point par cellule · registre du ${edition || '—'}`);
+  return ['Antenne-relais', ...details].join('\n');
 }
 
 function selectedOverlayEntry(id, position, copy) {

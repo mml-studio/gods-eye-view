@@ -57,6 +57,8 @@ import {
   anfrNumber,
   anfrPopCount,
   anfrProjectPoint,
+  anfrSystemBand,
+  anfrUnmeasuredBands,
   parseAnfrNatureTable,
   pickAnfrObservatoire,
   projectAnfrDas,
@@ -385,9 +387,21 @@ test('Cartoradio names its latitude coord_x, and the projection knows it', () =>
 
 test('emitter bands stay as published pairs, never summed into a bandwidth', () => {
   const antennas = projectCartoradioAntennas(CARTORADIO.antennes.body);
-  assert.equal(antennas.stations, 5);
-  assert.equal(antennas.antennas, 33);
+  // FOUR stations and THIRTY antennas, not the five and thirty-three the
+  // payload holds. The fixture files BOUYGUES TELECOM twice at this address —
+  // once under `TEL` with eight cell antennas, once under `FH` with three
+  // microwave dishes — and this layer draws mobile. The other three are
+  // counted apart rather than summed into a number the card would introduce
+  // as the mast's mobile antennas.
+  assert.equal(antennas.stations, 4);
+  assert.equal(antennas.antennas, 30);
+  assert.equal(antennas.other.stations, 1);
+  assert.equal(antennas.other.antennas, 3);
+  assert.deepEqual(antennas.other.labels, ['FH']);
   assert.deepEqual(antennas.operators, ['BOUYGUES TELECOM', 'FREE MOBILE', 'ORANGE', 'SFR']);
+  // And `FH (Faisceau hertzien)` is out of the system ladder entirely, which
+  // it could not be while the FH station was folded in with the rest.
+  assert.ok(!antennas.systems.some((entry) => /Faisceau/.test(entry.system)));
   assert.equal(antennas.newestService, '2025-07-18');
   const lte700 = antennas.systems.find((entry) => entry.system.startsWith('5G NR 700'));
   // LTE/NR 700 is duplex, so it returns TWO band pairs, and a sum of them
@@ -398,6 +412,91 @@ test('emitter bands stay as published pairs, never summed into a bandwidth', () 
   // dd/mm/yyyy sorted as yyyy-mm-dd, so string order is time order.
   assert.equal(anfrFrenchDateToIso('09/10/2024'), '2024-10-09');
   assert.equal(anfrFrenchDateToIso('2024-10-09'), null);
+});
+
+test('the fold binds each operator to the bands it actually radiates here', () => {
+  // "Is MY operator on this one, and with which 5G" is the commonest reason
+  // anybody looks a mast up, and the association was already in the payload:
+  // Cartoradio files every emitter under its station's operator. It used to be
+  // flattened into two sets and thrown away.
+  const antennas = projectCartoradioAntennas(CARTORADIO.antennes.body);
+  assert.equal(antennas.byOperator.length, 4);
+  const orange = antennas.byOperator.find((row) => row.name === 'ORANGE');
+  assert.equal(orange.best, '5G');
+  assert.equal(orange.antennas, 8);
+  assert.deepEqual(
+    orange.generations.map((entry) => entry.generation),
+    ['5G', '4G', '3G', '2G'],
+    'newest first, so the answer is at the left edge of every row',
+  );
+  assert.deepEqual(orange.generations.find((e) => e.generation === '5G').mhz, [700, 3500]);
+  assert.deepEqual(orange.generations.find((e) => e.generation === '4G').mhz, [700, 800, 1800, 2100, 2600]);
+  // The only change signal this upstream publishes, and it is new here.
+  assert.equal(orange.modified, '2024-09-13');
+  assert.equal(orange.since, '1999-02-03');
+  // The FH station is not an operator row: it has no generation at all.
+  assert.ok(!antennas.byOperator.some((row) => row.best === null));
+  assert.deepEqual(projectCartoradioAntennas({}).byOperator, []);
+
+  // The label parser reads BOTH spellings — the observatoire omits the suffix
+  // Cartoradio appends — and refuses a microwave dish outright.
+  assert.deepEqual(anfrSystemBand('5G NR 3500 (5G)'), { generation: '5G', mhz: 3500 });
+  assert.deepEqual(anfrSystemBand('LTE 1800'), { generation: '4G', mhz: 1800 });
+  assert.deepEqual(anfrSystemBand('UMTS 900'), { generation: '3G', mhz: 900 });
+  assert.deepEqual(anfrSystemBand('GSM 900 (2G)'), { generation: '2G', mhz: 900 });
+  assert.equal(anfrSystemBand('FH (Faisceau hertzien)'), null);
+  assert.equal(anfrSystemBand(''), null);
+});
+
+test('a band the report never looked at is not a band it measured at zero', () => {
+  const antennas = projectCartoradioAntennas(CARTORADIO.antennes.body);
+  const old = projectCartoradioExposure({
+    mesures: CARTORADIO.mesures.body,
+    report: CARTORADIO.mesure.body,
+    lat: 48.85528,
+    lon: 2.33167,
+    newestService: antennas.newestService,
+  }).report;
+  // The regulatory ceiling is published PER BAND, 28 to 61 V/m in one report,
+  // and it was being carried as a string and never read. It is the only thing
+  // on this payload that gives the measured number a scale.
+  assert.equal(old.lowestLimitVoltsPerM, 28);
+  assert.equal(old.strongest.band, 'TM 1800');
+  assert.equal(old.strongest.volts, 0.15);
+  assert.equal(old.strongest.limitVoltsPerM, 58);
+  assert.equal(old.strongest.extrapolated, true);
+  // The per-band ceiling is folded into the two aggregates and dropped from
+  // every service row: eleven parsed copies of a number read once is wire
+  // weight for nothing.
+  for (const service of old.services) {
+    assert.equal('limitVoltsPerM' in service, false, service.band);
+    assert.ok(service.limit, 'the published string stays, verbatim');
+  }
+
+  // A 2009 protocol has no row at all for 700, 800, 2600 or 3600 — three of
+  // those four bands were not yet allocated to mobile in France — so the 5G
+  // and the low-band 4G on this mast are UNMEASURED, not measured at zero.
+  const mhz = [700, 800, 900, 1800, 2100, 2600, 3500];
+  assert.deepEqual(anfrUnmeasuredBands(old, mhz), [700, 800, 2600, 3500]);
+
+  // The 2024 report on the same mast covers every one of them. 3500 is the
+  // reason the lookup table exists: it is filed under `TM 3600`, and a string
+  // match on "3500" finds nothing in a report that measured it perfectly well.
+  const fresh = projectCartoradioExposure({
+    mesures: CARTORADIO.mesures.body,
+    report: CARTORADIO.mesureRecente.body,
+    lat: 48.85528,
+    lon: 2.33167,
+  }).report;
+  assert.deepEqual(anfrUnmeasuredBands(fresh, mhz), []);
+  assert.ok(fresh.reportedBands.includes('TM 3600'));
+  assert.equal(fresh.lowestLimitVoltsPerM, 28);
+  assert.equal(fresh.strongest.band, 'TM 700 (Téléphonie Mobile en 700 MHz)');
+  assert.equal(fresh.strongest.volts, 0.22);
+  // No report, no claim — never an empty list read as "all measured".
+  assert.deepEqual(anfrUnmeasuredBands(null, mhz), []);
+  assert.deepEqual(anfrUnmeasuredBands({ reportedBands: [] }, mhz), []);
+  assert.deepEqual(anfrUnmeasuredBands(fresh, null), []);
 });
 
 test('the exposure readout is a reading of a PLACE, and says when it predates the mast', () => {
@@ -533,9 +632,10 @@ test('a ray lands at the distance and the bearing it was asked for', () => {
 
 test('the azimuths fold to distinct bearing/height pairs, and count what is missing', () => {
   const antennas = projectCartoradioAntennas(CARTORADIO.antennes.body);
-  // The fixture is support 449714: five operators, 33 antennas, and every one
-  // of them files an orientation.
-  assert.equal(antennas.antennas, 33);
+  // The fixture is support 449714: four mobile operators, 30 mobile antennas
+  // (the three FH dishes are counted apart), and every one files an
+  // orientation.
+  assert.equal(antennas.antennas, 30);
   assert.equal(antennas.withoutAzimuth, 0);
   assert.ok(antennas.azimuths.length > 0);
   // Sorted by bearing then height, so two reads of the same mast are diffable.

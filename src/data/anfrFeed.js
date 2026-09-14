@@ -974,17 +974,24 @@ export function projectCartoradioSupport(body) {
   if (!data || !Number.isFinite(Number(data.numero))) return null;
   const categories = Array.isArray(data.categories) ? data.categories : [];
   const mobile = categories.find((entry) => entry?.code === 'TEL') || null;
-  const address = [
-    str(data.adresse?.numero),
-    str(data.adresse?.voie),
-    str(data.adresse?.adresse),
-  ].filter(Boolean).join(' ');
+  // STREET AND VENUE APART. Cartoradio files three address fields and they
+  // are not the same kind of thing: `numero`+`voie` is a postal address,
+  // `adresse` is a building name — and support 449714 concatenates to
+  // `43-45 R DES STS PÈRES FACULTÉ DE MÉDECINE DE PARIS V`, 52 characters on
+  // a card that wraps at about 62. Kept apart so a caller can spend its width
+  // on the half that locates the mast.
+  const street = [str(data.adresse?.numero), str(data.adresse?.voie)]
+    .filter(Boolean).join(' ');
+  const venue = str(data.adresse?.adresse);
   return {
     supId: Number(data.numero),
     nature: str(data.description?.nature),
     heightM: anfrNumber(data.description?.hauteur),
     owner: str(data.description?.proprietaire),
-    address: address || null,
+    // A site that files only a building name still gets an address rather
+    // than a null, because a named building locates a mast and a blank does
+    // not.
+    address: street || venue,
     postcode: str(data.adresse?.code_postal),
     commune: str(data.adresse?.commune),
     lat: anfrNumber(data.coordonnees?.coord_x),
@@ -999,6 +1006,97 @@ export function projectCartoradioSupport(body) {
       .filter((entry) => entry?.code && entry.code !== 'TEL')
       .map((entry) => str(entry.nom) || entry.code),
   };
+}
+
+/**
+ * Cartoradio's category code for the public mobile network.
+ *
+ * Load-bearing, and it was measured rather than assumed. Support 449714
+ * returns FIVE stations for FOUR operators: BOUYGUES TELECOM is filed twice at
+ * the same address, once under `TEL` with eight cell antennas and once under
+ * `FH` with three microwave dishes carrying the single system label
+ * `FH (Faisceau hertzien)`. A fold that ignores the category counts 33
+ * antennas where the mobile network has 30, hands three microwave bearings to
+ * a drawing that calls them cell sectors, and puts `FH` in a list the card
+ * introduces as the mast's mobile systems — while the card's own next line
+ * says the layer does not draw FH. The two halves are counted apart.
+ */
+export const CARTORADIO_MOBILE_CATEGORY = 'TEL';
+
+/**
+ * A Cartoradio or observatoire system label, split into its generation and its
+ * band in MHz.
+ *
+ * The two upstreams spell the same system differently — the observatoire says
+ * `5G NR 3500`, Cartoradio says `5G NR 3500 (5G)` — so the suffix is read when
+ * it is there and the prefix when it is not. The prefix rule is safe HERE and
+ * nowhere else in this file: it is applied to labels that have already been
+ * filtered to the mobile category, so none of the `GSM R`, `LTE 700 P` and
+ * `… Expe` traps the module header refuses can reach it.
+ *
+ * `FH (Faisceau hertzien)` has neither a generation nor a band and returns
+ * null, which is how a microwave dish stays out of a generation ladder.
+ *
+ * @param {?string} label
+ * @returns {?{generation:string, mhz:?number}}
+ */
+export function anfrSystemBand(label) {
+  const text = str(label);
+  if (!text) return null;
+  const suffix = /\((2G|3G|4G|5G)\)\s*$/.exec(text);
+  const head = text.replace(/\s*\([^)]*\)\s*$/, '');
+  let generation = suffix ? suffix[1] : null;
+  if (!generation) {
+    if (/^5G\b/i.test(head)) generation = '5G';
+    else if (/^LTE\b/i.test(head)) generation = '4G';
+    else if (/^UMTS\b/i.test(head)) generation = '3G';
+    else if (/^GSM\b/i.test(head)) generation = '2G';
+  }
+  if (!generation) return null;
+  const band = /(\d{3,4})\s*$/.exec(head);
+  return { generation, mhz: band ? Number(band[1]) : null };
+}
+
+/** Cartoradio's category code for one station, or null when it files none. */
+function cartoradioCategory(station) {
+  return str(station?.categorie?.code);
+}
+
+/**
+ * One operator's half of a shared mast, folded from its stations.
+ *
+ * This is the answer to the question people actually arrive with — *is MY
+ * operator on this one* — and it is the one question the register answers
+ * outright. Every input was already being downloaded: the loop below used to
+ * throw the operator→system association away into two flat sets, so a card
+ * could say four operators and twelve systems without ever saying which
+ * operator had which.
+ *
+ * `modified` is `station.modification` and is new here. It is the only change
+ * signal this upstream publishes, and it separates a mast an operator last
+ * touched in 2016 from one it re-filed last month — same dot, very different
+ * object.
+ *
+ * The cost, measured on the busiest mast in the fixtures — support 449714,
+ * four mobile operators, 30 antennas — for the per-operator fold plus the
+ * exposure report's regulatory ceilings and band list: the whole card goes
+ * from 5 153 to 6 658 bytes, **1 507 to 1 873 gzipped, +366**. That is on a
+ * per-mast call made once for the mast the reader clicked, cached for a day
+ * and coalesced by SUP_ID — not on the 72 700-support national pack, which
+ * carries none of it.
+ */
+function foldOperator(entry, station) {
+  const iso = anfrFrenchDateToIso(station?.station?.modification);
+  if (iso && (!entry.modified || iso > entry.modified)) entry.modified = iso;
+  const service = anfrFrenchDateToIso(station?.station?.service);
+  if (service && (!entry.since || service < entry.since)) entry.since = service;
+  return entry;
+}
+
+/** Newest generation first, then by name, so two reads order a card alike. */
+function compareOperators(a, b) {
+  const rank = (entry) => ANFR_GENERATIONS.indexOf(entry.best);
+  return rank(b) - rank(a) || a.name.localeCompare(b.name, 'fr');
 }
 
 /**
@@ -1042,10 +1140,20 @@ export function projectCartoradioSupport(body) {
  * exists so the drawing can mark it rather than seat the ray on a guess).
  */
 export function projectCartoradioAntennas(body) {
-  const stations = Array.isArray(body?.data) ? body.data : [];
+  const filed = Array.isArray(body?.data) ? body.data : [];
+  // A station that files no category at all is kept: the fold degrades OPEN,
+  // because dropping a mobile station over a missing field would empty a card
+  // that has data, while keeping a rare uncategorised one only ever adds a
+  // line the reader can see.
+  const stations = filed.filter((entry) => {
+    const code = cartoradioCategory(entry);
+    return code === null || code === CARTORADIO_MOBILE_CATEGORY;
+  });
   const systems = new Map();
   /** `deg|height` → the pair, so a three-sector mast returns three rays. */
   const azimuths = new Map();
+  /** Operator name → its half of the mast. */
+  const byOperator = new Map();
   let antennas = 0;
   let withoutAzimuth = 0;
   let newestService = null;
@@ -1054,10 +1162,22 @@ export function projectCartoradioAntennas(body) {
   for (const station of stations) {
     const operator = str(station?.station?.exploitant);
     if (operator) operators.add(operator);
+    let mine = null;
+    if (operator) {
+      mine = byOperator.get(operator);
+      if (!mine) {
+        mine = {
+          name: operator, antennas: 0, bands: new Map(), since: null, modified: null,
+        };
+        byOperator.set(operator, mine);
+      }
+      foldOperator(mine, station);
+    }
     for (const installation of station?.installations || []) {
       const mountM = anfrHeightM(installation?.hauteur);
       for (const antenna of installation?.antennes || []) {
         antennas += 1;
+        if (mine) mine.antennas += 1;
         const bearing = anfrAzimuthDeg(antenna?.orientation);
         if (bearing === null) {
           withoutAzimuth += 1;
@@ -1070,6 +1190,15 @@ export function projectCartoradioAntennas(body) {
         for (const emitter of antenna?.emetteurs || []) {
           const label = str(emitter?.systeme);
           if (!label) continue;
+          const split = anfrSystemBand(label);
+          if (mine && split) {
+            let seen = mine.bands.get(split.generation);
+            if (!seen) {
+              seen = new Set();
+              mine.bands.set(split.generation, seen);
+            }
+            if (split.mhz !== null) seen.add(split.mhz);
+          }
           let entry = systems.get(label);
           if (!entry) {
             entry = { system: label, operators: new Set(), bands: new Set(), since: null };
@@ -1094,6 +1223,22 @@ export function projectCartoradioAntennas(body) {
     }
   }
 
+  // Everything on this support that is NOT the public mobile network, counted
+  // rather than mixed in. The card names it in one line so the antenna count
+  // above cannot be read as the whole installation.
+  const other = filed.filter((entry) => {
+    const code = cartoradioCategory(entry);
+    return code !== null && code !== CARTORADIO_MOBILE_CATEGORY;
+  });
+  let otherAntennas = 0;
+  const otherLabels = new Set();
+  for (const station of other) {
+    otherLabels.add(str(station?.categorie?.nom) || cartoradioCategory(station));
+    for (const installation of station?.installations || []) {
+      otherAntennas += (installation?.antennes || []).length;
+    }
+  }
+
   return {
     stations: stations.length,
     antennas,
@@ -1103,6 +1248,31 @@ export function projectCartoradioAntennas(body) {
       .sort((a, b) => a.deg - b.deg || (a.heightM ?? 0) - (b.heightM ?? 0)),
     withoutAzimuth,
     operators: [...operators].sort((a, b) => a.localeCompare(b, 'fr')),
+    byOperator: [...byOperator.values()]
+      .map((entry) => ({
+        name: entry.name,
+        antennas: entry.antennas,
+        // Newest generation first: a reader scanning four rows for "who has
+        // 5G here" should meet the answer at the left edge of every one.
+        generations: [...entry.bands.entries()]
+          .map(([generation, mhz]) => ({
+            generation,
+            mhz: [...mhz].sort((a, b) => a - b),
+          }))
+          .sort((a, b) => ANFR_GENERATIONS.indexOf(b.generation)
+            - ANFR_GENERATIONS.indexOf(a.generation)),
+        best: [...entry.bands.keys()]
+          .sort((a, b) => ANFR_GENERATIONS.indexOf(b) - ANFR_GENERATIONS.indexOf(a))[0] || null,
+        since: entry.since,
+        modified: entry.modified,
+      }))
+      .filter((entry) => entry.best)
+      .sort(compareOperators),
+    other: {
+      stations: other.length,
+      antennas: otherAntennas,
+      labels: [...otherLabels].filter(Boolean).sort((a, b) => a.localeCompare(b, 'fr')),
+    },
     systems: [...systems.values()]
       .map((entry) => ({
         system: entry.system,
@@ -1113,6 +1283,53 @@ export function projectCartoradioAntennas(body) {
       .sort((a, b) => a.system.localeCompare(b.system, 'fr')),
     newestService,
   };
+}
+
+/**
+ * A mobile band in MHz → the `TM` row a CEM report files it under.
+ *
+ * Identity on six of the seven, which is why the seventh is the whole reason
+ * this table exists: a mast's `5G NR 3500` is measured under the report's
+ * `TM 3600`, whose range is 3400-3800. A naive string match on "3500" finds
+ * nothing in a report that measured the band perfectly well.
+ */
+const REPORT_BAND_FOR_MHZ = Object.freeze({
+  700: 700, 800: 800, 900: 900, 1800: 1800, 2100: 2100, 2600: 2600, 3500: 3600,
+});
+
+/**
+ * The bands a mast radiates that its nearest published report never looked at.
+ *
+ * The sharp half of the staleness warning. `predatesEquipment` already says a
+ * report is older than the equipment beside it; this says WHICH bands that
+ * costs, and the answer is rarely "all of them" — the 2009 fixture measured
+ * TM 900, TM 1800 and TM 2100 and has no row at all for 700, 800, 2600 or
+ * 3600, because three of those four bands were not yet allocated to mobile in
+ * France when the technician came.
+ *
+ * A band with a row but no number is NOT returned: that one was looked at and
+ * came back under the protocol's reporting floor, which is a measurement.
+ *
+ * @param {?object} report Projected report.
+ * @param {Array<number>} mhzList Bands the mast radiates, in MHz.
+ * @returns {Array<number>} Sorted, distinct, unmeasured bands.
+ */
+export function anfrUnmeasuredBands(report, mhzList) {
+  const reported = Array.isArray(report?.reportedBands) ? report.reportedBands : [];
+  if (!reported.length) return [];
+  const seen = new Set();
+  for (const band of reported) {
+    const match = /^TM\s*(\d{3,4})/.exec(str(band) || '');
+    if (match) seen.add(Number(match[1]));
+  }
+  if (!seen.size) return [];
+  const missing = new Set();
+  for (const mhz of Array.isArray(mhzList) ? mhzList : []) {
+    const filed = REPORT_BAND_FOR_MHZ[mhz];
+    if (filed === undefined) continue;
+    if (!seen.has(filed)) missing.add(mhz);
+  }
+  return [...missing].sort((a, b) => a - b);
 }
 
 /** `dd/mm/yyyy` → `yyyy-mm-dd`, or null. */
@@ -1178,8 +1395,24 @@ export function projectCartoradioExposure({
       volts: anfrNumber(entry?.mesure ?? entry?.extrapolation),
       extrapolated: entry?.mesure === undefined && entry?.extrapolation !== undefined,
       limit: str(entry?.limite),
+      // `"28 V/m"` → 28. The regulatory ceiling is published PER BAND and runs
+      // 28 to 61 V/m across one report; it is the only thing on this payload
+      // that gives the measured number a scale, and it was being carried as a
+      // string and never read. It is folded into the two aggregates below and
+      // NOT kept per service: eleven parsed copies of a number the card reads
+      // once is wire weight for nothing.
+      limitVoltsPerM: anfrNumber(String(entry?.limite || '').replace(/\s*V\/m\s*$/i, '')),
     }))
     .filter((entry) => entry.band);
+  const measured = services.filter((entry) => entry.volts !== null);
+  const limits = services
+    .map((entry) => entry.limitVoltsPerM)
+    .filter((value) => Number.isFinite(value) && value > 0);
+  // The band the report itself found strongest — which is how a reader learns
+  // whether the mobile network is even the dominant source at that address.
+  const strongest = measured.length
+    ? measured.reduce((best, entry) => (entry.volts > best.volts ? entry : best))
+    : null;
 
   return {
     within,
@@ -1199,8 +1432,19 @@ export function projectCartoradioExposure({
         setting: str(data.milieu),
         environment: str(data.environnement),
         commune: str(data.adresse?.commune),
-        services: services.filter((entry) => entry.volts !== null),
-        servicesBelowFloor: services.filter((entry) => entry.volts === null).length,
+        services: measured.map(({ limitVoltsPerM, ...rest }) => rest),
+        servicesBelowFloor: services.length - measured.length,
+        strongest,
+        // The strictest ceiling anywhere in this report. Deliberately the
+        // whole report and not the mobile rows alone: it is the number the
+        // card divides by, and taking the lowest one present is the reading
+        // that cannot flatter the site.
+        lowestLimitVoltsPerM: limits.length ? Math.min(...limits) : null,
+        // Every band the protocol of the day looked at, measured or not. The
+        // card needs the ones that are ABSENT — a 2009 report has no TM 3600
+        // line at all, so a 5G 3500 mast beside it is not "measured at 0", it
+        // is unmeasured, and only the full list can tell the two apart.
+        reportedBands: services.map((entry) => entry.band),
         // True when the mast gained equipment AFTER the measurement was taken.
         // Then the number on the card is a true measurement of a different
         // installation, which is worth more said than hidden.
