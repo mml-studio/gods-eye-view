@@ -2373,6 +2373,9 @@ export class StyleManager {
     // Deferred re-reads of the zoom card after a camera stop. See
     // `_scheduleZoomPromptRecheck`.
     this._zoomPromptTimers = [];
+    // Selection listeners that make the card yield to a click. See
+    // `_installZoomPromptFocusWatch`.
+    this._zoomPromptFocusRemovers = [];
     this._cctvUnsubscribe = null;
     this._radioUnsubscribe = null;
     this._radioState = null;
@@ -4755,6 +4758,45 @@ export class StyleManager {
     }
     this._installCoverageWatch();
     this._installLayerDrawWatch();
+    this._installZoomPromptFocusWatch();
+  }
+
+  /**
+   * Repaint the zoom card when the reader takes or drops a subject.
+   *
+   * The card yields to a click (`_zoomPromptSubjectFocused` on the manager),
+   * but nothing else would tell it: its own re-reads hang off camera stops and
+   * panel passes, so without this the card would sit over a freshly clicked
+   * plane until the globe moved — and, worse, stay away for minutes after the
+   * plane was let go on a camera that never moves.
+   *
+   * Three lanes because the app has three: tracking layers publish
+   * `gev:awareness-subject-*`, clicked features publish `gev:entity-*`, and
+   * `trackedEntityChanged` catches whoever assigns the viewer directly.
+   * Repainting the card is one element and a stats read, so listening to all
+   * three and repainting twice on a single click costs nothing.
+   * @returns {void}
+   */
+  _installZoomPromptFocusWatch() {
+    this._zoomPromptFocusRemovers?.forEach((remove) => remove());
+    this._zoomPromptFocusRemovers = [];
+    if (typeof this._dataManager?.refreshZoomPrompt !== 'function') return;
+    const repaint = () => {
+      if (this._disposed) return;
+      this._dataManager?.refreshZoomPrompt?.();
+    };
+    const events = [
+      'gev:awareness-subject-selected',
+      'gev:awareness-subject-cleared',
+      'gev:entity-selected',
+      'gev:entity-selection-cleared',
+    ];
+    for (const type of events) {
+      window.addEventListener(type, repaint);
+      this._zoomPromptFocusRemovers.push(() => window.removeEventListener(type, repaint));
+    }
+    const remover = this.viewer?.trackedEntityChanged?.addEventListener?.(repaint);
+    if (typeof remover === 'function') this._zoomPromptFocusRemovers.push(remover);
   }
 
   /**
@@ -10904,6 +10946,8 @@ export class StyleManager {
     this._zoomPromptTimers = [];
     this._layerDrawWatchRemover?.();
     this._layerDrawWatchRemover = null;
+    this._zoomPromptFocusRemovers?.forEach((remove) => remove());
+    this._zoomPromptFocusRemovers = [];
     this._coverageBriefing?.destroy();
     this._coverageBriefing = null;
     // Revoke persistence/hash authority before teardown can emit manager changes.

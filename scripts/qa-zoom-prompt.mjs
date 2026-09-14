@@ -9,12 +9,14 @@
  *        middle of the viewport, saying what the layer itself says
  *   ii.  the card does NOT eat clicks at the centre of a globe people drag —
  *        `elementFromPoint` at its own centre must reach the canvas
- *   iii. « Zoomer ici » actually moves the camera under the ceiling, through
+ *   iii. a subject the reader has CLICKED takes the card off the screen with
+ *        the camera untouched, and letting the subject go brings it back
+ *   iv.  « Zoomer ici » actually moves the camera under the ceiling, through
  *        the layer's own `ensureViewGate()` — the three solvers this repo has
  *        carried since September with nothing calling them
- *   iv.  and the card takes itself off the screen once the camera obeyed
+ *   v.   and the card takes itself off the screen once the camera obeyed
  *
- * No proxy interception: none of the four claims needs a loaded grid. The gate
+ * No proxy interception: none of the five claims needs a loaded grid. The gate
  * verdict at 1 800 km is reached without a single request, which is the point
  * of the gate.
  *
@@ -128,6 +130,14 @@ async function main() {
     const before = await cardState(page);
     check('nothing is announced while no gated layer is on', !before.visible, JSON.stringify(before));
 
+    // PARK FIRST, SWITCH ON SECOND. Enabling at the boot camera starts a real
+    // fetch for wherever the globe happens to be; parking afterwards aborts it,
+    // but a response already past that abort check still lands and writes `ok`
+    // OVER the gate verdict the park just produced. Measured: with the two
+    // lines the other way round this harness failed its first check on a loaded
+    // machine and passed on an idle one. Switched on at 1 800 km, the layer has
+    // nothing in flight to contradict itself with.
+    await setView(page, FRANCE.lon, FRANCE.lat, FRANCE.height);
     await page.evaluate(() => window.__godsEyeView.dataManager.setEnabled('power-grid', true));
     await setView(page, FRANCE.lon, FRANCE.lat, FRANCE.height);
     await page.waitForFunction(
@@ -156,8 +166,62 @@ async function main() {
 
     await page.screenshot({ path: path.join(SHOTS_DIR, '01-card.png') }).catch(() => {});
 
-    // ── iii/iv. the button flies, and the card withdraws ──────────────────
-    console.log('[qa] iii. « Zoomer ici » reaches the layer own view gate');
+    // ── iii. it yields to whatever the reader just clicked ────────────────
+    //
+    // The shared selection slot, written the way `selectTrackedSubjectContext`
+    // writes it when a plane is clicked, and announced on the tracking layers'
+    // own event lane. Nothing here calls `refreshZoomPrompt`: the point is that
+    // the shell repaints the card on the selection alone, WITHOUT a camera
+    // stop — the height is read on both sides to prove the card left because
+    // of the click and not because the globe moved under it.
+    console.log('[qa] iii. a clicked subject takes the card off, and letting go brings it back');
+    const heightHeld = await cameraHeight(page);
+    await page.evaluate(() => {
+      const store = window.__gevContextStore;
+      store.entities.set('qa-contact', {
+        id: 'qa-contact',
+        layerId: 'power-grid',
+        label: 'QA CONTACT',
+        entity: { __gevContextId: 'qa-contact' },
+        updatedAt: Date.now(),
+      });
+      store.selectedEntityId = 'qa-contact';
+      store.selectedAt = Date.now();
+      window.dispatchEvent(new CustomEvent('gev:awareness-subject-selected', {
+        detail: { layerId: 'power-grid', id: 'qa-contact' },
+      }));
+    });
+    await page.waitForFunction(
+      () => document.getElementById('zoom-prompt')?.hidden === true,
+      { timeout: 10000 },
+    ).catch(() => {});
+    const held = await cardState(page);
+    check('the card is off while a subject is held', !held.visible, JSON.stringify(held).slice(0, 160));
+    check('and the camera never moved for it',
+      Math.abs((await cameraHeight(page)) - heightHeld) < 1000, `${Math.round(heightHeld)} m`);
+
+    await page.evaluate(() => {
+      const store = window.__gevContextStore;
+      store.entities.delete('qa-contact');
+      store.selectedEntityId = null;
+      store.selectedAt = null;
+      window.dispatchEvent(new CustomEvent('gev:awareness-subject-cleared', {
+        detail: { layerId: 'power-grid', id: 'qa-contact' },
+      }));
+    });
+    await page.waitForFunction(
+      () => {
+        const node = document.getElementById('zoom-prompt');
+        return Boolean(node) && !node.hidden && node.getBoundingClientRect().height > 0;
+      },
+      { timeout: 10000 },
+    ).catch(() => {});
+    const released = await cardState(page);
+    check('letting the subject go brings the same card back',
+      released.visible && released.layer === card.layer, JSON.stringify(released).slice(0, 160));
+
+    // ── iv/v. the button flies, and the card withdraws ────────────────────
+    console.log('[qa] iv. « Zoomer ici » reaches the layer own view gate');
     const heightBefore = await cameraHeight(page);
     await page.evaluate(() => document.querySelector('#zoom-prompt .zoom-prompt-fly')?.click());
     await page.waitForFunction(
@@ -169,7 +233,7 @@ async function main() {
       heightAfter < 120_000, `${Math.round(heightBefore)} m → ${Math.round(heightAfter)} m`);
     check('and it zoomed in rather than out', heightAfter < heightBefore);
 
-    console.log('[qa] iv. the card takes itself off once the camera obeyed');
+    console.log('[qa] v. the card takes itself off once the camera obeyed');
     await page.waitForFunction(
       () => document.getElementById('zoom-prompt')?.hidden === true,
       { timeout: 20000 },
