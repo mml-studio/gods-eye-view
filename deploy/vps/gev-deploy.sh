@@ -232,6 +232,20 @@ fi
 rm -rf "$SRC"
 mv "$tmp/tree" "$SRC"
 
+# `docker compose` reads $ROOT/docker-compose.yml, which this script has never
+# written: the copy on the host is placed by hand and the one in the tree is
+# only its documentation. That drift is silent and it has already cost a fix —
+# `GEV_AMENITIES_INPROCESS_BUILD=0` was committed on 2026-09-14, deployed, and
+# did nothing, because the host's copy was three days older and the layer kept
+# OOM-killing the container. Say so, loudly, and keep going: a PR must not be
+# able to rewrite the host's runtime limits, but nobody should have to guess
+# that it did not.
+if ! diff -q "$ROOT/docker-compose.yml" "$SRC/deploy/vps/docker-compose.yml" >/dev/null 2>&1; then
+  LOG "WARNING: $ROOT/docker-compose.yml differs from the tree's deploy/vps/docker-compose.yml."
+  LOG "         Environment or limits added in this ref are NOT live. Reconcile by hand:"
+  LOG "         diff $ROOT/docker-compose.yml $SRC/deploy/vps/docker-compose.yml"
+fi
+
 cd "$ROOT"
 if ! docker compose up -d --build; then
   LOG "build/start FAILED for $want — previous container left as-is"

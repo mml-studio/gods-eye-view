@@ -117,17 +117,37 @@ day, memory went 327 → 941 MiB in fourteen seconds and the container died of
 `Ineffective mark-compacts near heap limit`, exit 134, and restarted. Switching
 the layer on took staging down, for everyone, every time.
 
-So `GEV_AMENITIES_INPROCESS_BUILD=0` is set in the compose file and the pack is
-built **on the host**, then moved into the cache volume:
+So `GEV_AMENITIES_INPROCESS_BUILD=0` is set in the compose file, and the pack is
+built in a **throwaway container off the same image**, with its own cgroup and
+the cache volume mounted:
 
 ```bash
 ssh vps '
-  cd /opt/gev/src &&
-  NODE_OPTIONS=--max-old-space-size=2048 npm run amenities:pack &&      # ~2 min, 187 MB in
-  docker cp .gev-cache/amenities-fr gev:/app/.gev-cache/ &&
+  docker run --rm -m 3800m --memory-swap 3800m \
+    -e NODE_OPTIONS=--max-old-space-size=3072 \
+    -v gev_gev-cache:/app/.gev-cache \
+    gev:staging npm run amenities:pack &&
+  docker restart gev &&
   docker exec gev npm run amenities:pack -- --check
 '
 ```
+
+**3072 is a floor, not a round number.** Measured 2026-09-14 on the real
+archive: 2048 and 2560 both die of `Ineffective mark-compacts near heap limit`
+partway through the BPE read, 3072 finishes in 40 s at 1 751 MB of peak RSS. The
+first try on the VPS used 2048 and aborted at two million rows. Check `free -m`
+before running it — the box has ~4.5 GB available and Postgres is on it.
+
+**Not on the host and not with `docker exec`.** The host carries Node 20 and no
+`node_modules` — it has never needed either, because everything builds inside
+Docker — and `docker exec gev` shares the running container's 1 GiB cgroup,
+which is the ceiling this whole section exists to get out from under. A
+throwaway `docker run` is the only one of the three that has the image, the
+volume and a budget of its own.
+
+The `docker restart` is not optional. The proxy reads the pack once per process
+and remembers that it found nothing, so a container that started before the pack
+existed keeps answering 503 until it is restarted.
 
 It writes `pack.json` (mesh, rollup, provenance, shard index — ~10 MB) plus 356
 gzipped `sites/<cell>.json.gz` shards (~14 MB). The server holds the first and
