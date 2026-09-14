@@ -1174,7 +1174,34 @@ export function createGevActionRunner({ viewer, styleManager, dataManager, scene
       }
       const enabled = Boolean(args.enabled);
       const changeOptions = { origin: 'voice' };
-      if (runOptions.signal) changeOptions.signal = runOptions.signal;
+      // BARGE-IN MAY CANCEL A SOUND. IT MAY NOT TEAR DOWN A DATA LOAD.
+      //
+      // THE FAILURE THIS CLOSES. `input_audio_buffer.speech_started` aborts
+      // every in-flight tool controller (`gevRealtime.js`), and this line used
+      // to hand that signal straight to the manager — which rechecks it at
+      // four phases and answers an abort with `module.disable()`. A cold first
+      // enable takes SECONDS (measured: 5.5 s for `irve-fr` over Bordeaux,
+      // 3.0–4.5 s headless), so any word spoken inside that window killed the
+      // load: `irve-fr` and `medecins-fr` came back OFF with
+      // `cancelled: true`, and `traffic` came back ON and permanently empty
+      // while the tool still reported `ok: true`. The same layers loaded in
+      // 45 ms by hand a moment later — because the hand toggle passes no
+      // signal, and because the dead voice attempt had already paid for
+      // `init()`. That is the whole of "it only works when I do it myself".
+      //
+      // Nothing is lost by dropping it. The manager already supersedes a
+      // competing request on its own epoch protocol
+      // (`activeVisibilityIntent.controller.abort(SUPERSEDED_VISIBILITY_INTENT)`),
+      // so the caller's signal never decided WHICH state wins — it only
+      // decided whether the losing transaction left a half-built layer
+      // behind. `isCurrent` below still gates what we SAY, so a superseded
+      // turn reports itself as superseded. It just no longer breaks the map
+      // to do it.
+      //
+      // Radio keeps the signal. Its enable starts AUDIO, and an operator who
+      // talks over a station expects it to stop — see `setRadioEnabled`, which
+      // forwards the same signal deliberately for that reason.
+      if (runOptions.signal && layerId === 'radio') changeOptions.signal = runOptions.signal;
       let changed = false;
       let changeError = null;
       let intentOutcome = null;

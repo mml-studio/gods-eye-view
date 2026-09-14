@@ -764,6 +764,72 @@ test('generic layer visibility forwards cancellation and reports semantic failur
   assert.equal(failed.lifecycleUncertain, true);
 });
 
+test('barge-in never tears down a data layer load, and radio still stops for it', async () => {
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const viewer = {
+    clock: { onTick: { addEventListener: () => () => {} } },
+    scene: { canvas: { addEventListener() {}, removeEventListener() {} } },
+    camera: { moveEnd: { addEventListener() {} } },
+  };
+  // A cold first enable takes SECONDS, and `speech_started` aborts every tool
+  // in flight. Forwarding that signal made the manager answer with
+  // `module.disable()`: measured over Bordeaux, `irve-fr` came back OFF and
+  // empty by voice, then loaded 139 records by hand 45 ms later. The load must
+  // outlive the utterance that started it.
+  let enabled = false;
+  let releaseEnable;
+  const pendingEnable = new Promise((resolve) => { releaseEnable = resolve; });
+  const signalsSeen = new Map();
+  const dataManager = {
+    layers: new Map([['irve-fr', { module: {} }], ['radio', { module: {} }]]),
+    isEnabled: (id) => (id === 'irve-fr' ? enabled : false),
+    getLayerLifecycleState: (id) => (id === 'irve-fr'
+      ? { enabled, lifecycleState: enabled ? 'enabled' : 'disabled', uncertain: false }
+      : { enabled: false, lifecycleState: 'disabled', uncertain: false }),
+    getAll: () => [{ id: 'irve-fr', name: 'Bornes IRVE (FR)' }, { id: 'radio', name: 'Radio' }],
+    async setEnabled(id, value, options) {
+      signalsSeen.set(id, options.signal);
+      await pendingEnable;
+      // The real manager rechecks the signal at four phases and disables on an
+      // abort. A signal it never receives cannot reach that branch.
+      if (options.signal?.aborted) return false;
+      if (id === 'irve-fr') enabled = value;
+      return true;
+    },
+    // The intent protocol the manager really exposes: its own epoch decides
+    // which state wins, with no help from the caller's signal.
+    _setEnabledWithIntent(id, value, options) {
+      return { intentEpoch: 1, promise: this.setEnabled(id, value, options) };
+    },
+    async _waitForVisibilityIntent(id) {
+      const settled = id === 'irve-fr' ? enabled : false;
+      return { intentEpoch: 1, enabled: settled, succeeded: settled, cancellationReason: null };
+    },
+  };
+  const runner = createGevActionRunner({ viewer, styleManager: {}, dataManager });
+  const controller = new AbortController();
+  const work = runner('set_layer_visibility', { layerId: 'irve-fr', enabled: true }, {
+    signal: controller.signal,
+    isCurrent: () => !controller.signal.aborted,
+  });
+  controller.abort();
+  releaseEnable();
+  const result = await work;
+  assert.equal(signalsSeen.get('irve-fr'), undefined, 'a data layer must not receive the barge-in signal');
+  assert.equal(result.ok, true);
+  assert.equal(result.cancelled, undefined);
+  assert.equal(result.enabled, true);
+  assert.equal(enabled, true, 'the layer finished loading despite the abort');
+
+  // Radio is the documented exception: its enable starts AUDIO, and talking
+  // over a station is a request to stop it.
+  await runner('set_layer_visibility', { layerId: 'radio', enabled: true }, {
+    signal: controller.signal,
+    isCurrent: () => !controller.signal.aborted,
+  });
+  assert.equal(signalsSeen.get('radio'), controller.signal);
+});
+
 test('generic voice visibility preserves a manager resource-cancellation envelope', async () => {
   globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
   const viewer = {
