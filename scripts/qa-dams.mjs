@@ -108,7 +108,7 @@ async function main() {
     record('local-dams is registered', !!registered,
       registered ? `name="${registered.name}" source=${registered.source}` : 'absent');
     record('the row is named in French and credits OpenStreetMap',
-      registered?.name === 'Barrages' && registered?.source === 'OpenStreetMap',
+      registered?.name === 'Barrages & digues' && registered?.source === 'OpenStreetMap',
       `name=${registered?.name} source=${registered?.source}`);
 
     await page.evaluate(async () => {
@@ -136,7 +136,7 @@ async function main() {
     // ── What actually reached the globe ──────────────────────────────────
     const sample = await page.evaluate(() => {
       const viewer = window.__godsEyeView.styleManager?.viewer;
-      const source = viewer?.dataSources?.getByName?.('Barrages')?.[0];
+      const source = viewer?.dataSources?.getByName?.('Barrages & digues')?.[0];
       const entities = source?.entities?.values ?? [];
       if (!entities.length) return null;
       const props = entities.map((entity) => entity.__localProperties ?? {});
@@ -177,15 +177,21 @@ async function main() {
 
     record('dams render as globe entities',
       !!sample && sample.entities >= MIN_FEATURES,
-      sample ? `${sample.entities} entities` : 'no data source named "Barrages"');
+      sample ? `${sample.entities} entities` : 'no data source named "Barrages & digues"');
     if (!sample) return;
 
     // (1) The regression this layer shipped with: France was 44 features.
     record('France is actually populated', sample.french >= MIN_FRENCH,
       `${sample.french} inside the metropolitan box (floor ${MIN_FRENCH})`);
-    record('the world half survived the rebuild',
-      sample.located - sample.french > 400,
-      `${sample.located - sample.french} of ${sample.located} located outside France`);
+    // The world tail, and the floor is 100 rather than 400 since 2026-09-14:
+    // 592 of the 661 carried-over features were generating stations, and they
+    // moved to `world_hydro`. What is left outside the metropolitan box is the
+    // 69 unclassified structures PLUS the outre-mer — Réunion, Guyane, les
+    // Antilles, Mayotte, la Nouvelle-Calédonie and la Polynésie are France and
+    // are in this pack, they are simply not inside a metropolitan bounding box.
+    record('the world tail and the outre-mer survived the split',
+      sample.located - sample.french > 100,
+      `${sample.located - sample.french} of ${sample.located} outside the metropolitan box`);
 
     // (2) Properties survive the round trip, and nothing else rides along.
     const serre = sample.serrePoncon;
@@ -201,13 +207,13 @@ async function main() {
       sample.withSpan / sample.entities > 0.6,
       `${sample.withSpan} of ${sample.entities}`);
 
-    // ── Importance is visible, and the floors work ───────────────────────
+    // ── Importance is visible, and the one chip row works ────────────────
     const tiers = await page.evaluate(() => {
       const dm = window.__godsEyeView.dataManager;
       const module = dm.layers?.get?.('local-dams')?.module;
       const controls = module?.getRowControls?.() || null;
       const viewer = window.__godsEyeView.styleManager?.viewer;
-      const entities = viewer?.dataSources?.getByName?.('Barrages')?.[0]?.entities?.values ?? [];
+      const entities = viewer?.dataSources?.getByName?.('Barrages & digues')?.[0]?.entities?.values ?? [];
       const now = window.__godsEyeView?.viewer?.clock?.currentTime;
       const sizes = new Map();
       // The size channel left the importance floor and went to the MEASURED
@@ -236,12 +242,17 @@ async function main() {
       };
     });
 
-    // Two chip GROUPS now, and they answer two different questions: WHAT is
-    // drawn (dam / dyke) and HOW MUCH of it (the importance floor). They used
-    // to be one group of three.
-    record('the row offers the kind filter and the three display floors',
-      ['kinds:all', 'kinds:dams', 'kinds:dykes', 'all', 'named', 'major']
-        .every((id) => tiers.chips.includes(id)), tiers.chips.join(','));
+    // ONE chip group, three words, and nothing else. The importance row —
+    // TOUS / NOMMÉS / GRANDS — was removed on 2026-09-14: it named a size and
+    // filtered on something else (only 65 of GRANDS' 494 French features carry
+    // a height at all), and the thinning it did is the zoom's job now.
+    record('the row offers the kind filter and NOTHING else',
+      ['kinds:all', 'kinds:dams', 'kinds:dykes'].every((id) => tiers.chips.includes(id))
+      && tiers.chips.length === 3,
+      tiers.chips.join(','));
+    record('the importance chips are gone, not merely relabelled',
+      !tiers.chips.some((id) => ['all', 'named', 'major'].includes(id)),
+      tiers.chips.join(','));
     // The key names the STRUCTURES — the one thing colour says and no shape
     // does — plus the hollow ring for a span nobody published, which must not
     // read as the bottom of a ladder (A1). The four metre bands it used to
@@ -275,10 +286,10 @@ async function main() {
       ladder.filter(Number.isFinite).every((size, index, kept) => index === 0 || size < kept[index - 1]),
       ladder.join(' > '));
 
-    // ── Fly to the dams BEFORE measuring what a floor draws ──────────────
+    // ── Fly to the dams BEFORE measuring what a chip draws ───────────────
     // `entity.show` is written by the pre-render walk, which is also where
     // horizon occlusion lands: measured over the default view, every count
-    // below would be zero whatever the floor does. `window.Cesium` is not
+    // below would be zero whatever a chip does. `window.Cesium` is not
     // exposed by the app, so the camera is moved through the viewer's own API.
     await page.evaluate(() => {
       const viewer = window.__godsEyeView.styleManager?.viewer;
@@ -299,10 +310,10 @@ async function main() {
     });
     await sleep(4000);
 
-    const floored = await page.evaluate(async () => {
+    const filtered = await page.evaluate(async () => {
       const dm = window.__godsEyeView.dataManager;
       const viewer = window.__godsEyeView.styleManager?.viewer;
-      const entities = viewer?.dataSources?.getByName?.('Barrages')?.[0]?.entities?.values ?? [];
+      const entities = viewer?.dataSources?.getByName?.('Barrages & digues')?.[0]?.entities?.values ?? [];
       const shown = () => entities.filter((entity) => entity.show !== false).length;
       const module = dm.layers?.get?.('local-dams')?.module;
       const legendCounts = () => (module?.getRowControls?.()?.legend || [])
@@ -310,29 +321,68 @@ async function main() {
       viewer.scene.render();
       const before = shown();
       const legendBefore = legendCounts();
-      dm.setLayerParams('local-dams', { floor: 'major' }, { origin: 'user' });
+      dm.setLayerParams('local-dams', { kinds: 'dykes' }, { origin: 'user' });
       viewer.scene.render();
-      const afterFloor = shown();
-      const legendAtFloor = legendCounts();
-      const statsAtFloor = dm.getAll().find((l) => l.id === 'local-dams')?.stats?.count;
-      dm.setLayerParams('local-dams', { floor: 'all' }, { origin: 'user' });
+      const afterChip = shown();
+      const legendAtChip = legendCounts();
+      const statsAtChip = dm.getAll().find((l) => l.id === 'local-dams')?.stats?.count;
+      dm.setLayerParams('local-dams', { kinds: 'all' }, { origin: 'user' });
       viewer.scene.render();
-      return { before, afterFloor, restored: shown(), legendBefore, legendAtFloor, statsAtFloor };
+      return { before, afterChip, restored: shown(), legendBefore, legendAtChip, statsAtChip };
     });
 
-    record('the GRANDS floor hides everything below the top tier',
-      floored.before > 0 && floored.afterFloor > 0 && floored.afterFloor < floored.before,
-      `${floored.before} markers drawn in view → ${floored.afterFloor} under the floor`);
+    record('the DIGUES chip hides every structure that is not one',
+      filtered.before > 0 && filtered.afterChip > 0 && filtered.afterChip < filtered.before,
+      `${filtered.before} markers drawn in view → ${filtered.afterChip} under DIGUES`);
     const keyTotal = (rows) => rows.reduce((sum, entry) => sum + Number(entry.split('=').pop() || 0), 0);
-    record('the legend follows the floor instead of claiming the whole pack',
-      keyTotal(floored.legendAtFloor) < keyTotal(floored.legendBefore),
-      `${keyTotal(floored.legendBefore)} → ${keyTotal(floored.legendAtFloor)} · ${floored.legendAtFloor.join(' · ')}`);
-    record('a floor hides markers WITHOUT losing them',
-      floored.statsAtFloor === stats.count,
-      `stats.count=${floored.statsAtFloor} while ${floored.afterFloor} were drawn`);
-    record('lifting the floor gives every marker back',
-      floored.restored === floored.before,
-      `${floored.afterFloor} → ${floored.restored} (was ${floored.before})`);
+    record('the legend follows the chip instead of claiming the whole pack',
+      keyTotal(filtered.legendAtChip) < keyTotal(filtered.legendBefore),
+      `${keyTotal(filtered.legendBefore)} → ${keyTotal(filtered.legendAtChip)} · ${filtered.legendAtChip.join(' · ')}`);
+    record('a chip hides markers WITHOUT losing them',
+      filtered.statsAtChip === stats.count,
+      `stats.count=${filtered.statsAtChip} while ${filtered.afterChip} were drawn`);
+    record('clearing the chip gives every marker back',
+      filtered.restored === filtered.before,
+      `${filtered.afterChip} → ${filtered.restored} (was ${filtered.before})`);
+
+    // ── The bottom rung waits for the zoom, and that is what replaced the
+    // chip. At 220 km the nameless ouvrages are drawn; from 3 000 km they are
+    // not, because `minor` carries `markerMaxDistance: 900_000`.
+    const byAltitude = await page.evaluate(async () => {
+      const viewer = window.__godsEyeView.styleManager?.viewer;
+      const entities = viewer?.dataSources?.getByName?.('Barrages & digues')?.[0]?.entities?.values ?? [];
+      const shownMinor = () => entities.filter((entity) => {
+        if (entity.show === false) return false;
+        const p = entity.__localProperties ?? {};
+        return !p.name && !(p.heightM >= 15) && p.hydro !== true;
+      }).length;
+      const fly = (height) => new Promise((resolve) => {
+        viewer.camera.cancelFlight?.();
+        viewer.camera.setView({
+          destination: viewer.scene.globe.ellipsoid.cartographicToCartesian({
+            longitude: 6.2 * Math.PI / 180,
+            latitude: 45.3 * Math.PI / 180,
+            height,
+          }),
+          orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 },
+        });
+        viewer.scene.requestRender();
+        viewer.scene.render();
+        setTimeout(resolve, 2500);
+      });
+      await fly(220_000);
+      const near = shownMinor();
+      await fly(3_000_000);
+      const far = shownMinor();
+      await fly(220_000);
+      return { near, far, back: shownMinor() };
+    });
+    record('the nameless ouvrages thin out with altitude, no chip pressed',
+      byAltitude.near > 0 && byAltitude.far < byAltitude.near,
+      `${byAltitude.near} at 220 km → ${byAltitude.far} at 3 000 km`);
+    record('and come back when the camera does',
+      byAltitude.back > byAltitude.far,
+      `${byAltitude.far} → ${byAltitude.back}`);
 
     // ── Shot ──────────────────────────────────────────────────────────────
     record('first-run launcher stays suppressed for the shot',

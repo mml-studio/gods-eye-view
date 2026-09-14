@@ -1,5 +1,5 @@
 // src/data/frHydroPlants.test.mjs
-// Covers the Petite hydro LAYER: the two marker kinds and the promise each
+// Covers the Centrales hydro LAYER: the two marker kinds and the promise each
 // makes, the card an anonymous plant still gets, the power ramp across five
 // orders of magnitude, the runtime floor, and the lifecycle. The upstream
 // register's shape is pinned separately in frHydroFeed.test.mjs.
@@ -17,6 +17,8 @@ import {
   GROUND_LIFT_M,
   HYDRO_PIXEL_MAX,
   HYDRO_PIXEL_MIN,
+  WORLD_HYDRO_COLOR,
+  WORLD_HYDRO_TECH_LABEL,
   buildHydroCard,
   buildHydroClusterCard,
   buildHydroNeighbourLines,
@@ -30,6 +32,8 @@ import {
   hydroPixelSize,
   mapHydroAnalystRecord,
   selectHydroOverlayCohort,
+  buildWorldHydroCard,
+  worldHydroPlant,
 } from './frHydroPlants.js';
 import { HYDRO_TECHNOLOGIES, HYDRO_UNKNOWN_COLOR } from './frHydroFeed.js';
 import {
@@ -401,8 +405,32 @@ test('a roll-up is labelled as one in the analyst seam', () => {
  * URL, and the point of these tests is the layer, not the transport.
  */
 const fromDisk = async (url) => {
-  if (String(url) !== 'registry') return { ok: false, status: 404 };
-  return { ok: true, status: 200, json: async () => REGISTRY };
+  if (String(url) === 'registry') return { ok: true, status: 200, json: async () => REGISTRY };
+  if (String(url) === 'world') return { ok: true, status: 200, json: async () => WORLD };
+  return { ok: false, status: 404 };
+};
+
+/**
+ * Three world stations, and deliberately one of each shape the shipped pack
+ * holds: named with a power, named without one (319 of the 592 are), and one
+ * OpenStreetMap never named.
+ */
+const WORLD = {
+  generated: '2026-09-14',
+  stats: { plants: 3, named: 2, withKw: 1, installedKw: 603_000 },
+  plants: [
+    {
+      osm: 'r1144261',
+      lat: 46.249004,
+      lon: -118.880543,
+      name: 'Ice Harbor Dam',
+      operator: 'USACE Northwestern Division',
+      kw: 603_000,
+      builtYear: 1962,
+    },
+    { osm: 'r11198172', lat: 45.886634, lon: -72.484057, name: 'Centrale de Drummondville' },
+    { osm: 'w1254389336', lat: -33.1, lon: 19.4 },
+  ],
 };
 
 function harness() {
@@ -421,7 +449,9 @@ function harness() {
       requestRender() {},
     },
   };
-  const layer = createFrHydroPlantsLayer({ overlayHost, registryUrl: 'registry', fetchImpl: fromDisk });
+  const layer = createFrHydroPlantsLayer({
+    overlayHost, registryUrl: 'registry', worldUrl: 'world', fetchImpl: fromDisk,
+  });
   return { layer, viewer, overlay, primitives };
 }
 
@@ -438,9 +468,14 @@ test('the layer boots, loads the register and draws both marker kinds', async ()
   assert.equal(stats.placed, REGISTRY.stats.placed);
   assert.equal(stats.communes, REGISTRY.stats.communes);
   assert.ok(stats.anonymous > 1000, `expected the anonymised majority, got ${stats.anonymous}`);
-  // Markers on the globe, which is NOT the installation count.
-  assert.equal(stats.count, REGISTRY.plants.length + REGISTRY.clusters.length);
-  assert.ok(stats.count < stats.installations);
+  // Markers on the globe, which is NOT the installation count — and which now
+  // includes the world half, three stations that are not in ODRÉ at all.
+  assert.equal(stats.count, REGISTRY.plants.length + REGISTRY.clusters.length + WORLD.plants.length);
+  assert.equal(stats.world, WORLD.plants.length);
+  // `installations` stays the REGISTER's own figure. Blending 592 foreign
+  // stations into it would make the row quote ODRÉ for a number ODRÉ does not
+  // publish — and the stats line prints it beside the register's edition date.
+  assert.equal(stats.installations, REGISTRY.stats.plants);
   assert.equal(stats.error, null);
   assert.ok(overlay.entries.has(FR_HYDRO_OVERLAY_SOURCE_ID));
 
@@ -621,4 +656,139 @@ test('an unnamed structure is still an answer, said as one', () => {
     dam: { name: null, kind: 'Seuil', heightM: null, hydro: false, distanceM: 240 },
   });
   assert.match(line, /^▰ Seuil à 240 m/);
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * THE WORLD HALF — the 592 stations that used to ship as "barrages"
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+test('a world record becomes a plant, and refuses one without a position', () => {
+  const plant = worldHydroPlant(WORLD.plants[0]);
+  assert.equal(plant.id, 'osm:r1144261');
+  assert.equal(plant.scope, 'world');
+  assert.equal(plant.kw, 603_000);
+  assert.equal(plant.name, 'Ice Harbor Dam');
+  assert.equal(plant.builtYear, 1962);
+
+  // NOTHING from the French register is invented. A card that omits a line is
+  // honest; one that prints a commune OpenStreetMap never published is not.
+  assert.equal(plant.techKey, undefined);
+  assert.equal(plant.commune, undefined);
+  assert.equal(plant.energyKwh, undefined);
+  assert.equal(plant.eic, undefined);
+
+  // An absent power is null and never zero: `hydroPixelSize` draws the floor
+  // for both, but a zero would clear a "≥ 0 kW" floor while claiming a dead
+  // plant. 319 of the 592 shipped stations are in this case.
+  assert.equal(worldHydroPlant(WORLD.plants[2]).kw, null);
+  assert.equal(worldHydroPlant(WORLD.plants[2]).name, null);
+
+  assert.equal(worldHydroPlant({ osm: 'r1', lat: 'nope', lon: 2 }), null);
+  assert.equal(worldHydroPlant({ lat: 1, lon: 2 }), null, 'no OSM id, no identity');
+  assert.equal(worldHydroPlant(null), null);
+});
+
+test('the world half has its own colour, and does not borrow the register\'s silence', () => {
+  const world = worldHydroPlant(WORLD.plants[0]);
+  assert.equal(hydroColor(world).toCssHexString(), WORLD_HYDRO_COLOR);
+  // "the French register left the column blank" and "nobody ever asked" are
+  // two different silences. Sharing the grey would file 592 foreign stations
+  // under a sentence about ODRÉ's vocabulary.
+  assert.notEqual(WORLD_HYDRO_COLOR, HYDRO_UNKNOWN_COLOR);
+  assert.equal(hydroColor({ techKey: null }).toCssHexString(), HYDRO_UNKNOWN_COLOR);
+  for (const tech of Object.values(HYDRO_TECHNOLOGIES)) {
+    assert.notEqual(tech.color, WORLD_HYDRO_COLOR, `${tech.label} shares the world hue`);
+  }
+});
+
+test('the world legend row names the sample rather than implying a world register', () => {
+  const legend = hydroLegend(
+    [worldHydroPlant(WORLD.plants[0]), worldHydroPlant(WORLD.plants[1])],
+    [],
+  );
+  const row = legend.find((entry) => entry.label === WORLD_HYDRO_TECH_LABEL);
+  assert.ok(row, 'the world half has no legend row');
+  assert.equal(row.count, 2);
+  assert.equal(row.color, WORLD_HYDRO_COLOR);
+  // A legend row is where a reader checks what a colour promises. This one
+  // promises a sample, and says France is the half that is complete.
+  assert.match(row.blurb, /échantillon/);
+  assert.match(row.blurb, /pas un inventaire mondial/);
+  // It must NOT be folded into the register's "Non publiée" row.
+  assert.equal(legend.some((entry) => entry.label === 'Non publiée'), false);
+});
+
+test('a world card says what it is and what it is not, in four lines', () => {
+  const lines = buildWorldHydroCard(worldHydroPlant(WORLD.plants[0])).split('\n');
+  assert.equal(lines[0], 'Ice Harbor Dam');
+  assert.match(lines[1], /603 MW installés/);
+  assert.match(lines[2], /USACE Northwestern Division/);
+  assert.match(lines[2], /1962/);
+  assert.match(lines.at(-1), /OpenStreetMap/);
+  assert.match(lines.at(-1), /pas un inventaire mondial/);
+
+  // The register's vocabulary never leaks in. `buildHydroCard` would print
+  // "⚡ — kW installés" over "↻ énergie injectée non publiée" here: two
+  // placeholders and a French register's words about a station in Washington.
+  const bare = buildWorldHydroCard(worldHydroPlant(WORLD.plants[2])).split('\n');
+  assert.equal(bare[0], 'Centrale hydroélectrique');
+  assert.match(bare[1], /puissance non publiée/);
+  assert.doesNotMatch(bare.join(' '), /énergie injectée/);
+  assert.doesNotMatch(bare.join(' '), /kW installés/);
+  assert.equal(bare.length, 3, 'no operator, no year, no line for either');
+});
+
+test('the world half never costs a reader the register it rides with', async () => {
+  // THE POINT OF `Promise.allSettled`. This layer's subject is France's long
+  // tail — 2 742 installations the two other energy rows cannot see — and a
+  // 404 on 592 foreign stations must not empty it.
+  const overlayHost = {
+    setEntries() {}, setVisible() {}, clearSource() {},
+  };
+  const primitives = [];
+  const viewer = {
+    scene: {
+      canvas: { addEventListener() {}, removeEventListener() {}, setAttribute() {} },
+      primitives: { add: (p) => primitives.push(p), remove: () => {} },
+      pick: () => undefined,
+      requestRender() {},
+    },
+  };
+  const layer = createFrHydroPlantsLayer({
+    overlayHost,
+    registryUrl: 'registry',
+    worldUrl: 'gone',
+    fetchImpl: fromDisk,
+  });
+  layer.init(viewer);
+  layer.enable(viewer);
+  assert.equal(await layer.update(), true, 'a missing world half is not a failed load');
+  const stats = layer.getStats();
+  assert.equal(stats.error, null);
+  assert.equal(stats.world, 0);
+  assert.equal(stats.count, REGISTRY.plants.length + REGISTRY.clusters.length);
+  assert.equal(stats.installations, REGISTRY.stats.plants);
+  layer.destroy(viewer);
+});
+
+test('the analyst seam says which register spoke, and never calls a plant operator a grid one', () => {
+  const world = mapHydroAnalystRecord(worldHydroPlant(WORLD.plants[0]));
+  assert.equal(world.register, 'openstreetmap');
+  // USACE runs the dam. It is not Enedis, and an analyst reading
+  // `gridOperator` is asking about the grid.
+  assert.equal(world.gridOperator, null);
+  assert.equal(world.plantOperator, 'USACE Northwestern Division');
+  // Every French register field is absent rather than guessed, which is why
+  // `register` has to be there: without it this row reads as a French plant
+  // whose commune, EIC and technology were simply not filled in.
+  assert.equal(world.commune, null);
+  assert.equal(world.eic, null);
+  assert.equal(world.technology, null);
+  assert.equal(world.energyKwh12m, null);
+  assert.equal(world.capacityKw, 603_000);
+
+  const french = mapHydroAnalystRecord(REGISTRY.plants[0]);
+  assert.equal(french.register, 'odre');
+  assert.equal(french.plantOperator, null);
+  assert.equal(french.gridOperator, REGISTRY.plants[0].operator ?? null);
 });

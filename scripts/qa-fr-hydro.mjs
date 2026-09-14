@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Deterministic browser proof for the Petite hydro layer (`fr-hydro-plants`).
+ * Deterministic browser proof for the Centrales hydro layer (`fr-hydro-plants`).
  *
  * The register is a SHIPPED file, so unlike the live layers there is nothing to
  * intercept — this harness reads the same `plants.json` the browser does and
@@ -52,6 +52,16 @@ const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
 const REGISTRY = JSON.parse(fs.readFileSync(
   path.join(REPO_ROOT, 'src', 'data', 'local_data', 'fr_hydro_plants', 'plants.json'), 'utf8',
+));
+
+/**
+ * The world half — 592 stations that used to ship inside the dams pack as
+ * "barrages", and arrived here on 2026-09-14. Read so the marker arithmetic
+ * below counts what the layer actually draws; the French register is still the
+ * layer's subject and still what every other check in this file is about.
+ */
+const WORLD = JSON.parse(fs.readFileSync(
+  path.join(REPO_ROOT, 'src', 'data', 'local_data', 'world_hydro', 'plants.json'), 'utf8',
 ));
 
 /** A view that holds all of metropolitan France, and one that holds Ossau. */
@@ -265,7 +275,7 @@ async function main() {
       probe = await sceneProbe(page);
       if (probe.collectionFound && probe.points.length > 2000) break;
     }
-    const expected = REGISTRY.plants.length + REGISTRY.clusters.length;
+    const expected = REGISTRY.plants.length + REGISTRY.clusters.length + WORLD.plants.length;
     check('the point collection reached the scene', probe.collectionFound);
     check(`${expected} markers are drawn`, probe.points.length === expected,
       `${probe.points.length} drawn`);
@@ -382,12 +392,22 @@ async function main() {
       drawn.length > 0 && drawn.every((point) => point.drawnOverTerrain),
       `${drawn.filter((point) => !point.drawnOverTerrain).length} depth-tested`);
     // And the price of that: the far side of the planet must be culled by hand.
+    //
+    // The assertion is about FRENCH markers and not about every marker, which
+    // it used to be able to be: before the world half arrived this layer drew
+    // nothing outside France, so "everything is culled from the Pacific" and
+    // "France is culled from the Pacific" were the same sentence. They are not
+    // any more — Amethyst Hydro (NZ, −43.17/170.65) and Lake Glenmaggie (AU)
+    // are genuinely in view from this camera, and culling them would be the
+    // bug. The register's ids are what separates them: a world station is
+    // `fr-hydro:osm:…`.
     await setView(page, -179.6, -43.0, 9_000_000);
     await pump(page, 6, 100);
-    const antipode = (await sceneProbe(page)).points;
+    const antipode = (await sceneProbe(page)).points
+      .filter((point) => !String(point.id).startsWith('fr-hydro:osm:'));
     check('and the far side of the globe is culled instead of painting through it',
       antipode.length > 0 && antipode.every((point) => point.show === false),
-      `${antipode.filter((point) => point.show).length} of ${antipode.length} still shown`);
+      `${antipode.filter((point) => point.show).length} of ${antipode.length} French markers still shown`);
 
     console.log('[qa] iii. a ring is a commune, drawn as a ring');
     const cluster = REGISTRY.clusters.find((c) => c.plants >= 3);

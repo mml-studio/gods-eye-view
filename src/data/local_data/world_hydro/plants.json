@@ -1,0 +1,4086 @@
+{
+ "generated": "2026-09-14",
+ "source": "OpenStreetMap via Open Infrastructure Map (power-plant layer), ODbL 1.0",
+ "note": "A SAMPLE, not a register: 592 stations is what one snapshot held. France is drawn from ODRÉ and is complete; this is not.",
+ "stats": {
+  "plants": 592,
+  "named": 536,
+  "withKw": 273,
+  "installedKw": 144367200
+ },
+ "plants": [
+  {
+   "osm": "r11198172",
+   "lat": 45.886634,
+   "lon": -72.484057,
+   "name": "Centrale de Drummondville - Barrage de Drummondville",
+   "kw": 16000
+  },
+  {
+   "osm": "r1144261",
+   "lat": 46.249004,
+   "lon": -118.880543,
+   "name": "Ice Harbor Dam",
+   "operator": "USACE Northwestern Division",
+   "kw": 603000,
+   "builtYear": 1962
+  },
+  {
+   "osm": "r11662893",
+   "lat": 63.071879,
+   "lon": 113.490922,
+   "name": "Светлинская ГЭС",
+   "operator": "Алроса",
+   "kw": 277500,
+   "builtYear": 2004
+  },
+  {
+   "osm": "r11748234",
+   "lat": -25.543051,
+   "lon": -53.495988,
+   "name": "Usina Hidrelétrica Governador José Richa",
+   "operator": "Copel",
+   "kw": 1240000,
+   "builtYear": 1999
+  },
+  {
+   "osm": "r11914625",
+   "lat": 44.165072,
+   "lon": 17.77606,
+   "name": "HE Lašva"
+  },
+  {
+   "osm": "r11949072",
+   "lat": 41.584004,
+   "lon": 26.107216,
+   "name": "ВЕЦ \"Ивайловград\"",
+   "operator": "НЕК ЕАД",
+   "kw": 120000
+  },
+  {
+   "osm": "r12410460",
+   "lat": 53.004396,
+   "lon": 56.556056,
+   "name": "Юмагузинская ГЭС",
+   "kw": 45000
+  },
+  {
+   "osm": "r12795602",
+   "lat": 5.560626,
+   "lon": -74.886529,
+   "name": "Central hidroeléctrica Miel I",
+   "operator": "ISAGEN",
+   "kw": 396000
+  },
+  {
+   "osm": "r12841969",
+   "lat": 41.51062,
+   "lon": -90.531398,
+   "name": "Moline Power Dam",
+   "operator": "MidAmerican Energy",
+   "kw": 3600,
+   "builtYear": 1942
+  },
+  {
+   "osm": "r12841971",
+   "lat": 41.514807,
+   "lon": -90.5393,
+   "name": "Arsenal Power Dam"
+  },
+  {
+   "osm": "r13217653",
+   "lat": 59.912592,
+   "lon": 32.339184,
+   "name": "Волховская ГЭС",
+   "operator": "ТГК-1",
+   "kw": 86000,
+   "builtYear": 1927
+  },
+  {
+   "osm": "r13547486",
+   "lat": 43.176323,
+   "lon": -77.627892,
+   "name": "Station 5 Headgates Dam",
+   "operator": "RG&E"
+  },
+  {
+   "osm": "r13757595",
+   "lat": 48.261694,
+   "lon": 21.081539,
+   "name": "Felsődobszai vízerőmű",
+   "operator": "Sinergy Kft.",
+   "kw": 948,
+   "builtYear": 1912
+  },
+  {
+   "osm": "r13857722",
+   "lat": 37.04105,
+   "lon": -79.535564,
+   "name": "Smith Mountain Dam",
+   "operator": "Appalachian Power",
+   "kw": 547500,
+   "builtYear": 1965
+  },
+  {
+   "osm": "r14205364",
+   "lat": 47.848491,
+   "lon": 14.638642,
+   "name": "Kraftwerk Weyer",
+   "operator": "Ennskraftwerke AG",
+   "kw": 36800,
+   "builtYear": 1969
+  },
+  {
+   "osm": "r14467328",
+   "lat": 4.306469,
+   "lon": 21.185247,
+   "name": "Barrage de Mobayi-Mbongo",
+   "kw": 11370
+  },
+  {
+   "osm": "r1587872",
+   "lat": 43.189213,
+   "lon": 13.273226
+  },
+  {
+   "osm": "r16305324",
+   "lat": 37.145367,
+   "lon": -119.451354,
+   "name": "Big Creek Number 7 104-022 Dam"
+  },
+  {
+   "osm": "r1669782",
+   "lat": 46.192852,
+   "lon": 6.028698,
+   "name": "Barrage de Verbois",
+   "operator": "SIG",
+   "kw": 98000,
+   "builtYear": 1947
+  },
+  {
+   "osm": "r16854894",
+   "lat": 40.474535,
+   "lon": 22.243727,
+   "name": "Φράγμα Ασωμάτων",
+   "operator": "ΔΕΗ ΑΕ",
+   "kw": 108000,
+   "builtYear": 1985
+  },
+  {
+   "osm": "r17646284",
+   "lat": 43.447538,
+   "lon": 17.836509,
+   "name": "Salakovac Hydroelectric Power Station",
+   "operator": "JP Elektroprivreda Bosne i Hercegovine",
+   "kw": 210000,
+   "builtYear": 1981
+  },
+  {
+   "osm": "r18113688",
+   "lat": 61.03236,
+   "lon": 28.954992
+  },
+  {
+   "osm": "r18480861",
+   "lat": 9.97243,
+   "lon": -84.183352,
+   "name": "Puente Mulas"
+  },
+  {
+   "osm": "r18850085",
+   "lat": -3.435299,
+   "lon": -51.93408,
+   "name": "Barragem Pimental",
+   "kw": 233100
+  },
+  {
+   "osm": "r19054933",
+   "lat": 41.683009,
+   "lon": 44.826319,
+   "name": "ორთაჭალის ჰესი",
+   "operator": "სს ,,ეპ ჯორჯია გენერაცია“",
+   "kw": 18000,
+   "builtYear": 1954
+  },
+  {
+   "osm": "r19293321",
+   "lat": 22.65467,
+   "lon": 106.267608,
+   "name": "Đập giữ nước thành phố Cao Bằng"
+  },
+  {
+   "osm": "r19685440",
+   "lat": -25.413575,
+   "lon": -54.583752,
+   "name": "Usina Hidrelétrica de Itaipu",
+   "operator": "Itaipú Binacional",
+   "kw": 14000000
+  },
+  {
+   "osm": "r19754263",
+   "lat": 34.641042,
+   "lon": 69.716994,
+   "name": "نغلو برېښناکوټ",
+   "kw": 100000,
+   "builtYear": 1967
+  },
+  {
+   "osm": "r19921964",
+   "lat": 68.088729,
+   "lon": 87.777274,
+   "name": "Плотина Усть-Хантайской ГЭС",
+   "builtYear": 1970
+  },
+  {
+   "osm": "r19953989",
+   "lat": 46.169134,
+   "lon": 14.292675,
+   "name": "HE Podlubnik - Centrala",
+   "operator": "Elektro Gorenjska",
+   "kw": 330,
+   "builtYear": 1969
+  },
+  {
+   "osm": "r2007872",
+   "lat": 46.279576,
+   "lon": -96.103175,
+   "name": "Pisgah Dam"
+  },
+  {
+   "osm": "r2090163",
+   "lat": 60.807108,
+   "lon": 33.702888,
+   "name": "Нижне-Свирская ГЭС",
+   "kw": 99000,
+   "builtYear": 1936
+  },
+  {
+   "osm": "r2576143",
+   "lat": 60.918901,
+   "lon": 34.190931,
+   "name": "Верхнесвирская ГЭС",
+   "operator": "ТГК-1",
+   "kw": 160000,
+   "builtYear": 1952
+  },
+  {
+   "osm": "r3465733",
+   "lat": 39.139403,
+   "lon": 21.394564,
+   "kw": 60000
+  },
+  {
+   "osm": "r3655008",
+   "lat": 46.558395,
+   "lon": 15.456142,
+   "name": "Hidroelektrikarna Fala",
+   "operator": "Dravske elektrarne Maribor",
+   "kw": 58000,
+   "builtYear": 1918
+  },
+  {
+   "osm": "r3711453",
+   "lat": 46.586603,
+   "lon": 15.018638,
+   "name": "HE Dravograd",
+   "operator": "Dravske elektrarne Maribor",
+   "kw": 26200
+  },
+  {
+   "osm": "r3726795",
+   "lat": 46.59323,
+   "lon": 15.152162,
+   "name": "HE Vuzenica",
+   "operator": "Dravske elektrarne Maribor",
+   "kw": 55600
+  },
+  {
+   "osm": "r3873625",
+   "lat": -25.790651,
+   "lon": -52.113513,
+   "name": "UHE Ney Braga",
+   "operator": "Copel",
+   "kw": 1260000,
+   "builtYear": 1992
+  },
+  {
+   "osm": "r5357608",
+   "lat": 50.269282,
+   "lon": 130.308944,
+   "name": "Бурейская ГЭС",
+   "operator": "РусГидро",
+   "kw": 2010000
+  },
+  {
+   "osm": "r6191019",
+   "lat": 47.830313,
+   "lon": -117.918512,
+   "name": "Little Falls Power Plant",
+   "operator": "Avista Corp",
+   "kw": 43200,
+   "builtYear": 1910
+  },
+  {
+   "osm": "r6191211",
+   "lat": 47.682534,
+   "lon": -117.331795,
+   "name": "Upriver Dam Hydro Plant",
+   "operator": "City of Spokane",
+   "kw": 17600,
+   "builtYear": 1936
+  },
+  {
+   "osm": "r6192767",
+   "lat": 45.242913,
+   "lon": -116.701119,
+   "name": "Hells Canyon Dam",
+   "operator": "Idaho Power",
+   "kw": 391500,
+   "builtYear": 1967
+  },
+  {
+   "osm": "r7603722",
+   "lat": -21.9241,
+   "lon": -45.471121
+  },
+  {
+   "osm": "r7932197",
+   "lat": 44.694392,
+   "lon": -121.231304,
+   "name": "Pelton Dam",
+   "operator": "Portland General Electric",
+   "kw": 109800,
+   "builtYear": 1957
+  },
+  {
+   "osm": "r898986",
+   "lat": 47.956386,
+   "lon": -118.983216,
+   "name": "Grand Coulee Dam",
+   "operator": "Bureau of Reclamation",
+   "kw": 6809000
+  },
+  {
+   "osm": "r9413892",
+   "lat": -8.80038,
+   "lon": -63.951644,
+   "name": "UHE Santo Antonio",
+   "operator": "Santo Antônio Energia S.A.",
+   "kw": 3580000
+  },
+  {
+   "osm": "r9684503",
+   "lat": 47.702619,
+   "lon": 31.254357,
+   "name": "Олександрівська ГЕС",
+   "kw": 10500,
+   "builtYear": 1999
+  },
+  {
+   "osm": "w1000114791",
+   "lat": 25.064132,
+   "lon": 114.789207,
+   "name": "Jiangxi Longyuan"
+  },
+  {
+   "osm": "w1000921432",
+   "lat": 48.31782,
+   "lon": 21.163396,
+   "name": "Gibárti vízerőmű",
+   "operator": "Alteo Zrt.",
+   "kw": 1000,
+   "builtYear": 1903
+  },
+  {
+   "osm": "w1001242839",
+   "lat": 47.098909,
+   "lon": 16.476975,
+   "name": "Szentpéterfai vízerőmű",
+   "kw": 50,
+   "builtYear": 1951
+  },
+  {
+   "osm": "w1002870271",
+   "lat": 37.49455,
+   "lon": 101.338879,
+   "name": "Qinghai Qingshizui Small"
+  },
+  {
+   "osm": "w1008775924",
+   "lat": 25.206962,
+   "lon": 98.188729
+  },
+  {
+   "osm": "w1008912206",
+   "lat": 26.236797,
+   "lon": 104.824001,
+   "name": "Shannipo On Beipan River"
+  },
+  {
+   "osm": "w1008990568",
+   "lat": 24.354485,
+   "lon": 105.433233
+  },
+  {
+   "osm": "w1009757711",
+   "lat": 21.860963,
+   "lon": 103.827907,
+   "name": "Thủy điện Bản Chát",
+   "kw": 220000
+  },
+  {
+   "osm": "w1009757713",
+   "lat": 21.69648,
+   "lon": 103.877734,
+   "name": "Đập thủy điện Huội Quảng"
+  },
+  {
+   "osm": "w1011063793",
+   "lat": -26.756869,
+   "lon": -52.907744,
+   "name": "Pequena Central Hidrelétrica Lambari",
+   "operator": "Mauê S.A."
+  },
+  {
+   "osm": "w1011363099",
+   "lat": 26.453159,
+   "lon": 100.319935,
+   "name": "West Kiewa (Mount Beauty Hydro Scheme)"
+  },
+  {
+   "osm": "w1013004907",
+   "lat": 56.105352,
+   "lon": 14.132699,
+   "name": "Torsebro kraftverk",
+   "operator": "Uniper Sverige AB",
+   "kw": 6000
+  },
+  {
+   "osm": "w1019507890",
+   "lat": 34.846183,
+   "lon": 73.554948,
+   "name": "Suki Kinari Hydropower Project",
+   "operator": "SK Hydro"
+  },
+  {
+   "osm": "w1023616275",
+   "lat": 23.046032,
+   "lon": 103.284232,
+   "name": "Madushan Dam"
+  },
+  {
+   "osm": "w1025359646",
+   "lat": 45.611716,
+   "lon": 15.605571,
+   "name": "Mikro hidroelektrana Bujan",
+   "kw": 45,
+   "builtYear": 1995
+  },
+  {
+   "osm": "w102573645",
+   "lat": 47.875509,
+   "lon": 10.922659,
+   "name": "Lechstaustufe 8a - Kinsau",
+   "operator": "Uniper Kraftwerke",
+   "kw": 8100,
+   "builtYear": 1991
+  },
+  {
+   "osm": "w103465589",
+   "lat": 49.806028,
+   "lon": 12.582081,
+   "name": "Přehrada Lučina",
+   "kw": 150,
+   "builtYear": 1975
+  },
+  {
+   "osm": "w104296520",
+   "lat": -29.005553,
+   "lon": -51.384005,
+   "name": "Usina Hidroeletrica Castro Alves"
+  },
+  {
+   "osm": "w1044109177",
+   "lat": 21.541838,
+   "lon": 86.594845,
+   "name": "Radho Dam"
+  },
+  {
+   "osm": "w1049200218",
+   "lat": 9.987125,
+   "lon": -84.34104,
+   "name": "Embalse La Garita"
+  },
+  {
+   "osm": "w1071102221",
+   "lat": 43.284953,
+   "lon": 22.222725,
+   "name": "МХЕ Црвени Брег",
+   "operator": "MAMS Energija",
+   "kw": 1520
+  },
+  {
+   "osm": "w1073692869",
+   "lat": 32.673124,
+   "lon": -115.392042,
+   "name": "Drop 5",
+   "operator": "Imperial Irrigation District",
+   "kw": 4000,
+   "builtYear": 1982
+  },
+  {
+   "osm": "w1075624920",
+   "lat": 32.45402,
+   "lon": 76.534369,
+   "name": "BUDHIL"
+  },
+  {
+   "osm": "w1091160135",
+   "lat": 53.872711,
+   "lon": 67.433108
+  },
+  {
+   "osm": "w1091625216",
+   "lat": 14.761248,
+   "lon": -90.503157,
+   "name": "Las Vacas"
+  },
+  {
+   "osm": "w1094279221",
+   "lat": -13.721769,
+   "lon": -70.453399,
+   "name": "San Gaban II"
+  },
+  {
+   "osm": "w110183925",
+   "lat": -34.608464,
+   "lon": -68.613634,
+   "name": "Dique El Tigre",
+   "operator": "Hidroeléctrica Diamante S.A.",
+   "kw": 14000
+  },
+  {
+   "osm": "w110561134",
+   "lat": 50.529895,
+   "lon": 12.599064,
+   "name": "Wasserkraftanlage Talsperre Eibenstock",
+   "operator": "Landestalsperrenverwaltung Sachsen",
+   "kw": 1700,
+   "builtYear": 1982
+  },
+  {
+   "osm": "w1112801048",
+   "lat": 42.690358,
+   "lon": -85.417633,
+   "name": "Irving Dam",
+   "operator": "Commonwealth Power",
+   "kw": 600
+  },
+  {
+   "osm": "w111556614",
+   "lat": -20.393444,
+   "lon": -40.572666,
+   "name": "Usina Jucu"
+  },
+  {
+   "osm": "w1115920908",
+   "lat": 42.71127,
+   "lon": -85.465637,
+   "name": "Middleville Dam",
+   "operator": "Commonwealth Power",
+   "kw": 350
+  },
+  {
+   "osm": "w111646274",
+   "lat": 43.142516,
+   "lon": -79.021879,
+   "name": "Lewiston Pump-Generating Plant",
+   "operator": "New York Power Authority",
+   "kw": 240000,
+   "builtYear": 1961
+  },
+  {
+   "osm": "w111646277",
+   "lat": 43.142333,
+   "lon": -79.039849,
+   "name": "Robert Moses Power Plant",
+   "operator": "New York Power Authority",
+   "kw": 2429100,
+   "builtYear": 1961
+  },
+  {
+   "osm": "w1124765454",
+   "lat": 58.995611,
+   "lon": 12.537105,
+   "name": "Käppesjöns kraftverk",
+   "kw": 75
+  },
+  {
+   "osm": "w1125793099",
+   "lat": 41.903164,
+   "lon": 42.196016
+  },
+  {
+   "osm": "w113308943",
+   "lat": 47.868626,
+   "lon": 35.086321,
+   "name": "Дніпровська ГЕС",
+   "kw": 1578600,
+   "builtYear": 1932
+  },
+  {
+   "osm": "w113557354",
+   "lat": 56.286004,
+   "lon": 101.78638,
+   "name": "Братская ГЭС",
+   "operator": "Иркутскэнерго",
+   "kw": 4500000,
+   "builtYear": 1967
+  },
+  {
+   "osm": "w114014331",
+   "lat": 28.195471,
+   "lon": 83.967797,
+   "name": "Phewa dam"
+  },
+  {
+   "osm": "w1148112554",
+   "lat": 24.599206,
+   "lon": 103.04145
+  },
+  {
+   "osm": "w1150865361",
+   "lat": 37.926423,
+   "lon": 76.55985,
+   "name": "新疆錾高水电站",
+   "operator": "中核新华",
+   "kw": 185000,
+   "builtYear": 2022
+  },
+  {
+   "osm": "w1160748236",
+   "lat": 44.888529,
+   "lon": 78.698807,
+   "name": "Karatal HPP-3"
+  },
+  {
+   "osm": "w1160752557",
+   "lat": 44.881088,
+   "lon": 78.715401,
+   "name": "Karatal HPP-2"
+  },
+  {
+   "osm": "w1160880996",
+   "lat": 24.525602,
+   "lon": 101.308867,
+   "name": "大湾水电站大坝"
+  },
+  {
+   "osm": "w116390669",
+   "lat": 47.739594,
+   "lon": 10.824951,
+   "name": "Lechstaustufe 4 - Dessau",
+   "operator": "Uniper Kraftwerke",
+   "kw": 10300
+  },
+  {
+   "osm": "w1167736975",
+   "lat": 45.620801,
+   "lon": -94.203662,
+   "name": "Sartell Dam"
+  },
+  {
+   "osm": "w1182754620",
+   "lat": 32.280367,
+   "lon": 76.669192,
+   "name": "Bajoli Holi Dam"
+  },
+  {
+   "osm": "w119073566",
+   "lat": 56.582649,
+   "lon": 25.238474,
+   "name": "Pļaviņu HES",
+   "operator": "AS „Latvenergo“",
+   "kw": 908000,
+   "builtYear": 1965
+  },
+  {
+   "osm": "w1200820693",
+   "lat": 46.099327,
+   "lon": 13.642322,
+   "name": "HE Ajba",
+   "operator": "Soške elektrarne Nova Gorica d.o.o.",
+   "kw": 250
+  },
+  {
+   "osm": "w1201689711",
+   "lat": 33.052769,
+   "lon": 107.962408,
+   "name": "Baimianxia Shaanxi"
+  },
+  {
+   "osm": "w120329100",
+   "lat": 32.515596,
+   "lon": -84.999027,
+   "name": "Oliver Dam",
+   "operator": "Georgia Power",
+   "kw": 60000,
+   "builtYear": 1959
+  },
+  {
+   "osm": "w1203479693",
+   "lat": 19.007246,
+   "lon": 110.195668,
+   "name": "Niululing"
+  },
+  {
+   "osm": "w120358831",
+   "lat": 32.498667,
+   "lon": -84.995395,
+   "name": "North Highlands Dam",
+   "operator": "Georgia Power",
+   "kw": 26600,
+   "builtYear": 1899
+  },
+  {
+   "osm": "w1205505956",
+   "lat": 11.885087,
+   "lon": 107.72796,
+   "name": "Đập Thuỷ điện Đồng Nai 4"
+  },
+  {
+   "osm": "w12069881339",
+   "lat": 52.366542,
+   "lon": -3.699414
+  },
+  {
+   "osm": "w1216452916",
+   "lat": 17.735736,
+   "lon": 73.916638,
+   "name": "KANHER"
+  },
+  {
+   "osm": "w1221646063",
+   "lat": 24.402042,
+   "lon": 116.270671,
+   "name": "坝头水电站",
+   "operator": "广东梅雁吉祥水电股份有限公司",
+   "kw": 18000
+  },
+  {
+   "osm": "w1226762940",
+   "lat": 41.620655,
+   "lon": -7.739541,
+   "name": "Central Hidroelétrica de Canedo",
+   "operator": "RP GLOBAL PORTUGAL",
+   "kw": 10000,
+   "builtYear": 2008
+  },
+  {
+   "osm": "w123113736",
+   "lat": -27.729966,
+   "lon": -54.408185
+  },
+  {
+   "osm": "w1232262842",
+   "lat": 40.490742,
+   "lon": 22.256247
+  },
+  {
+   "osm": "w1232262851",
+   "lat": 40.498539,
+   "lon": 22.267136
+  },
+  {
+   "osm": "w1232514946",
+   "lat": 42.042107,
+   "lon": 44.747519,
+   "name": "ბოდორნა ჰესი",
+   "operator": "შპს \"ჯორჯიან უოთერ ენდ ფაუერი\"",
+   "kw": 2500,
+   "builtYear": 2018
+  },
+  {
+   "osm": "w1232959296",
+   "lat": 40.475033,
+   "lon": 22.243167
+  },
+  {
+   "osm": "w123384238",
+   "lat": 44.900994,
+   "lon": -85.412721,
+   "name": "Elk Rapids Hydroelectric Power",
+   "kw": 800
+  },
+  {
+   "osm": "w1247736392",
+   "lat": 29.121854,
+   "lon": 100.83855,
+   "name": "Huadian Sichuan Egongbao"
+  },
+  {
+   "osm": "w1250224555",
+   "lat": 28.825136,
+   "lon": 101.627305,
+   "name": "Jiulong Xigu"
+  },
+  {
+   "osm": "w1255371187",
+   "lat": 27.294438,
+   "lon": 88.292055,
+   "name": "RANGIT-III"
+  },
+  {
+   "osm": "w1265809888",
+   "lat": 27.242045,
+   "lon": 88.477746,
+   "name": "TEESTA -V"
+  },
+  {
+   "osm": "w1270868257",
+   "lat": 27.193529,
+   "lon": 99.107496,
+   "name": "托巴水电站",
+   "kw": 350000
+  },
+  {
+   "osm": "w1290517244",
+   "lat": 43.358205,
+   "lon": 13.521633,
+   "name": "Centrale di Montelupone"
+  },
+  {
+   "osm": "w130697711",
+   "lat": 50.588383,
+   "lon": 30.512252,
+   "name": "Київська ГЕС",
+   "kw": 440000,
+   "builtYear": 1964
+  },
+  {
+   "osm": "w131505885",
+   "lat": 55.700116,
+   "lon": 52.278453,
+   "name": "Нижнекамская ГЭС",
+   "operator": "Татэнерго",
+   "kw": 1205000,
+   "builtYear": 1979
+  },
+  {
+   "osm": "w1316610168",
+   "lat": 20.808216,
+   "lon": 105.326935,
+   "name": "Đập thuỷ điện Hoà Bình",
+   "kw": 1920000,
+   "builtYear": 1979
+  },
+  {
+   "osm": "w1322139292",
+   "lat": 27.440051,
+   "lon": 102.637392,
+   "name": "Sichuan Luxihe"
+  },
+  {
+   "osm": "w133117561",
+   "lat": 56.040625,
+   "lon": -96.538036,
+   "name": "Kelsey Generating Station",
+   "operator": "Manitoba Hydro",
+   "kw": 250000,
+   "builtYear": 1968
+  },
+  {
+   "osm": "w1335567769",
+   "lat": 28.416763,
+   "lon": 102.176321,
+   "name": "Sichuan Mianning Changxing"
+  },
+  {
+   "osm": "w133667228",
+   "lat": 51.100927,
+   "lon": -114.282644,
+   "name": "Bearspaw Dam",
+   "operator": "TransAlta"
+  },
+  {
+   "osm": "w1342050702",
+   "lat": 24.683703,
+   "lon": 109.846037,
+   "name": "Guangxi Liuzhou Luzhai County Luoqingjiang Xian"
+  },
+  {
+   "osm": "w1343840761",
+   "lat": 46.504816,
+   "lon": -84.354786,
+   "name": "Unit No. 10",
+   "operator": "United States Army Corps of Engineers",
+   "kw": 23700
+  },
+  {
+   "osm": "w1349901491",
+   "lat": 22.427631,
+   "lon": 98.386131
+  },
+  {
+   "osm": "w137168521",
+   "lat": 32.733923,
+   "lon": 50.737268,
+   "name": "تاج سد زاینده رود",
+   "kw": 55500,
+   "builtYear": 1971
+  },
+  {
+   "osm": "w1374619746",
+   "lat": 9.337688,
+   "lon": 76.947281,
+   "name": "Allunkal Dam"
+  },
+  {
+   "osm": "w1375587192",
+   "lat": 27.340129,
+   "lon": 88.23315
+  },
+  {
+   "osm": "w1384302429",
+   "lat": 30.946885,
+   "lon": 94.718121,
+   "name": "边坝水电站"
+  },
+  {
+   "osm": "w1433745760",
+   "lat": 27.347451,
+   "lon": 109.912714,
+   "name": "Zhongfang County Pailou Hydro"
+  },
+  {
+   "osm": "w143581084",
+   "lat": -20.777579,
+   "lon": -51.628532,
+   "name": "Usina Hidrelétrica Engenheiro Souza Dias",
+   "operator": "China Three Gorges Brasil Energia Ltda.",
+   "kw": 1551200,
+   "builtYear": 1969
+  },
+  {
+   "osm": "w1436609524",
+   "lat": 31.117794,
+   "lon": 103.488471,
+   "name": "Yingxiuwan"
+  },
+  {
+   "osm": "w1455212866",
+   "lat": 31.062995,
+   "lon": 78.09744,
+   "name": "Naitwar Mori Hydro Power Station",
+   "operator": "SJVN",
+   "builtYear": 2025
+  },
+  {
+   "osm": "w1459070928",
+   "lat": 24.145301,
+   "lon": 109.754448,
+   "name": "Guangxi Changtang"
+  },
+  {
+   "osm": "w1460565426",
+   "lat": 26.022952,
+   "lon": 114.381784,
+   "name": "双溪水电站"
+  },
+  {
+   "osm": "w1463419123",
+   "lat": 31.430534,
+   "lon": 78.240888
+  },
+  {
+   "osm": "w1463785407",
+   "lat": 26.221409,
+   "lon": 99.723852,
+   "name": "Yunnan Eryuan Misha River Longdi"
+  },
+  {
+   "osm": "w1463792323",
+   "lat": 23.684999,
+   "lon": 98.940053,
+   "name": "Yunnan Lincang Nanpeng River Dayakou"
+  },
+  {
+   "osm": "w1463792329",
+   "lat": 24.6874,
+   "lon": 97.768356,
+   "name": "Yunnan Yingjiang Zuanshui River"
+  },
+  {
+   "osm": "w1463792334",
+   "lat": 24.473565,
+   "lon": 97.721036,
+   "name": "Yunnan Dayingjiang 2nd Tier"
+  },
+  {
+   "osm": "w1463898481",
+   "lat": 39.839861,
+   "lon": 96.836401,
+   "name": "Gansu Yumen Yueliangwan Second Cascade"
+  },
+  {
+   "osm": "w1463901974",
+   "lat": 36.562021,
+   "lon": 102.867715,
+   "name": "Gansu Mingjiazhuang"
+  },
+  {
+   "osm": "w1463901976",
+   "lat": 38.136332,
+   "lon": 101.404679,
+   "name": "Xidahe"
+  },
+  {
+   "osm": "w1463901979",
+   "lat": 37.217278,
+   "lon": 102.028463,
+   "name": "Qinghai Jiangyuan"
+  },
+  {
+   "osm": "w1463910409",
+   "lat": 11.229969,
+   "lon": 76.523406,
+   "name": "KUNDAH V/Avalanchi"
+  },
+  {
+   "osm": "w1463999931",
+   "lat": 27.386702,
+   "lon": 88.503211,
+   "name": "DIKCHU"
+  },
+  {
+   "osm": "w1463999932",
+   "lat": 27.237877,
+   "lon": 88.709859,
+   "name": "CHUZACHEN"
+  },
+  {
+   "osm": "w1464012367",
+   "lat": 27.479724,
+   "lon": 119.242298,
+   "name": "Qingyuan County Longjing Hydroelectric"
+  },
+  {
+   "osm": "w1464012377",
+   "lat": 25.609966,
+   "lon": 115.779579,
+   "name": "Jiangxi Laohutou"
+  },
+  {
+   "osm": "w1464012388",
+   "lat": 27.872394,
+   "lon": 117.98353,
+   "name": "Fujian Wuyishan Kengkou"
+  },
+  {
+   "osm": "w1464107475",
+   "lat": 32.487444,
+   "lon": 104.244147,
+   "name": "Sichuan Yetang Hydro"
+  },
+  {
+   "osm": "w1464107482",
+   "lat": 33.007255,
+   "lon": 104.513893,
+   "name": "Liuyuan"
+  },
+  {
+   "osm": "w1464107487",
+   "lat": 32.861751,
+   "lon": 104.845362,
+   "name": "Gansu Baishuijiang Hengdan"
+  },
+  {
+   "osm": "w1464108131",
+   "lat": 34.622519,
+   "lon": 103.271606,
+   "name": "Gansu Lintan Shubu Small"
+  },
+  {
+   "osm": "w1464112496",
+   "lat": 19.71988,
+   "lon": 76.732287,
+   "name": "ELDARI"
+  },
+  {
+   "osm": "w1465688572",
+   "lat": 27.703474,
+   "lon": 104.012708,
+   "name": "Yunnan Miaolin"
+  },
+  {
+   "osm": "w1465696656",
+   "lat": 25.769372,
+   "lon": 104.773188,
+   "name": "Guizhou Pan County Yingwudashan Smallscale Hydro"
+  },
+  {
+   "osm": "w146581549",
+   "lat": 42.502425,
+   "lon": -74.983552,
+   "name": "Goodyear Lake Plant",
+   "operator": "Hydroland Omega LLC",
+   "kw": 1400,
+   "builtYear": 1980
+  },
+  {
+   "osm": "w1466065800",
+   "lat": 14.747101,
+   "lon": 107.835755,
+   "name": "Dak Ro Sa"
+  },
+  {
+   "osm": "w1466086931",
+   "lat": 30.095696,
+   "lon": 102.738728,
+   "name": "Sichuan Tianshengqiao"
+  },
+  {
+   "osm": "w1466209860",
+   "lat": 31.400852,
+   "lon": 102.94591
+  },
+  {
+   "osm": "w1466209869",
+   "lat": 32.157485,
+   "lon": 102.926901,
+   "name": "Sichuan Heishui Changde"
+  },
+  {
+   "osm": "w1466223659",
+   "lat": 29.052734,
+   "lon": 103.155835,
+   "name": "Sichuan Leshan Ebian Ejingxiang Hydro"
+  },
+  {
+   "osm": "w1468695559",
+   "lat": 27.223961,
+   "lon": 92.657909
+  },
+  {
+   "osm": "w1470192168",
+   "lat": 31.758997,
+   "lon": 104.73719
+  },
+  {
+   "osm": "w1470192174",
+   "lat": 32.372841,
+   "lon": 103.050534,
+   "name": "Reshuitang 2nd Cascade"
+  },
+  {
+   "osm": "w1470229945",
+   "lat": 28.131589,
+   "lon": 109.143663,
+   "name": "Pingju"
+  },
+  {
+   "osm": "w1470229946",
+   "lat": 29.147221,
+   "lon": 109.218556,
+   "name": "Hubei Laifeng Jinlongtan"
+  },
+  {
+   "osm": "w1470229960",
+   "lat": 30.317078,
+   "lon": 108.501683,
+   "name": "Chongqing Shizhu County Yangdong River (Dukou)"
+  },
+  {
+   "osm": "w1470235365",
+   "lat": 26.003579,
+   "lon": 102.732948,
+   "name": "Yunnan Lujichang"
+  },
+  {
+   "osm": "w1470242797",
+   "lat": 27.738359,
+   "lon": 110.581578,
+   "name": "Hunan Tongxi Small"
+  },
+  {
+   "osm": "w1470242805",
+   "lat": 27.079617,
+   "lon": 111.05498,
+   "name": "Hunan Longhui Yuanmushan"
+  },
+  {
+   "osm": "w1470242808",
+   "lat": 26.875224,
+   "lon": 110.040729,
+   "name": "Hunan Huitong Changzhai"
+  },
+  {
+   "osm": "w1470265315",
+   "lat": 27.866459,
+   "lon": 98.911328,
+   "name": "Yunnan Diqing Luoma Hydroelectric"
+  },
+  {
+   "osm": "w1470265321",
+   "lat": 27.794549,
+   "lon": 98.587872,
+   "name": "Gongshan County Pula Hydro"
+  },
+  {
+   "osm": "w1470265325",
+   "lat": 23.11112,
+   "lon": 104.523277,
+   "name": "Wenshan Panlong River Weilong"
+  },
+  {
+   "osm": "w1470265326",
+   "lat": 22.564129,
+   "lon": 103.680484,
+   "name": "Nam Ho"
+  },
+  {
+   "osm": "w1470265337",
+   "lat": 24.236916,
+   "lon": 104.656883
+  },
+  {
+   "osm": "w1470277666",
+   "lat": 36.14698,
+   "lon": 103.267369,
+   "name": "Gansu Yongjing Fuchuan"
+  },
+  {
+   "osm": "w1470277669",
+   "lat": 22.201588,
+   "lon": 105.777563,
+   "name": "Nam Cat"
+  },
+  {
+   "osm": "w1470277674",
+   "lat": 24.140603,
+   "lon": 100.072865,
+   "name": "Lincang Yun County Xintangfang"
+  },
+  {
+   "osm": "w1470277680",
+   "lat": 25.803647,
+   "lon": 99.912303,
+   "name": "Shaba"
+  },
+  {
+   "osm": "w1470289163",
+   "lat": -11.691873,
+   "lon": -46.704033,
+   "name": "Água Limpa"
+  },
+  {
+   "osm": "w150158208",
+   "lat": 48.548789,
+   "lon": 34.541385,
+   "name": "Середньодніпровська ГЕС",
+   "kw": 352000
+  },
+  {
+   "osm": "w157755082",
+   "lat": 15.238702,
+   "lon": 32.486566,
+   "name": "Jebel Aulia Dam",
+   "kw": 30400
+  },
+  {
+   "osm": "w158460599",
+   "lat": 43.144328,
+   "lon": -79.060618,
+   "name": "Sir Adam Beck Pump Generating Station",
+   "kw": 174000
+  },
+  {
+   "osm": "w158921673",
+   "lat": 52.30482,
+   "lon": -3.624107,
+   "name": "Craig Goch Dam"
+  },
+  {
+   "osm": "w158922359",
+   "lat": 52.293828,
+   "lon": -3.597583,
+   "name": "Pen-y-Garreg Dam",
+   "operator": "Dŵr Cymru Welsh Water",
+   "kw": 810
+  },
+  {
+   "osm": "w162950421",
+   "lat": 60.873814,
+   "lon": 26.613964,
+   "name": "Keltin voimalaitos",
+   "operator": "UPM",
+   "kw": 17000,
+   "builtYear": 1939
+  },
+  {
+   "osm": "w164091213",
+   "lat": 43.148607,
+   "lon": -79.045641,
+   "name": "Sir Adam Beck GS 1"
+  },
+  {
+   "osm": "w166148049",
+   "lat": 31.563915,
+   "lon": 77.980041,
+   "name": "NATHPA JHAKRI"
+  },
+  {
+   "osm": "w167537527",
+   "lat": -23.380847,
+   "lon": -47.031698,
+   "name": "Pequena Central Hidroelétrica Rasgão",
+   "operator": "Empresa Metropolitana de Águas e Energia S/A.",
+   "kw": 22000
+  },
+  {
+   "osm": "w167755036",
+   "lat": 41.846732,
+   "lon": 45.135512
+  },
+  {
+   "osm": "w171254362",
+   "lat": 0.450311,
+   "lon": 33.185655,
+   "name": "Kiira Power Station",
+   "operator": "UEGCL",
+   "kw": 200000
+  },
+  {
+   "osm": "w172135658",
+   "lat": 34.215197,
+   "lon": 77.184779,
+   "name": "Nimoo Bazgo Hydroelectric Plant",
+   "kw": 45000
+  },
+  {
+   "osm": "w172496518",
+   "lat": 48.026089,
+   "lon": 21.30802,
+   "name": "Tiszalöki vízerőmű",
+   "operator": "Tiszavíz Vízerőmű Kft.",
+   "kw": 12900
+  },
+  {
+   "osm": "w172497270",
+   "lat": 47.493317,
+   "lon": 20.515871,
+   "name": "Kiskörei vízerőmű",
+   "operator": "Tiszavíz Vízerőmű Kft.",
+   "kw": 28000
+  },
+  {
+   "osm": "w172827257",
+   "lat": 36.589676,
+   "lon": 9.396335,
+   "name": "Barrage Sidi Salem",
+   "operator": "الشركة التونسية للكهرباء والغاز",
+   "kw": 33000
+  },
+  {
+   "osm": "w180382670",
+   "lat": -10.758197,
+   "lon": -75.703171,
+   "name": "Presa y Bocatoma Huallamayo"
+  },
+  {
+   "osm": "w181216989",
+   "lat": 47.960955,
+   "lon": -115.733813,
+   "name": "Noxon Rapids Dam",
+   "operator": "Avista Corp",
+   "kw": 487800,
+   "builtYear": 1959
+  },
+  {
+   "osm": "w181482774",
+   "lat": 14.978943,
+   "lon": 108.301311,
+   "name": "Đập thủy điện Đăk Đrinh"
+  },
+  {
+   "osm": "w182490294",
+   "lat": 49.658812,
+   "lon": 83.347022,
+   "name": "Бухтарминская-ГЭС",
+   "kw": 675000,
+   "builtYear": 1960
+  },
+  {
+   "osm": "w183223020",
+   "lat": 43.916145,
+   "lon": 24.626785,
+   "name": "Centrala Hidroelectrică Rusănești"
+  },
+  {
+   "osm": "w183855151",
+   "lat": 44.263935,
+   "lon": 24.403545,
+   "name": "Ipotesti"
+  },
+  {
+   "osm": "w184879657",
+   "lat": 29.483533,
+   "lon": 119.213805,
+   "name": "新安江水电站",
+   "kw": 845000,
+   "builtYear": 1959
+  },
+  {
+   "osm": "w186922631",
+   "lat": 44.916736,
+   "lon": 24.246533,
+   "name": "Hidrocentrala Babeni",
+   "operator": "Hidroelectrica"
+  },
+  {
+   "osm": "w187021432",
+   "lat": 45.009202,
+   "lon": 24.29728,
+   "name": "Hidrocentrala Govora",
+   "operator": "Hidroelectrica"
+  },
+  {
+   "osm": "w188687095",
+   "lat": -37.904417,
+   "lon": 146.800418,
+   "name": "Lake Glenmaggie"
+  },
+  {
+   "osm": "w189660115",
+   "lat": 21.838298,
+   "lon": -104.802696,
+   "name": "Presa Aguamilpa",
+   "kw": 960000
+  },
+  {
+   "osm": "w191534597",
+   "lat": 36.979671,
+   "lon": 35.33437,
+   "name": "HES"
+  },
+  {
+   "osm": "w192403227",
+   "lat": -12.714668,
+   "lon": -75.960525,
+   "name": "Presa El Platanal"
+  },
+  {
+   "osm": "w200227270",
+   "lat": 37.525919,
+   "lon": 127.278662,
+   "name": "팔당댐",
+   "operator": "한국수력원자력",
+   "kw": 120000,
+   "builtYear": 1974
+  },
+  {
+   "osm": "w200364985",
+   "lat": -29.261368,
+   "lon": -53.236354,
+   "name": "Usina Hidrelétrica de Itaúba",
+   "kw": 500000
+  },
+  {
+   "osm": "w201659414",
+   "lat": 49.178424,
+   "lon": 23.05829,
+   "name": "Яворська МГЕС",
+   "kw": 450
+  },
+  {
+   "osm": "w202362210",
+   "lat": 44.932214,
+   "lon": -91.38903,
+   "name": "Chippewa Falls WP304 Dam",
+   "operator": "Xcel Energy",
+   "kw": 21600,
+   "builtYear": 1928
+  },
+  {
+   "osm": "w203098545",
+   "lat": 24.259202,
+   "lon": 99.471212,
+   "name": "Yunnan Yongde Damengtong"
+  },
+  {
+   "osm": "w203164337",
+   "lat": 49.582815,
+   "lon": 18.533406,
+   "name": "Morávka"
+  },
+  {
+   "osm": "w205599612",
+   "lat": 42.200603,
+   "lon": 42.725771,
+   "name": "რიონის ჰიდროელექტროსადგური",
+   "operator": "Energo-Pro",
+   "kw": 51000
+  },
+  {
+   "osm": "w205719566",
+   "lat": 44.337709,
+   "lon": -89.85622,
+   "name": "Port Edwards Mill",
+   "operator": "Domtar Industries Inc",
+   "kw": 6700,
+   "builtYear": 1913
+  },
+  {
+   "osm": "w20573262",
+   "lat": 41.822638,
+   "lon": 44.75976,
+   "name": "ზაჰესი",
+   "operator": "ენერგო-პრო ჯორჯია",
+   "kw": 36800,
+   "builtYear": 1927
+  },
+  {
+   "osm": "w206380579",
+   "lat": 42.307431,
+   "lon": 42.717955,
+   "name": "გუმათჰესი II",
+   "operator": "Energo-Pro",
+   "kw": 22800
+  },
+  {
+   "osm": "w211058310",
+   "lat": 34.962923,
+   "lon": 46.992938,
+   "name": "سد گاوشان",
+   "kw": 11000
+  },
+  {
+   "osm": "w212753929",
+   "lat": 42.452832,
+   "lon": -7.714276,
+   "name": "Encoro de San Pedro"
+  },
+  {
+   "osm": "w215429821",
+   "lat": -3.831841,
+   "lon": -49.646836,
+   "name": "Usina Hidrelétrica de Tucuruí",
+   "kw": 8370000
+  },
+  {
+   "osm": "w216537489",
+   "lat": 48.662665,
+   "lon": 22.357453,
+   "name": "Оноківська ГЕС",
+   "kw": 2650
+  },
+  {
+   "osm": "w219443743",
+   "lat": 29.208929,
+   "lon": 102.838834,
+   "name": "瀑布沟大坝",
+   "kw": 3300000
+  },
+  {
+   "osm": "w220340687",
+   "lat": -27.69186,
+   "lon": -64.308415,
+   "name": "Central Hidroeléctrica Los Quiroga",
+   "operator": "Hidroeléctrica Río Hondo S.A."
+  },
+  {
+   "osm": "w220396006",
+   "lat": -23.209019,
+   "lon": -47.299749,
+   "name": "Pequena Central Hidroelétrica Porto Góes",
+   "operator": "Empresa Metropolitana de Águas e Energia S/A.",
+   "kw": 24300
+  },
+  {
+   "osm": "w221204058",
+   "lat": 47.716089,
+   "lon": 10.825585,
+   "name": "Lechstaustufe 3 - Urspring",
+   "operator": "Uniper Kraftwerke",
+   "kw": 10100
+  },
+  {
+   "osm": "w221372346",
+   "lat": -32.223556,
+   "lon": -64.566666,
+   "operator": "Empresa Provincial de energía de Córdoba (EPEC)"
+  },
+  {
+   "osm": "w221656476",
+   "lat": 21.429191,
+   "lon": -104.453129,
+   "name": "Presa El Cajón",
+   "kw": 750000
+  },
+  {
+   "osm": "w222066432",
+   "lat": 21.195331,
+   "lon": -104.106704,
+   "name": "Presa La Yesca",
+   "kw": 750000
+  },
+  {
+   "osm": "w222454790",
+   "lat": 30.816257,
+   "lon": 106.123852,
+   "name": "Sichuan Xiaolongmen"
+  },
+  {
+   "osm": "w22309103",
+   "lat": 35.020529,
+   "lon": -81.007467,
+   "name": "Wylie Dam",
+   "operator": "Duke Energy",
+   "kw": 60000,
+   "builtYear": 1925
+  },
+  {
+   "osm": "w226607275",
+   "lat": 50.458897,
+   "lon": 17.150572,
+   "name": "Elektrownia wodna Otmuchów",
+   "operator": "Tauron Ekoenergia",
+   "kw": 4800,
+   "builtYear": 1933
+  },
+  {
+   "osm": "w226985822",
+   "lat": 32.596915,
+   "lon": 75.985608,
+   "name": "Chamera Dam"
+  },
+  {
+   "osm": "w227646615",
+   "lat": 29.060185,
+   "lon": 99.8969,
+   "name": "Sichuan Niangyong"
+  },
+  {
+   "osm": "w22919787",
+   "lat": 60.766848,
+   "lon": 26.771264
+  },
+  {
+   "osm": "w229601886",
+   "lat": 38.66886,
+   "lon": 21.837249,
+   "name": "Φράγμα Ευήνου",
+   "operator": "ΕΥΔΑΠ ΠΑΓΙΩΝ",
+   "kw": 820,
+   "builtYear": 2001
+  },
+  {
+   "osm": "w231807833",
+   "lat": 34.091865,
+   "lon": 74.031483,
+   "name": "URI II"
+  },
+  {
+   "osm": "w237985251",
+   "lat": 61.328559,
+   "lon": 22.846375,
+   "name": "Tyrvään voimalaitos",
+   "kw": 16800
+  },
+  {
+   "osm": "w239999918",
+   "lat": 35.454307,
+   "lon": 113.003396,
+   "name": "Shanxi Zezhou Dongjiaohe"
+  },
+  {
+   "osm": "w24046583",
+   "lat": -20.022625,
+   "lon": -47.434455,
+   "name": "Usina Hidrelétrica de Jaguara",
+   "operator": "Engie Brasil Energia",
+   "kw": 424000
+  },
+  {
+   "osm": "w243555051",
+   "lat": 64.19657,
+   "lon": -19.032969,
+   "name": "Vatnsfellsvirkjun",
+   "operator": "Landsvirkjun",
+   "kw": 90000
+  },
+  {
+   "osm": "w245072101",
+   "lat": 53.42706,
+   "lon": 49.479335,
+   "name": "Жигулёвская ГЭС",
+   "operator": "ОАО РусГидро",
+   "kw": 2488000,
+   "builtYear": 1955
+  },
+  {
+   "osm": "w246381798",
+   "lat": -9.415988,
+   "lon": -38.206664,
+   "name": "Usina Paulo Afonso IV",
+   "operator": "Companhia Hidro-Elétrica do São Francisco",
+   "kw": 2462400,
+   "builtYear": 1972
+  },
+  {
+   "osm": "w249573944",
+   "lat": 38.202895,
+   "lon": -92.625838,
+   "name": "Bagnell Dam",
+   "operator": "Ameren Missouri",
+   "kw": 208000,
+   "builtYear": 1931
+  },
+  {
+   "osm": "w24985119",
+   "lat": 41.56954,
+   "lon": -88.078908,
+   "name": "Lockport Powerhouse",
+   "operator": "Metropolitan Water Reclamation District of Greater Chicago",
+   "kw": 16000,
+   "builtYear": 1907
+  },
+  {
+   "osm": "w25380234",
+   "lat": 9.972236,
+   "lon": -84.183608,
+   "name": "Puente Mulas"
+  },
+  {
+   "osm": "w254327683",
+   "lat": 16.402244,
+   "lon": -92.779413,
+   "name": "Presa La Angostura",
+   "operator": "Comisión Federal de Electricidad",
+   "kw": 900000
+  },
+  {
+   "osm": "w255045610",
+   "lat": -19.498404,
+   "lon": -41.023591,
+   "name": "Usina Hidrelétrica de Aimorés",
+   "operator": "Aliança Geração de Energia S.A.",
+   "kw": 330000
+  },
+  {
+   "osm": "w255478124",
+   "lat": 45.407267,
+   "lon": -76.506766,
+   "name": "Stewartville Generating Station",
+   "operator": "Ontario Power Generation",
+   "kw": 182000
+  },
+  {
+   "osm": "w255891174",
+   "lat": 24.02483,
+   "lon": 100.369346,
+   "name": "大朝山大坝",
+   "kw": 1350000,
+   "builtYear": 1997
+  },
+  {
+   "osm": "w255891175",
+   "lat": 24.704572,
+   "lon": 100.090956,
+   "name": "小湾坝",
+   "operator": "中国华能集团",
+   "kw": 4200000,
+   "builtYear": 2010
+  },
+  {
+   "osm": "w255891176",
+   "lat": 24.621759,
+   "lon": 100.448174,
+   "name": "漫灣大壩",
+   "kw": 1750000,
+   "builtYear": 1986
+  },
+  {
+   "osm": "w26135489",
+   "lat": 36.477876,
+   "lon": 127.480465,
+   "name": "대청댐",
+   "operator": "한국수자원공사",
+   "kw": 90000
+  },
+  {
+   "osm": "w262048370",
+   "lat": 18.922803,
+   "lon": -71.010006,
+   "name": "Presa Palomino"
+  },
+  {
+   "osm": "w262072687",
+   "lat": 18.546149,
+   "lon": -70.376977,
+   "name": "Presa de Jigüey"
+  },
+  {
+   "osm": "w262420198",
+   "lat": -25.375171,
+   "lon": -54.96567,
+   "name": "Represa Yguazú"
+  },
+  {
+   "osm": "w262626314",
+   "lat": 50.583135,
+   "lon": -93.45441,
+   "name": "Manitou Station",
+   "operator": "Ontario Power Generation",
+   "kw": 73000,
+   "builtYear": 1956
+  },
+  {
+   "osm": "w263918556",
+   "lat": 50.631052,
+   "lon": -93.220697,
+   "name": "Ear Falls Generating Station",
+   "operator": "Ontario Power Generation",
+   "kw": 22000
+  },
+  {
+   "osm": "w26567029",
+   "lat": 56.235553,
+   "lon": 14.075046,
+   "name": "Nöbbelöv Kraftstationen",
+   "operator": "Uniper Sverige AB",
+   "kw": 4400
+  },
+  {
+   "osm": "w268061755",
+   "lat": 41.243543,
+   "lon": 0.43282,
+   "name": "Central hidroelèctrica de Riba-roja",
+   "operator": "Enel Green Power",
+   "kw": 261300
+  },
+  {
+   "osm": "w272518535",
+   "lat": 25.659285,
+   "lon": 91.900497,
+   "name": "UMIAM I II &IV"
+  },
+  {
+   "osm": "w273649691",
+   "lat": 32.120693,
+   "lon": 102.873444,
+   "name": "Sichuan Heishui Zumu"
+  },
+  {
+   "osm": "w281513993",
+   "lat": 28.924082,
+   "lon": 106.683085,
+   "name": "Chongqing Qijiang Zhutan"
+  },
+  {
+   "osm": "w284957774",
+   "lat": 29.17501,
+   "lon": 108.748688,
+   "name": "Yutan Hydroelectric"
+  },
+  {
+   "osm": "w285660506",
+   "lat": 9.962319,
+   "lon": 76.956896,
+   "name": "Lower Periyar Dam",
+   "operator": "Kerala State Electricity Board"
+  },
+  {
+   "osm": "w28653243",
+   "lat": 48.148421,
+   "lon": 10.866534,
+   "name": "Lechstaustufe 19 Schwabstadl",
+   "operator": "Uniper Kraftwerke",
+   "kw": 12000,
+   "builtYear": 1981
+  },
+  {
+   "osm": "w28653294",
+   "lat": 48.237352,
+   "lon": 10.926615,
+   "name": "Laufwasserkraftwerk Unterbergen",
+   "operator": "Uniper Kraftwerke",
+   "kw": 12300
+  },
+  {
+   "osm": "w288142971",
+   "lat": 43.13337,
+   "lon": -72.441996,
+   "name": "Bellows Falls Power Plant",
+   "operator": "Great River Hydro, LLC",
+   "kw": 40800,
+   "builtYear": 1928
+  },
+  {
+   "osm": "w289491012",
+   "lat": 46.120099,
+   "lon": -111.408088,
+   "name": "BROADWATER POWER PROJECT"
+  },
+  {
+   "osm": "w289864149",
+   "lat": 34.941788,
+   "lon": -5.839909,
+   "name": "Oued El Makhazine وادي المخازن",
+   "operator": "مازن",
+   "kw": 36000,
+   "builtYear": 1979
+  },
+  {
+   "osm": "w290884578",
+   "lat": 16.317273,
+   "lon": 107.502412,
+   "name": "Đập Bình Điền"
+  },
+  {
+   "osm": "w292125638",
+   "lat": 57.809243,
+   "lon": 114.031748,
+   "name": "Мамаканская ГЭС",
+   "kw": 86000,
+   "builtYear": 1962
+  },
+  {
+   "osm": "w294005378",
+   "lat": -34.599785,
+   "lon": -68.528547,
+   "name": "Central Hidroeléctrica Los Coroneles"
+  },
+  {
+   "osm": "w294269153",
+   "lat": -10.698722,
+   "lon": -47.793205,
+   "name": "Usina Hidrelétrica Isamu Ikeda",
+   "kw": 30000,
+   "builtYear": 1982
+  },
+  {
+   "osm": "w294585305",
+   "lat": 47.996025,
+   "lon": 21.033043,
+   "name": "Kesznyéteni vízerőmű",
+   "operator": "Hernádvíz Kft.",
+   "kw": 4400,
+   "builtYear": 1944
+  },
+  {
+   "osm": "w295161337",
+   "lat": 58.02869,
+   "lon": -4.414714,
+   "name": "Lairg Power Station",
+   "operator": "SSE",
+   "kw": 3500
+  },
+  {
+   "osm": "w295161340",
+   "lat": 58.012766,
+   "lon": -4.402053,
+   "name": "Shin Diversion Weir",
+   "operator": "SSE Renewables",
+   "kw": 18600
+  },
+  {
+   "osm": "w295772121",
+   "lat": 27.028911,
+   "lon": 103.290992,
+   "name": "Yunnan Tianhuaban"
+  },
+  {
+   "osm": "w298773684",
+   "lat": 34.5433,
+   "lon": 102.627341,
+   "name": "Alashan"
+  },
+  {
+   "osm": "w304788297",
+   "lat": 34.144573,
+   "lon": 74.185671,
+   "name": "URI I"
+  },
+  {
+   "osm": "w305696476",
+   "lat": 52.267975,
+   "lon": -3.577128,
+   "name": "Caban-Coch Dam"
+  },
+  {
+   "osm": "w305929959",
+   "lat": 29.921848,
+   "lon": 119.513158,
+   "name": "Zhejiang Tonglu Bipu"
+  },
+  {
+   "osm": "w306654372",
+   "lat": 19.513557,
+   "lon": 73.417319,
+   "name": "Bhatsa Dam"
+  },
+  {
+   "osm": "w30734802",
+   "lat": 48.265921,
+   "lon": 10.936816,
+   "name": "Laufwasserkraftwerk Merching",
+   "operator": "Uniper Kraftwerke",
+   "kw": 12000,
+   "builtYear": 1978
+  },
+  {
+   "osm": "w30752840",
+   "lat": 40.901787,
+   "lon": 125.972609,
+   "name": "위원댐",
+   "kw": 390000
+  },
+  {
+   "osm": "w30903917",
+   "lat": 28.719519,
+   "lon": 110.275177,
+   "name": "凤滩水电站",
+   "kw": 800000
+  },
+  {
+   "osm": "w311171311",
+   "lat": 44.935525,
+   "lon": -91.889197,
+   "name": "Cedar Falls 1883C3 Dam"
+  },
+  {
+   "osm": "w312422841",
+   "lat": 36.111938,
+   "lon": 101.873377,
+   "name": "直岗拉卡坝",
+   "kw": 152000
+  },
+  {
+   "osm": "w312422888",
+   "lat": 36.118599,
+   "lon": 101.808536,
+   "name": "李家峡水坝",
+   "kw": 2000000
+  },
+  {
+   "osm": "w312950310",
+   "lat": 35.805221,
+   "lon": 103.008519,
+   "name": "炳灵大坝",
+   "kw": 240000
+  },
+  {
+   "osm": "w312950311",
+   "lat": 36.170878,
+   "lon": 103.474339,
+   "name": "Hekou Power Plant",
+   "kw": 74000
+  },
+  {
+   "osm": "w313068636",
+   "lat": 31.225856,
+   "lon": 103.485997,
+   "name": "Taipingyi Dam"
+  },
+  {
+   "osm": "w313302689",
+   "lat": 30.363807,
+   "lon": 102.274476,
+   "name": "Lajiaogou First Stage"
+  },
+  {
+   "osm": "w315136737",
+   "lat": 36.05867,
+   "lon": 103.273068,
+   "name": "Yanguoxia Dam",
+   "kw": 471000
+  },
+  {
+   "osm": "w316835848",
+   "lat": 32.47284,
+   "lon": 76.253305,
+   "name": "CHAMERA II"
+  },
+  {
+   "osm": "w320994578",
+   "lat": 35.872227,
+   "lon": 102.33752,
+   "name": "苏只水库",
+   "kw": 225000
+  },
+  {
+   "osm": "w321565322",
+   "lat": -17.896121,
+   "lon": -40.2013,
+   "name": "Usina Hidroelétrica Santa Clara",
+   "operator": "Queiroz Galvão Energia S/A",
+   "kw": 60000
+  },
+  {
+   "osm": "w324492601",
+   "lat": 61.463305,
+   "lon": 23.436841,
+   "name": "Melon vesivoimala",
+   "operator": "Pohjolan voima",
+   "kw": 67900
+  },
+  {
+   "osm": "w330388003",
+   "lat": 31.495856,
+   "lon": 78.188752,
+   "name": "Baspa 2",
+   "operator": "JSW Energy",
+   "kw": 300000
+  },
+  {
+   "osm": "w332949585",
+   "lat": 6.32045,
+   "lon": -75.165523
+  },
+  {
+   "osm": "w335658430",
+   "lat": -37.9109,
+   "lon": -71.612295,
+   "name": "Presa Pangue",
+   "operator": "Enel",
+   "kw": 467000,
+   "builtYear": 1996
+  },
+  {
+   "osm": "w336933592",
+   "lat": 50.114826,
+   "lon": -94.868918,
+   "name": "Whitedog Falls Generating Station",
+   "operator": "Ontario Power Generation",
+   "kw": 68000
+  },
+  {
+   "osm": "w342883938",
+   "lat": 46.145682,
+   "lon": 14.4143,
+   "name": "Hidroelektrarna Medvode",
+   "operator": "Savske elektrarne Ljubljana",
+   "kw": 25000,
+   "builtYear": 1953
+  },
+  {
+   "osm": "w353307082",
+   "lat": 16.942264,
+   "lon": -93.099772,
+   "name": "Presa Chicoasén",
+   "operator": "Comisión Federal de Electricidad",
+   "kw": 2400000
+  },
+  {
+   "osm": "w357058429",
+   "lat": 45.956806,
+   "lon": -122.556287,
+   "name": "Merwin Dam",
+   "operator": "PacifiCorp",
+   "kw": 136000,
+   "builtYear": 1931
+  },
+  {
+   "osm": "w358326125",
+   "lat": 36.759361,
+   "lon": 49.387574,
+   "name": "تاج سد سفیدرود",
+   "operator": "Gilan Regional Water Authority",
+   "kw": 87500,
+   "builtYear": 1962
+  },
+  {
+   "osm": "w358441011",
+   "lat": 26.554715,
+   "lon": 119.032279,
+   "name": "Wangyuan Minhou County"
+  },
+  {
+   "osm": "w365736568",
+   "lat": 64.172969,
+   "lon": -19.125464,
+   "name": "Sigölduvirkjun",
+   "kw": 150000
+  },
+  {
+   "osm": "w368784611",
+   "lat": 63.031721,
+   "lon": 112.475526,
+   "name": "Вилюйская ГЭС",
+   "operator": "ПАО «Якутскэнерго»",
+   "kw": 680000,
+   "builtYear": 1967
+  },
+  {
+   "osm": "w368942941",
+   "lat": 30.398902,
+   "lon": 111.342027,
+   "name": "高坝洲水电站",
+   "kw": 252000
+  },
+  {
+   "osm": "w37339258",
+   "lat": 52.049655,
+   "lon": 47.759638,
+   "name": "Саратовская ГЭС",
+   "operator": "РусГидро",
+   "kw": 1391000,
+   "builtYear": 1967
+  },
+  {
+   "osm": "w375928041",
+   "lat": 27.833602,
+   "lon": 99.035141,
+   "name": "里底水电站",
+   "kw": 420000
+  },
+  {
+   "osm": "w375928045",
+   "lat": 27.938317,
+   "lon": 98.923705,
+   "name": "乌弄龙水电站",
+   "kw": 990000
+  },
+  {
+   "osm": "w377454464",
+   "lat": -7.635224,
+   "lon": 36.886383,
+   "name": "Kidatu Dam"
+  },
+  {
+   "osm": "w381244723",
+   "lat": 46.497896,
+   "lon": -84.333332,
+   "name": "Cloverland Hydroelectric Plant",
+   "operator": "Cloverland Electric Co-op",
+   "kw": 41800,
+   "builtYear": 1901
+  },
+  {
+   "osm": "w381244727",
+   "lat": 46.50611,
+   "lon": -84.349302,
+   "name": "Saint Marys Falls Power Plant",
+   "operator": "U.S. Army Corps of Engineers",
+   "kw": 23700,
+   "builtYear": 1932
+  },
+  {
+   "osm": "w382238871",
+   "lat": 29.540835,
+   "lon": 110.739502,
+   "name": "Jiangya_Dam"
+  },
+  {
+   "osm": "w382451611",
+   "lat": 29.500694,
+   "lon": 108.832242,
+   "name": "Zhoubai Hydroelectric"
+  },
+  {
+   "osm": "w383927785",
+   "lat": 34.201183,
+   "lon": 132.04501,
+   "name": "生見川ダム"
+  },
+  {
+   "osm": "w384312446",
+   "lat": 34.556107,
+   "lon": 69.47925,
+   "name": "Band-i Mahipar Dam",
+   "builtYear": 1966
+  },
+  {
+   "osm": "w386119798",
+   "lat": 26.728136,
+   "lon": 110.690326
+  },
+  {
+   "osm": "w388909583",
+   "lat": 33.562443,
+   "lon": 133.212169,
+   "name": "筏津ダム"
+  },
+  {
+   "osm": "w390091327",
+   "lat": 28.24846,
+   "lon": 101.644807,
+   "name": "锦屏二级水电站"
+  },
+  {
+   "osm": "w391896477",
+   "lat": 61.3382,
+   "lon": 22.114328,
+   "name": "Harjavallan vesivoimalaitos",
+   "operator": "Länsi-Suomen Voima",
+   "kw": 105000,
+   "builtYear": 1939
+  },
+  {
+   "osm": "w391905646",
+   "lat": 27.110336,
+   "lon": 89.531117,
+   "name": "Chhukha Hydroelectric Power Plant Bhutan"
+  },
+  {
+   "osm": "w391932128",
+   "lat": 27.035983,
+   "lon": 89.595523,
+   "name": "Tala Hydroelectric Power Plant Bhutan"
+  },
+  {
+   "osm": "w39994852",
+   "lat": 32.805521,
+   "lon": -86.445074,
+   "name": "Mitchell Dam",
+   "operator": "Alabama Power",
+   "kw": 170000,
+   "builtYear": 1949
+  },
+  {
+   "osm": "w401638972",
+   "lat": 29.235869,
+   "lon": 103.045014,
+   "name": "枕头坝一级水电站",
+   "kw": 720000
+  },
+  {
+   "osm": "w401661526",
+   "lat": 28.088766,
+   "lon": 104.835027,
+   "name": "Luodu Small"
+  },
+  {
+   "osm": "w402535304",
+   "lat": 52.962676,
+   "lon": -115.589225,
+   "name": "Brazeau Rubber Dam"
+  },
+  {
+   "osm": "w402765435",
+   "lat": 32.523344,
+   "lon": 104.070185,
+   "name": "Sichuan Pingwu County Sancha"
+  },
+  {
+   "osm": "w405548648",
+   "lat": 36.12087,
+   "lon": 103.534838,
+   "name": "Chaijiaxia Power Plant",
+   "kw": 96000
+  },
+  {
+   "osm": "w406463333",
+   "lat": 13.50162,
+   "lon": 108.848286,
+   "name": "La Hieng 2"
+  },
+  {
+   "osm": "w406507318",
+   "lat": 36.146818,
+   "lon": 104.013755,
+   "name": "小峡水电站",
+   "kw": 230000
+  },
+  {
+   "osm": "w407956070",
+   "lat": 38.948227,
+   "lon": 126.337399,
+   "name": "남강발전소"
+  },
+  {
+   "osm": "w407977032",
+   "lat": 26.907171,
+   "lon": 115.00282,
+   "name": "石虎塘航电枢纽",
+   "kw": 120000
+  },
+  {
+   "osm": "w408793870",
+   "lat": 30.466796,
+   "lon": 102.715324,
+   "name": "Sichuan Longdong"
+  },
+  {
+   "osm": "w409163571",
+   "lat": 37.313466,
+   "lon": 126.612747,
+   "name": "시화호조력발전소",
+   "operator": "한국수자원공사",
+   "kw": 254000
+  },
+  {
+   "osm": "w412348687",
+   "lat": 36.138178,
+   "lon": 103.408611,
+   "name": "八盘峡水电站",
+   "kw": 226400
+  },
+  {
+   "osm": "w41380670",
+   "lat": 57.525257,
+   "lon": 38.299598,
+   "name": "Угличская ГЭС",
+   "operator": "РусГидро",
+   "kw": 120000,
+   "builtYear": 1941
+  },
+  {
+   "osm": "w415687971",
+   "lat": 48.780312,
+   "lon": -117.41327,
+   "name": "Pend Oreille County Pud Dam",
+   "operator": "PUD No 1 of Pend Oreille County",
+   "kw": 90000,
+   "builtYear": 1955
+  },
+  {
+   "osm": "w417102198",
+   "lat": 45.946498,
+   "lon": -92.538471,
+   "name": "Clam River 2WP516 Dam",
+   "operator": "Renewable World Energies",
+   "kw": 1200,
+   "builtYear": 1942
+  },
+  {
+   "osm": "w420411993",
+   "lat": -0.688725,
+   "lon": -80.24699,
+   "name": "La Represa Nuevo Simbocal"
+  },
+  {
+   "osm": "w422000596",
+   "lat": 27.819465,
+   "lon": 102.991871,
+   "name": "Lianbu Hydroelectric"
+  },
+  {
+   "osm": "w422442088",
+   "lat": 23.094398,
+   "lon": 101.872027,
+   "name": "Sinanjiang Dam"
+  },
+  {
+   "osm": "w424959032",
+   "lat": 36.306437,
+   "lon": 104.160486,
+   "name": "大峡水电站",
+   "kw": 324500
+  },
+  {
+   "osm": "w427961750",
+   "lat": 45.984312,
+   "lon": 13.654821,
+   "name": "HE Solkan",
+   "operator": "Soške elektrarne Nova Gorica d.o.o.",
+   "kw": 32000,
+   "builtYear": 1984
+  },
+  {
+   "osm": "w428016924",
+   "lat": -24.159293,
+   "lon": -49.94708,
+   "name": "CGH Rio das Cinzas",
+   "operator": "Homero Wagner Fronja",
+   "kw": 1400
+  },
+  {
+   "osm": "w428977583",
+   "lat": 48.202073,
+   "lon": 35.997102
+  },
+  {
+   "osm": "w429545514",
+   "lat": 32.676509,
+   "lon": 75.821377,
+   "name": "SEWA-II"
+  },
+  {
+   "osm": "w429548144",
+   "lat": 31.499488,
+   "lon": 78.178334
+  },
+  {
+   "osm": "w430539526",
+   "lat": -9.397036,
+   "lon": -38.202504,
+   "name": "Usina Paulo Afonso I, II e III",
+   "operator": "Companhia Hidro-Elétrica do São Francisco",
+   "kw": 1417200,
+   "builtYear": 1948
+  },
+  {
+   "osm": "w43931599",
+   "lat": 45.308733,
+   "lon": -74.027264,
+   "name": "Centrale des Cèdres",
+   "operator": "Hydro-Québec",
+   "kw": 122000
+  },
+  {
+   "osm": "w44172216",
+   "lat": 49.901371,
+   "lon": 82.71925,
+   "name": "Усть-Каменогорская ГЭС",
+   "kw": 367800
+  },
+  {
+   "osm": "w443375479",
+   "lat": 40.027575,
+   "lon": 126.178595
+  },
+  {
+   "osm": "w449507010",
+   "lat": 29.256766,
+   "lon": 103.632993,
+   "name": "铜街子水电站",
+   "kw": 600000
+  },
+  {
+   "osm": "w449516459",
+   "lat": 49.450038,
+   "lon": 24.940696
+  },
+  {
+   "osm": "w450364019",
+   "lat": 24.661054,
+   "lon": 116.595963,
+   "name": "棉花糖水库",
+   "kw": 600000
+  },
+  {
+   "osm": "w451833449",
+   "lat": 24.975502,
+   "lon": 110.763681,
+   "name": "峻山水电站",
+   "operator": "桂东电力",
+   "kw": 9600
+  },
+  {
+   "osm": "w452067563",
+   "lat": 49.265891,
+   "lon": 26.257913,
+   "name": "Сатанівська гідроелектростанція"
+  },
+  {
+   "osm": "w458830911",
+   "lat": 24.374503,
+   "lon": 110.735474,
+   "name": "Guangxi Bajiangkou"
+  },
+  {
+   "osm": "w463259261",
+   "lat": 31.760049,
+   "lon": 105.92492,
+   "name": "Sichuan Jialingjiang River Cangxi"
+  },
+  {
+   "osm": "w464513374",
+   "lat": 29.334789,
+   "lon": 103.609644,
+   "name": "沙湾水电站",
+   "kw": 480000
+  },
+  {
+   "osm": "w464513393",
+   "lat": 29.501497,
+   "lon": 103.631216,
+   "name": "安谷水电站",
+   "kw": 772000
+  },
+  {
+   "osm": "w467733390",
+   "lat": 36.990591,
+   "lon": 49.567024,
+   "name": "سد تاریک",
+   "kw": 2800,
+   "builtYear": 2016
+  },
+  {
+   "osm": "w471503530",
+   "lat": 34.47289,
+   "lon": 104.083601,
+   "name": "岷县龙望台水电集团有限责任公司",
+   "kw": 20500
+  },
+  {
+   "osm": "w471631886",
+   "lat": 26.559308,
+   "lon": 99.116263,
+   "name": "黄登水电站",
+   "kw": 1900000
+  },
+  {
+   "osm": "w472968510",
+   "lat": 21.411135,
+   "lon": 102.344582,
+   "name": "ເຂື່ອນໄຟຟ້າ ນ້ຳອູ 5",
+   "kw": 240000,
+   "builtYear": 2016
+  },
+  {
+   "osm": "w473169512",
+   "lat": 23.878821,
+   "lon": 99.003853
+  },
+  {
+   "osm": "w477145794",
+   "lat": 3.8132,
+   "lon": 10.127909,
+   "name": "Barrage hydroélectrique d'Édéa",
+   "kw": 276000
+  },
+  {
+   "osm": "w479648364",
+   "lat": 15.799734,
+   "lon": 107.617184,
+   "name": "Đập Thuỷ điện A Vương"
+  },
+  {
+   "osm": "w479981117",
+   "lat": 39.669012,
+   "lon": 106.778696,
+   "name": "海勃湾水利枢纽"
+  },
+  {
+   "osm": "w480696576",
+   "lat": 12.939895,
+   "lon": 108.713013,
+   "name": "Đập thủy điện Krông H'Năng"
+  },
+  {
+   "osm": "w485543356",
+   "lat": 21.496322,
+   "lon": 103.99642,
+   "name": "Nhà máy thủy điện Sơn La",
+   "kw": 2400000,
+   "builtYear": 2012
+  },
+  {
+   "osm": "w488751534",
+   "lat": 45.684004,
+   "lon": 24.318814,
+   "name": "Barajul Racoviță"
+  },
+  {
+   "osm": "w489244100",
+   "lat": 32.260145,
+   "lon": 77.240285,
+   "name": "Allain Duhangan Hydro Project"
+  },
+  {
+   "osm": "w489803545",
+   "lat": 23.698257,
+   "lon": 97.506255,
+   "name": "ရွှေလီ ၁ တာတမံ"
+  },
+  {
+   "osm": "w495564974",
+   "lat": 44.325624,
+   "lon": -72.000466,
+   "name": "Comerford Station Dam",
+   "operator": "Great River Hydro, LLC",
+   "kw": 167800,
+   "builtYear": 1930
+  },
+  {
+   "osm": "w495564979",
+   "lat": 44.336935,
+   "lon": -71.873477,
+   "name": "Moore Dam",
+   "operator": "Great River Hydro, LLC",
+   "kw": 190800,
+   "builtYear": 1957
+  },
+  {
+   "osm": "w497315798",
+   "lat": 28.981716,
+   "lon": 118.927992,
+   "name": "Tadi"
+  },
+  {
+   "osm": "w502463895",
+   "lat": 43.469738,
+   "lon": -112.061598,
+   "name": "Lower Idaho Falls Dam"
+  },
+  {
+   "osm": "w504108035",
+   "lat": 32.106669,
+   "lon": -6.464067,
+   "name": "Barrage Bin el Ouidane",
+   "kw": 135000
+  },
+  {
+   "osm": "w504108037",
+   "lat": 31.646385,
+   "lon": -7.261247,
+   "name": "Barrage Moulay Youssef",
+   "kw": 24000
+  },
+  {
+   "osm": "w504446922",
+   "lat": 47.676462,
+   "lon": 10.789926,
+   "name": "Lechstaustufe 2 - Premer Lechsee",
+   "operator": "Uniper Kraftwerke",
+   "kw": 19200
+  },
+  {
+   "osm": "w506145556",
+   "lat": 0.443547,
+   "lon": 33.18462,
+   "name": "Nalubaale Power Station",
+   "operator": "UEGCL",
+   "kw": 180000
+  },
+  {
+   "osm": "w506145670",
+   "lat": -18.794,
+   "lon": 48.619024,
+   "name": "Barrage d'Andekaleka",
+   "builtYear": 1982
+  },
+  {
+   "osm": "w506146310",
+   "lat": 12.637973,
+   "lon": -7.925367,
+   "name": "Centrale hydroélectrique de Sotuba",
+   "operator": "EDM-SA",
+   "kw": 5700
+  },
+  {
+   "osm": "w512212859",
+   "lat": 26.956385,
+   "lon": 109.616578
+  },
+  {
+   "osm": "w513690648",
+   "lat": 32.806927,
+   "lon": 76.141898,
+   "name": "Baira Dam"
+  },
+  {
+   "osm": "w514354228",
+   "lat": 41.693111,
+   "lon": -85.965236,
+   "name": "Elkhart Hydro Dam",
+   "operator": "American Electric Power"
+  },
+  {
+   "osm": "w515132909",
+   "lat": 33.369173,
+   "lon": 75.798437,
+   "name": "Dul Hasti Dam"
+  },
+  {
+   "osm": "w515134235",
+   "lat": 28.234892,
+   "lon": 104.179155,
+   "name": "Yunnan Yanjin Hengjiang Wannianqiao"
+  },
+  {
+   "osm": "w515331740",
+   "lat": 28.140928,
+   "lon": 104.238384,
+   "name": "Yunnan Sayutuo Hydro"
+  },
+  {
+   "osm": "w520579577",
+   "lat": 49.871903,
+   "lon": 33.971465,
+   "name": "Шашацька ГЕС"
+  },
+  {
+   "osm": "w526606772",
+   "lat": 31.91665,
+   "lon": 104.774456,
+   "name": "Wudu Dam"
+  },
+  {
+   "osm": "w53176328",
+   "lat": 42.577627,
+   "lon": -6.560914,
+   "name": "Presa de Bárcena",
+   "operator": "Enel Green Power",
+   "kw": 61200
+  },
+  {
+   "osm": "w531922742",
+   "lat": 34.309484,
+   "lon": 111.408906,
+   "name": "Luoning Yumenhechina"
+  },
+  {
+   "osm": "w533446320",
+   "lat": 28.515562,
+   "lon": 104.245085
+  },
+  {
+   "osm": "w533877530",
+   "lat": 28.89245,
+   "lon": 107.734441,
+   "name": "角木塘水电站",
+   "kw": 70000
+  },
+  {
+   "osm": "w533891403",
+   "lat": 28.496269,
+   "lon": 108.47131,
+   "name": "沙沱大坝",
+   "kw": 1120000
+  },
+  {
+   "osm": "w534655160",
+   "lat": 27.113606,
+   "lon": 109.681839,
+   "name": "托口水电站",
+   "kw": 830000
+  },
+  {
+   "osm": "w542530291",
+   "lat": 55.139922,
+   "lon": -162.272294,
+   "name": "Delta Creek Hydroelectric Plant",
+   "operator": "City of King Cove",
+   "kw": 375
+  },
+  {
+   "osm": "w542531157",
+   "lat": 55.139618,
+   "lon": -162.270078,
+   "name": "Clear Creek Dam",
+   "operator": "City of King Cove"
+  },
+  {
+   "osm": "w543184435",
+   "lat": 24.659426,
+   "lon": 98.521613
+  },
+  {
+   "osm": "w550460977",
+   "lat": 39.116798,
+   "lon": -76.875282,
+   "name": "Rocky Gorge Dam"
+  },
+  {
+   "osm": "w550612014",
+   "lat": 23.067741,
+   "lon": 111.818954,
+   "name": "Nanjiangkou Small Yunan County"
+  },
+  {
+   "osm": "w552112929",
+   "lat": 43.236078,
+   "lon": 22.273841,
+   "name": "МХЕ Вргудинац",
+   "operator": "PowerGen",
+   "kw": 1520
+  },
+  {
+   "osm": "w552367375",
+   "lat": 27.238368,
+   "lon": 115.801629,
+   "name": "Jiangxi Lean County Dongan Small"
+  },
+  {
+   "osm": "w553178704",
+   "lat": 36.575034,
+   "lon": 136.995333,
+   "name": "庄川合口ダム"
+  },
+  {
+   "osm": "w555979607",
+   "lat": 36.015635,
+   "lon": 128.397925
+  },
+  {
+   "osm": "w558256306",
+   "lat": -20.237861,
+   "lon": -44.754567
+  },
+  {
+   "osm": "w558327397",
+   "lat": 25.262931,
+   "lon": 92.200994,
+   "name": "Myntdu-Leshka Hydro Project Dam"
+  },
+  {
+   "osm": "w559562810",
+   "lat": 34.453905,
+   "lon": 103.89504,
+   "name": "Hongyuan Small"
+  },
+  {
+   "osm": "w563839906",
+   "lat": 31.794514,
+   "lon": 104.751806,
+   "name": "Sichuan Keguang 1st Level"
+  },
+  {
+   "osm": "w564442520",
+   "lat": 41.550744,
+   "lon": 69.667279,
+   "name": "Таваксайская ГЭС",
+   "operator": "O'zbekenergo",
+   "kw": 73600
+  },
+  {
+   "osm": "w568228195",
+   "lat": 28.575863,
+   "lon": 103.701795,
+   "name": "Pingbian Guanyintuo Hydro"
+  },
+  {
+   "osm": "w568497356",
+   "lat": 48.448851,
+   "lon": 7.950677,
+   "name": "WKA Großer Deich Offenburg/Kinzig",
+   "operator": "Elektrizitätswerk Mittelbaden Wasserkraft GmbH & Co.KG",
+   "kw": 465
+  },
+  {
+   "osm": "w570871683",
+   "lat": 27.433429,
+   "lon": 104.013747,
+   "name": "Yiliang County Xionggou Small"
+  },
+  {
+   "osm": "w576288694",
+   "lat": 25.474366,
+   "lon": 104.884827,
+   "name": "Guizhou Louxiahe Small"
+  },
+  {
+   "osm": "w57871388",
+   "lat": 47.947083,
+   "lon": -119.865155,
+   "name": "Wells Dam",
+   "operator": "PUD No 1 of Douglas County",
+   "kw": 774000,
+   "builtYear": 1967
+  },
+  {
+   "osm": "w580930783",
+   "lat": 27.822202,
+   "lon": 103.747028,
+   "name": "Yunnan Youfanggou"
+  },
+  {
+   "osm": "w581573938",
+   "lat": 37.404674,
+   "lon": 127.540077,
+   "name": "Ipo"
+  },
+  {
+   "osm": "w582994759",
+   "lat": 28.334866,
+   "lon": 107.406501,
+   "name": "Niudu On Furong River"
+  },
+  {
+   "osm": "w583844907",
+   "lat": 37.277456,
+   "lon": 127.683223,
+   "name": "강천보"
+  },
+  {
+   "osm": "w584190367",
+   "lat": 37.327599,
+   "lon": 127.607072,
+   "name": "여주보"
+  },
+  {
+   "osm": "w584671759",
+   "lat": 37.724545,
+   "lon": 127.420931,
+   "name": "청평댐",
+   "operator": "한국수력원자력",
+   "kw": 139600
+  },
+  {
+   "osm": "w586704039",
+   "lat": 48.880988,
+   "lon": 18.009861,
+   "name": "Vodné dielo Trenčianske Biskupice 2"
+  },
+  {
+   "osm": "w595085442",
+   "lat": 25.264185,
+   "lon": 102.489574
+  },
+  {
+   "osm": "w595362744",
+   "lat": 14.562759,
+   "lon": -91.364167,
+   "name": "Panan"
+  },
+  {
+   "osm": "w595421810",
+   "lat": 26.823099,
+   "lon": 101.785329,
+   "name": "二滩水电站",
+   "operator": "Yalong Hydro",
+   "kw": 3300000
+  },
+  {
+   "osm": "w598321537",
+   "lat": 45.651659,
+   "lon": 12.286925,
+   "name": "Centrale Idroelettrica Silea",
+   "operator": "Sied Spa"
+  },
+  {
+   "osm": "w599145068",
+   "lat": 28.760282,
+   "lon": 109.505729,
+   "name": "碗米坡水电站",
+   "kw": 240000
+  },
+  {
+   "osm": "w606808107",
+   "lat": 34.132312,
+   "lon": -85.793979,
+   "name": "Weiss Dam",
+   "operator": "Alabama Power",
+   "kw": 87600,
+   "builtYear": 1961
+  },
+  {
+   "osm": "w617189229",
+   "lat": 25.888399,
+   "lon": 102.716658,
+   "name": "Yunnan Qianchang"
+  },
+  {
+   "osm": "w621782031",
+   "lat": 31.737211,
+   "lon": 104.726692,
+   "name": "Sichuan Keguang 3rd Level"
+  },
+  {
+   "osm": "w621791563",
+   "lat": 29.274806,
+   "lon": 107.889908,
+   "name": "银盘水电站",
+   "kw": 600000
+  },
+  {
+   "osm": "w624211586",
+   "lat": 15.859894,
+   "lon": 107.653616,
+   "name": "Đập Thuỷ điện Za Hung"
+  },
+  {
+   "osm": "w625597726",
+   "lat": 35.379565,
+   "lon": 128.551994,
+   "name": "창녕함안보"
+  },
+  {
+   "osm": "w625599010",
+   "lat": 35.733969,
+   "lon": 128.416949,
+   "name": "달성보"
+  },
+  {
+   "osm": "w625602096",
+   "lat": 36.462451,
+   "lon": 127.09888,
+   "name": "공주보"
+  },
+  {
+   "osm": "w625604244",
+   "lat": 36.472314,
+   "lon": 127.260375,
+   "name": "세종보"
+  },
+  {
+   "osm": "w625612184",
+   "lat": 35.59103,
+   "lon": 128.356281,
+   "name": "합천창녕보"
+  },
+  {
+   "osm": "w626566371",
+   "lat": 37.446186,
+   "lon": 105.020364,
+   "name": "Shapotou Dam",
+   "kw": 120300
+  },
+  {
+   "osm": "w6281239",
+   "lat": 52.488462,
+   "lon": 20.923691,
+   "name": "Elektrownia Wodna Dębe",
+   "operator": "PGE Energia Odnawialna S.A.",
+   "kw": 21180,
+   "builtYear": 1963
+  },
+  {
+   "osm": "w636380202",
+   "lat": 14.184999,
+   "lon": 108.106672,
+   "name": "Đập thủy điện Đak Đoa"
+  },
+  {
+   "osm": "w638056336",
+   "lat": 27.365196,
+   "lon": 119.430456,
+   "name": "Fujian Niutoushan"
+  },
+  {
+   "osm": "w640515502",
+   "lat": 8.214502,
+   "lon": -81.59407,
+   "name": "Dique Barro Blanco",
+   "kw": 28560
+  },
+  {
+   "osm": "w645192824",
+   "lat": 25.808122,
+   "lon": 115.108549
+  },
+  {
+   "osm": "w64684464",
+   "lat": 41.187932,
+   "lon": 72.160403,
+   "name": "Үч-Коргон ГЭСи",
+   "kw": 180000
+  },
+  {
+   "osm": "w647890379",
+   "lat": 27.678771,
+   "lon": 111.433211,
+   "name": "Hunan Lengshuijiang Langshitan"
+  },
+  {
+   "osm": "w652042171",
+   "lat": 24.412368,
+   "lon": 115.359816,
+   "name": "Fengshuba Dam",
+   "kw": 160000
+  },
+  {
+   "osm": "w652413844",
+   "lat": 41.474563,
+   "lon": -5.864919
+  },
+  {
+   "osm": "w652591257",
+   "lat": 26.324526,
+   "lon": 102.634004,
+   "name": "乌东德大坝",
+   "kw": 10200000
+  },
+  {
+   "osm": "w652865857",
+   "lat": 40.723724,
+   "lon": 128.270216,
+   "name": "내정댐"
+  },
+  {
+   "osm": "w653420643",
+   "lat": 26.573863,
+   "lon": 101.642346,
+   "name": "金沙水电站",
+   "kw": 560000
+  },
+  {
+   "osm": "w653876448",
+   "lat": 28.182948,
+   "lon": 101.630863,
+   "name": "锦屏一级水电站",
+   "kw": 3600000
+  },
+  {
+   "osm": "w661432740",
+   "lat": 24.10693,
+   "lon": 87.308739,
+   "name": "Massanjore Dam"
+  },
+  {
+   "osm": "w666373545",
+   "lat": 24.480256,
+   "lon": 104.162297,
+   "name": "凤凰谷水电站",
+   "kw": 100000
+  },
+  {
+   "osm": "w667431851",
+   "lat": 25.913236,
+   "lon": 92.499527,
+   "name": "KARBI LANGPI"
+  },
+  {
+   "osm": "w668935457",
+   "lat": 15.589672,
+   "lon": -89.729489,
+   "name": "Oxec"
+  },
+  {
+   "osm": "w670686429",
+   "lat": 9.329515,
+   "lon": 76.879708,
+   "name": "Lower Periyar Dam",
+   "operator": "Kerala State Electricity Board"
+  },
+  {
+   "osm": "w671323843",
+   "lat": 26.006819,
+   "lon": 91.811403,
+   "name": "Umtru Dam"
+  },
+  {
+   "osm": "w672455900",
+   "lat": 40.047615,
+   "lon": 140.606167,
+   "name": "森吉ダム"
+  },
+  {
+   "osm": "w674159021",
+   "lat": 33.320593,
+   "lon": -83.841209,
+   "name": "Lloyd Shoals Dam",
+   "operator": "Georgia Power",
+   "kw": 14400,
+   "builtYear": 1911
+  },
+  {
+   "osm": "w680556817",
+   "lat": 26.445347,
+   "lon": 114.794071,
+   "name": "万安水电站",
+   "kw": 500000
+  },
+  {
+   "osm": "w684314668",
+   "lat": 29.246484,
+   "lon": 92.397088,
+   "name": "大古水电站",
+   "kw": 640000
+  },
+  {
+   "osm": "w685562797",
+   "lat": 51.671451,
+   "lon": 58.627298,
+   "name": "Ириклинская ГЭС",
+   "operator": "Интер РАО",
+   "kw": 30000,
+   "builtYear": 1958
+  },
+  {
+   "osm": "w68609752",
+   "lat": 45.498878,
+   "lon": -75.76316,
+   "name": "Centrale des Rapides-Farmer",
+   "operator": "Hydro-Québec"
+  },
+  {
+   "osm": "w689507665",
+   "lat": 42.451143,
+   "lon": -89.075585,
+   "name": "Rockton Dam",
+   "operator": "Eagle Creek Renewable Energy, LLC",
+   "kw": 1100,
+   "builtYear": 1929
+  },
+  {
+   "osm": "w691372848",
+   "lat": 47.684968,
+   "lon": 10.320316,
+   "kw": 900
+  },
+  {
+   "osm": "w692494863",
+   "lat": 41.83897,
+   "lon": -86.35134,
+   "name": "Buchanan Dam"
+  },
+  {
+   "osm": "w694618013",
+   "lat": 28.232196,
+   "lon": 115.796444,
+   "name": "江西龙头山水电站枢纽工程",
+   "kw": 240000
+  },
+  {
+   "osm": "w694618693",
+   "lat": 27.911211,
+   "lon": 115.437012,
+   "name": "赣江新干航电枢纽",
+   "kw": 112000
+  },
+  {
+   "osm": "w695889316",
+   "lat": 28.698513,
+   "lon": 106.169438,
+   "name": "Hejiang County Yuanxing Hydro"
+  },
+  {
+   "osm": "w695985721",
+   "lat": 6.496178,
+   "lon": -10.651436,
+   "name": "Mount Coffee Hydropower Plant",
+   "operator": "Mount Coffee Hydropower Plant",
+   "kw": 88000,
+   "builtYear": 2016
+  },
+  {
+   "osm": "w697321111",
+   "lat": 30.261263,
+   "lon": 102.195533,
+   "name": "长河坝水电站",
+   "kw": 2600000
+  },
+  {
+   "osm": "w697553010",
+   "lat": 23.728925,
+   "lon": 107.979154,
+   "name": "大化水电站",
+   "kw": 566000
+  },
+  {
+   "osm": "w69762775",
+   "lat": 61.27885,
+   "lon": 22.695574,
+   "name": "Äetsän voimalaitos",
+   "operator": "UPM Energy Oy",
+   "kw": 16000,
+   "builtYear": 1921
+  },
+  {
+   "osm": "w700595151",
+   "lat": -9.188629,
+   "lon": -57.051761,
+   "name": "Usina Hidrelétrica São Manoel",
+   "kw": 700000,
+   "builtYear": 2018
+  },
+  {
+   "osm": "w702925439",
+   "lat": -22.414114,
+   "lon": -55.439222,
+   "name": "Pequena Central Hidrelétrica São João II",
+   "operator": "Sao Joao Energia LTDA",
+   "kw": 664,
+   "builtYear": 1962
+  },
+  {
+   "osm": "w707971447",
+   "lat": 25.945865,
+   "lon": 115.362431,
+   "name": "Jiangxi Yudu Yuezhou"
+  },
+  {
+   "osm": "w713874424",
+   "lat": 26.164098,
+   "lon": 57.896414,
+   "name": "سد جگین"
+  },
+  {
+   "osm": "w722566009",
+   "lat": -18.921304,
+   "lon": 47.92944
+  },
+  {
+   "osm": "w726604479",
+   "lat": -3.9805,
+   "lon": -79.017308,
+   "name": "Delsitanisagua hidroelectrica",
+   "operator": "CELEC"
+  },
+  {
+   "osm": "w730033110",
+   "lat": -20.493937,
+   "lon": -47.859219,
+   "name": "PCH Anhanguera"
+  },
+  {
+   "osm": "w733894880",
+   "lat": 27.597331,
+   "lon": 88.65018,
+   "name": "Teesta Stage III Dam"
+  },
+  {
+   "osm": "w736530301",
+   "lat": 22.608214,
+   "lon": 102.256273,
+   "name": "土卡河水电站",
+   "kw": 165000
+  },
+  {
+   "osm": "w738981152",
+   "lat": -37.244015,
+   "lon": -72.529798,
+   "name": "Hidroeléctrica Laja",
+   "operator": "EMR",
+   "kw": 34400,
+   "builtYear": 2015
+  },
+  {
+   "osm": "w744378058",
+   "lat": 29.237047,
+   "lon": 103.208362,
+   "name": "沙坪二级水电站",
+   "kw": 348000
+  },
+  {
+   "osm": "w744763769",
+   "lat": 29.019917,
+   "lon": 103.081531,
+   "name": "Sichuan Leshan Ebian Jinyan Hydro"
+  },
+  {
+   "osm": "w747127085",
+   "lat": 47.399797,
+   "lon": 8.049687,
+   "name": "Kraftwerk Rüchlig",
+   "operator": "Axpo",
+   "kw": 11000,
+   "builtYear": 2015
+  },
+  {
+   "osm": "w74727575",
+   "lat": 40.460951,
+   "lon": 124.96211,
+   "name": "水丰水库 / 수풍언제"
+  },
+  {
+   "osm": "w749181146",
+   "lat": 27.989673,
+   "lon": 104.234131,
+   "name": "Yunnan Whitewaters Development"
+  },
+  {
+   "osm": "w752163447",
+   "lat": 26.018383,
+   "lon": 100.950685,
+   "name": "Yunnan Dali Tiechuanqiao Hydro"
+  },
+  {
+   "osm": "w757555554",
+   "lat": 27.350135,
+   "lon": 102.561453,
+   "name": "Sichuan Gongdefang"
+  },
+  {
+   "osm": "w757679580",
+   "lat": 27.548148,
+   "lon": 102.621563,
+   "name": "Sichuan Province Yingxiongpo"
+  },
+  {
+   "osm": "w761604397",
+   "lat": 5.802705,
+   "lon": -6.655892
+  },
+  {
+   "osm": "w762984889",
+   "lat": 15.299757,
+   "lon": -90.163368
+  },
+  {
+   "osm": "w76455894",
+   "lat": 37.145036,
+   "lon": -119.451636,
+   "name": "Big Creek Number 7 104-022 Dam"
+  },
+  {
+   "osm": "w768630684",
+   "lat": 49.511526,
+   "lon": 18.415769,
+   "name": "Šance"
+  },
+  {
+   "osm": "w770272326",
+   "lat": 45.24014,
+   "lon": 24.346251,
+   "name": "CALIMANESTI (Olt)"
+  },
+  {
+   "osm": "w771345539",
+   "lat": 30.466751,
+   "lon": 106.144458,
+   "name": "东西关水电站",
+   "kw": 210000
+  },
+  {
+   "osm": "w780739499",
+   "lat": 45.428251,
+   "lon": 80.048922,
+   "name": "Nizhne-Baskansk HPP-1"
+  },
+  {
+   "osm": "w788455003",
+   "lat": 25.484142,
+   "lon": 114.998871
+  },
+  {
+   "osm": "w788874983",
+   "lat": 29.902542,
+   "lon": 106.390495,
+   "name": "草街电站大坝",
+   "kw": 500000
+  },
+  {
+   "osm": "w789335406",
+   "lat": 25.210405,
+   "lon": 113.275821,
+   "name": "乐昌峡水利工程",
+   "kw": 132000
+  },
+  {
+   "osm": "w799378202",
+   "lat": 9.335048,
+   "lon": 76.89951,
+   "name": "Karikayam Dam",
+   "operator": "private"
+  },
+  {
+   "osm": "w801753320",
+   "lat": 19.706619,
+   "lon": 73.432395,
+   "name": "Middle Vaitarna Dam",
+   "operator": "MCGM"
+  },
+  {
+   "osm": "w80373951",
+   "lat": 67.381138,
+   "lon": 32.526999,
+   "name": "Нива ГЭС-1",
+   "operator": "ТГК-1",
+   "kw": 24900,
+   "builtYear": 1953
+  },
+  {
+   "osm": "w805174036",
+   "lat": 12.452043,
+   "lon": 108.337388,
+   "name": "Đập thủy điện Krông Kmar"
+  },
+  {
+   "osm": "w808197847",
+   "lat": 48.034792,
+   "lon": 24.92564,
+   "name": "ГЕС"
+  },
+  {
+   "osm": "w817760424",
+   "lat": 25.920068,
+   "lon": 115.193161,
+   "name": "Jiangxi Yudu Xiashan"
+  },
+  {
+   "osm": "w819987091",
+   "lat": 24.457266,
+   "lon": 97.672931,
+   "name": "Yingjiang County Gulikahe"
+  },
+  {
+   "osm": "w823015162",
+   "lat": 30.240528,
+   "lon": 78.831631,
+   "name": "Shrinagar Dam"
+  },
+  {
+   "osm": "w824980838",
+   "lat": 27.808859,
+   "lon": 104.516537,
+   "name": "Yiliang Baishuijiang Liuxi"
+  },
+  {
+   "osm": "w83348196",
+   "lat": 47.585955,
+   "lon": 8.132994,
+   "name": "Rheinkraftwerk Albbruck-Dogern",
+   "operator": "RADAG",
+   "kw": 79500
+  },
+  {
+   "osm": "w834739408",
+   "lat": 45.592198,
+   "lon": 22.961101,
+   "name": "Hateg"
+  },
+  {
+   "osm": "w837738958",
+   "lat": 33.082073,
+   "lon": 106.08031,
+   "name": "Shaanxi Juting"
+  },
+  {
+   "osm": "w83913812",
+   "lat": 41.65659,
+   "lon": 72.635768,
+   "name": "Токтогульская ГЭС",
+   "kw": 1200000
+  },
+  {
+   "osm": "w84037746",
+   "lat": 68.833056,
+   "lon": 32.811692,
+   "name": "Туломская ГЭС"
+  },
+  {
+   "osm": "w843180333",
+   "lat": 22.052749,
+   "lon": 100.76666,
+   "name": "景洪大坝",
+   "kw": 1750000,
+   "builtYear": 2003
+  },
+  {
+   "osm": "w844679320",
+   "lat": 29.140387,
+   "lon": 92.547904,
+   "name": "加查水电站",
+   "kw": 360000
+  },
+  {
+   "osm": "w847017389",
+   "lat": 29.042807,
+   "lon": 102.801573,
+   "name": "苏雄电站"
+  },
+  {
+   "osm": "w847307055",
+   "lat": 33.168537,
+   "lon": 104.262144,
+   "name": "Sichuan Jiuzhaigou County Songbai"
+  },
+  {
+   "osm": "w851384276",
+   "lat": 43.38122,
+   "lon": -72.598349,
+   "name": "Cavendish Dam",
+   "operator": "Green Mountain Power",
+   "kw": 1700,
+   "builtYear": 1907
+  },
+  {
+   "osm": "w852572928",
+   "lat": 34.778662,
+   "lon": -81.45621,
+   "name": "Lockhart Dam",
+   "operator": "Lockhart Power",
+   "kw": 18000,
+   "builtYear": 1921
+  },
+  {
+   "osm": "w854116561",
+   "lat": 18.619097,
+   "lon": 102.387524,
+   "name": "ເຂື່ອນໄຟຟ້ານ້ຳລີກ 1",
+   "kw": 64000,
+   "builtYear": 2018
+  },
+  {
+   "osm": "w864209612",
+   "lat": -6.092525,
+   "lon": 144.126692
+  },
+  {
+   "osm": "w867157747",
+   "lat": 47.285558,
+   "lon": 12.880061,
+   "name": "Kraftwerk Gries",
+   "operator": "Verbund Hydro Power GmbH",
+   "kw": 9000,
+   "builtYear": 2019
+  },
+  {
+   "osm": "w868384598",
+   "lat": 38.554917,
+   "lon": 100.280479,
+   "name": "Gansu Jingtieshan Hydro"
+  },
+  {
+   "osm": "w871801733",
+   "lat": 41.59951,
+   "lon": 69.864534,
+   "name": "Ходжикенская плотина"
+  },
+  {
+   "osm": "w872866016",
+   "lat": 16.311977,
+   "lon": 107.149973
+  },
+  {
+   "osm": "w882870973",
+   "lat": -17.608491,
+   "lon": -54.826061,
+   "name": "Barragem da Usina Hidrelétrica Ponte de Pedra",
+   "operator": "Engie",
+   "kw": 176100
+  },
+  {
+   "osm": "w884054499",
+   "lat": 46.955925,
+   "lon": 16.348228,
+   "name": "Csörötneki vízerőmű",
+   "kw": 485
+  },
+  {
+   "osm": "w884934600",
+   "lat": 6.871133,
+   "lon": 9.761707,
+   "name": "Kashimbila Dam",
+   "kw": 40000
+  },
+  {
+   "osm": "w886485199",
+   "lat": 47.158517,
+   "lon": 16.463168,
+   "name": "Pornóapáti vízerőmű",
+   "kw": 113
+  },
+  {
+   "osm": "w886783751",
+   "lat": 30.087898,
+   "lon": 102.715518,
+   "name": "Jiaojiping Hydroelectric"
+  },
+  {
+   "osm": "w887909891",
+   "lat": 34.649005,
+   "lon": 74.751425,
+   "name": "Kishenganga Dam"
+  },
+  {
+   "osm": "w888236337",
+   "lat": 27.17974,
+   "lon": 119.677665,
+   "name": "Fuan"
+  },
+  {
+   "osm": "w892210495",
+   "lat": 24.701107,
+   "lon": 116.132985,
+   "name": "Changtan Dam",
+   "kw": 64000
+  },
+  {
+   "osm": "w89754799",
+   "lat": 43.236384,
+   "lon": -6.847404,
+   "name": "Presa de Salime",
+   "operator": "Enel Green Power España",
+   "kw": 78600
+  },
+  {
+   "osm": "w907652419",
+   "lat": 39.14764,
+   "lon": 22.062567,
+   "name": "Φράγμα Τεχνητής Λίμνης Σμοκόβου",
+   "operator": "ΥΠ.Υ.ΜΕ.ΔΙ, ΔΕΗ",
+   "kw": 10370,
+   "builtYear": 2002
+  },
+  {
+   "osm": "w908328141",
+   "lat": 23.645285,
+   "lon": 114.671857,
+   "name": "Fengguang"
+  },
+  {
+   "osm": "w911058617",
+   "lat": 56.250785,
+   "lon": -101.117465,
+   "name": "Laurie River Generating Station Two",
+   "kw": 5000
+  },
+  {
+   "osm": "w911058618",
+   "lat": 56.224823,
+   "lon": -101.010306,
+   "name": "Laurie River Generating Station",
+   "operator": "Manitoba Hydro",
+   "builtYear": 1952
+  },
+  {
+   "osm": "w913710457",
+   "lat": 25.636776,
+   "lon": 115.552044
+  },
+  {
+   "osm": "w913722530",
+   "lat": 25.589387,
+   "lon": 115.521736
+  },
+  {
+   "osm": "w91572432",
+   "lat": 62.244775,
+   "lon": 25.887453
+  },
+  {
+   "osm": "w916253356",
+   "lat": 26.233538,
+   "lon": 112.972118,
+   "name": "Shangbao Small"
+  },
+  {
+   "osm": "w917234356",
+   "lat": 15.091505,
+   "lon": 106.524737,
+   "name": "Houai Makchan",
+   "operator": "Xe Pian-Xe Namnoy Power Company"
+  },
+  {
+   "osm": "w922172627",
+   "lat": 33.458621,
+   "lon": -87.356892,
+   "name": "John Hollis Bankhead Lock and Dam",
+   "kw": 53900,
+   "builtYear": 1963
+  },
+  {
+   "osm": "w923582772",
+   "lat": 30.193408,
+   "lon": 101.01148,
+   "name": "两河口大坝",
+   "kw": 3000000
+  },
+  {
+   "osm": "w92540979",
+   "lat": 63.879287,
+   "lon": 34.321354
+  },
+  {
+   "osm": "w926037694",
+   "lat": 29.300909,
+   "lon": 102.933488,
+   "name": "深溪沟水电站",
+   "kw": 660000
+  },
+  {
+   "osm": "w92705055",
+   "lat": 45.636824,
+   "lon": -74.361049
+  },
+  {
+   "osm": "w9285335444",
+   "lat": -43.173469,
+   "lon": 170.646957,
+   "name": "Amethyst Hydro",
+   "operator": "West Power",
+   "builtYear": 2013
+  },
+  {
+   "osm": "w931403417",
+   "lat": 47.960489,
+   "lon": 14.776924
+  },
+  {
+   "osm": "w93688711",
+   "lat": 45.299382,
+   "lon": -122.350838,
+   "name": "River Mill Dam"
+  },
+  {
+   "osm": "w938875334",
+   "lat": 26.947804,
+   "lon": 114.546882,
+   "name": "Jiangxi Gongge"
+  },
+  {
+   "osm": "w941065698",
+   "lat": 36.440302,
+   "lon": -82.437654,
+   "name": "Boone Dam",
+   "operator": "Tennessee Valley Authority",
+   "kw": 105900,
+   "builtYear": 1953
+  },
+  {
+   "osm": "w94449902",
+   "lat": 39.777476,
+   "lon": -5.612318,
+   "name": "Presa de Valdecañas",
+   "operator": "Ibedrola",
+   "kw": 249000
+  },
+  {
+   "osm": "w949769378",
+   "lat": 12.034271,
+   "lon": 38.005246
+  },
+  {
+   "osm": "w950266361",
+   "lat": 43.703833,
+   "lon": 83.669543,
+   "name": "Xinjiang Kashi River Taledesayi"
+  },
+  {
+   "osm": "w954514133",
+   "lat": 43.820915,
+   "lon": 81.943788,
+   "name": "Xinjiang Kashi River Wenquan"
+  },
+  {
+   "osm": "w955818618",
+   "lat": 24.131338,
+   "lon": 116.057052,
+   "name": "龙上水电站",
+   "operator": "广东梅雁吉祥水电股份有限公司",
+   "kw": 25000
+  },
+  {
+   "osm": "w955818619",
+   "lat": 24.24159,
+   "lon": 116.10269,
+   "name": "三龙水电站",
+   "operator": "广东梅雁吉祥水电股份有限公司",
+   "kw": 24000
+  },
+  {
+   "osm": "w955818620",
+   "lat": 24.281674,
+   "lon": 116.180271,
+   "name": "西阳水电站",
+   "operator": "广东威华集团",
+   "kw": 20000
+  },
+  {
+   "osm": "w955818621",
+   "lat": 24.342109,
+   "lon": 116.251527,
+   "name": "丙村水电站",
+   "operator": "广东梅雁吉祥水电股份有限公司",
+   "kw": 20000
+  },
+  {
+   "osm": "w955818622",
+   "lat": 24.472881,
+   "lon": 116.361635,
+   "name": "单竹窝水电站",
+   "operator": "广东梅雁吉祥水电股份有限公司",
+   "kw": 34000
+  },
+  {
+   "osm": "w955818624",
+   "lat": 24.23864,
+   "lon": 116.603173,
+   "name": "龙湖水电站",
+   "operator": "广东粤水电韩江水利开发有限公司",
+   "kw": 100000
+  },
+  {
+   "osm": "w955818626",
+   "lat": 24.561919,
+   "lon": 116.618613,
+   "name": "Qingxi Dam",
+   "kw": 144000
+  },
+  {
+   "osm": "w956666969",
+   "lat": 26.70754,
+   "lon": 101.850121,
+   "name": "桐子林水电站",
+   "kw": 600000
+  },
+  {
+   "osm": "w9571152801",
+   "lat": 52.529133,
+   "lon": 10.620584
+  },
+  {
+   "osm": "w967389586",
+   "lat": 23.782551,
+   "lon": 99.028579,
+   "name": "Zhenkang Quanqiaohe"
+  },
+  {
+   "osm": "w970600471",
+   "lat": 25.634266,
+   "lon": 115.696931,
+   "name": "Jiangxi Huichang Yingnaogang"
+  },
+  {
+   "osm": "w970600500",
+   "lat": 25.838243,
+   "lon": 115.594731,
+   "name": "白鹅峡水电站"
+  },
+  {
+   "osm": "w971209669",
+   "lat": 27.341722,
+   "lon": 93.816816,
+   "name": "RANGANADI"
+  },
+  {
+   "osm": "w975502088",
+   "lat": 39.626023,
+   "lon": 94.798522
+  },
+  {
+   "osm": "w977746758",
+   "lat": 37.831595,
+   "lon": 75.525291,
+   "name": "Kashgar Tarim River Xiabandi"
+  },
+  {
+   "osm": "w9779975257",
+   "lat": 30.142949,
+   "lon": 109.61707,
+   "name": "Dongping Dam"
+  },
+  {
+   "osm": "w981043845",
+   "lat": 5.611177,
+   "lon": 39.692744,
+   "name": "Genale–Dawa III Dam"
+  },
+  {
+   "osm": "w983797929",
+   "lat": 41.318287,
+   "lon": 128.155628,
+   "name": "삼수댐"
+  },
+  {
+   "osm": "w9853726765",
+   "lat": 50.166982,
+   "lon": 20.570612
+  },
+  {
+   "osm": "w98648435",
+   "lat": 47.557844,
+   "lon": 8.236685,
+   "name": "Hydraulisches Kraftwerk Beznau",
+   "operator": "Axpo",
+   "kw": 19250,
+   "builtYear": 1902
+  },
+  {
+   "osm": "w987660016",
+   "lat": 21.832808,
+   "lon": 107.943606,
+   "name": "大垌水库水电站",
+   "kw": 1600
+  },
+  {
+   "osm": "w988882728",
+   "lat": 35.262397,
+   "lon": 133.491497,
+   "name": "俣野川ダム"
+  },
+  {
+   "osm": "w993362237",
+   "lat": 45.391694,
+   "lon": -84.333338,
+   "name": "Kleber Dam",
+   "operator": "Tower Kleber Limited Partnership",
+   "kw": 1200
+  },
+  {
+   "osm": "w997210758",
+   "lat": 36.279173,
+   "lon": 44.332964,
+   "name": "بەنداوی گۆمەسپان",
+   "operator": "حکومەتی هەرێمی کوردستان",
+   "kw": 2400
+  }
+ ]
+}

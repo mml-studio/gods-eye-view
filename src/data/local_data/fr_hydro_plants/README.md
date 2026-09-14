@@ -1,9 +1,15 @@
 # France's hydro fleet, all of it
 
-`plants.json` is the register the **Petite hydro (FR)** layer draws: every
+`plants.json` is the register the **Centrales hydro** layer draws: every
 hydroelectric installation in ODRÉ's *Registre national des installations de
 production et de stockage d'électricité*, and the best position anyone
 publishes for each one.
+
+The layer also draws a second, much smaller pack beside this one —
+[`../world_hydro/`](../world_hydro/README.md), 592 stations OpenStreetMap maps
+outside France, which used to ship inside the dams pack as "barrages". They are
+a sample and are drawn as one: their own colour, their own legend row, their
+own card. Nothing in THIS file is affected by them.
 
 It exists because of a hole found by looking for one place. There are **nine
 hydroelectric plants in the commune of Laruns**, in the Pyrénées-Atlantiques —

@@ -4,7 +4,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
-  DAM_DISPLAY_FLOORS,
   DAM_JOIN_MAX_M,
   DAM_MATERIAL_FAMILIES,
   DAM_MIN_SPAN_M,
@@ -22,7 +21,6 @@ import {
   UNCLASSIFIED_STRUCTURE_LABEL,
   damBuiltYear,
   damCardDetails,
-  damDisplayFloor,
   damFeatureProperties,
   damGroupKey,
   damGroupParts,
@@ -40,7 +38,7 @@ import {
   damStructureTitle,
   damTier,
   damTierLegend,
-  damTierVisible,
+  damGroupVisible,
   isDamStructureKind,
   nearestDam,
 } from './damsPack.js';
@@ -259,7 +257,7 @@ test('the top tier takes height, electricity, or a name on a long structure', ()
   assert.equal(damTier(null), 'minor');
 });
 
-test('every tier has a style, a floor that keeps it, and a shrinking card range', () => {
+test('every tier has a style and two shrinking, ordered LOD ranges', () => {
   const keys = DAM_TIERS.map((tier) => tier.key);
   assert.deepEqual(keys, ['major', 'named', 'minor'], 'the array order IS the ranking');
 
@@ -275,7 +273,8 @@ test('every tier has a style, a floor that keeps it, and a shrinking card range'
       assert.ok(style, `${kind}:${tier.key} has no style`);
       assert.equal(style.pixelSize, undefined, `${kind}:${tier.key} still sizes by tier`);
       assert.equal(style.stemWidth, undefined, `${kind}:${tier.key} still widens by tier`);
-      assert.equal(style.cardMaxDistance, tier.cardMaxDistance, `${kind}:${tier.key} range`);
+      assert.equal(style.cardMaxDistance, tier.cardMaxDistance, `${kind}:${tier.key} card range`);
+      assert.equal(style.markerMaxDistance, tier.markerMaxDistance, `${kind}:${tier.key} mark range`);
       colours.add(style.color);
     }
     assert.equal(colours.size, 4, `${tier.key}: the four structures must not share a colour`);
@@ -291,28 +290,22 @@ test('every tier has a style, a floor that keeps it, and a shrinking card range'
   for (let i = 1; i < DAM_TIERS.length; i += 1) {
     assert.ok(DAM_TIERS[i].priority < DAM_TIERS[i - 1].priority);
     assert.ok(DAM_TIERS[i].cardMaxDistance < DAM_TIERS[i - 1].cardMaxDistance);
+    assert.ok(DAM_TIERS[i].markerMaxDistance < DAM_TIERS[i - 1].markerMaxDistance,
+      `${DAM_TIERS[i].key}: the mark must thin with the ladder, like the card`);
   }
 
-  // Every floor keeps a prefix of the ladder, and TOUS keeps all of it.
-  assert.deepEqual(DAM_DISPLAY_FLOORS[0].keep, keys);
-  for (const floor of DAM_DISPLAY_FLOORS) {
-    assert.deepEqual(floor.keep, keys.slice(0, floor.keep.length),
-      `${floor.id} keeps something other than the top of the ladder`);
+  // The MARK never arrives later than the name it belongs to. A card offered
+  // over a mark that is not drawn is a label on nothing — the failure mode
+  // this pair of distances exists to make impossible.
+  for (const tier of DAM_TIERS) {
+    assert.ok(tier.markerMaxDistance >= tier.cardMaxDistance,
+      `${tier.key}: the card outlives its own mark`);
   }
-});
 
-test('a display floor hides the tiers below it and falls back to showing everything', () => {
-  assert.equal(damTierVisible('minor', { floor: 'all' }), true);
-  assert.equal(damTierVisible('minor', { floor: 'named' }), false);
-  assert.equal(damTierVisible('named', { floor: 'named' }), true);
-  assert.equal(damTierVisible('named', { floor: 'major' }), false);
-  assert.equal(damTierVisible('major', { floor: 'major' }), true);
-
-  // An unknown or missing floor shows the whole pack rather than nothing.
-  assert.equal(damDisplayFloor('nonsense').id, 'all');
-  assert.equal(damDisplayFloor(undefined).id, 'all');
-  assert.equal(damTierVisible('minor', {}), true);
-  assert.equal(damTierVisible('minor'), true);
+  // The bottom rung is the one the reported defect was about: 5 744 nameless
+  // ouvrages drawn at every altitude. It now waits for France to stop
+  // overflowing the frame.
+  assert.equal(DAM_TIERS.at(-1).markerMaxDistance, 900_000);
 });
 
 test('the legend counts what is DRAWN and names what it is hiding', () => {
@@ -347,29 +340,34 @@ test('the legend counts what is DRAWN and names what it is hiding', () => {
   assert.deepEqual(damTierLegend(null), []);
 });
 
-test('the two chip rows are orthogonal, and neither hides what it claims to keep', () => {
-  // Importance and structure are independent facts, so their filters AND
-  // together and their params merge rather than replace.
-  assert.equal(damTierVisible('dam:major', {}), true, 'no params shows everything');
-  assert.equal(damTierVisible('dyke:minor', { floor: 'major' }), false, 'the floor still applies');
-  assert.equal(damTierVisible('dyke:major', { kinds: 'dams' }), false);
-  assert.equal(damTierVisible('dam:major', { kinds: 'dykes' }), false);
-  assert.equal(damTierVisible('dyke:major', { kinds: 'dykes' }), true);
-  // Both filters at once.
-  assert.equal(damTierVisible('dyke:major', { floor: 'major', kinds: 'dykes' }), true);
-  assert.equal(damTierVisible('dyke:named', { floor: 'major', kinds: 'dykes' }), false);
+test('the one chip row filters on structure and NOTHING else', () => {
+  // THE 2026-09 SIMPLIFICATION. There used to be a second, orthogonal row —
+  // TOUS / NOMMÉS / GRANDS — and it named a size while filtering on something
+  // else: only 65 of GRANDS' 494 French features carry a height at all, so the
+  // clause actually doing the work was `hydro === true`. Thinning by
+  // importance is the zoom's job now (`markerMaxDistance`), and a tier key can
+  // no longer hide a feature.
+  assert.equal(damGroupVisible('dam:major', {}), true, 'no params shows everything');
+  assert.equal(damGroupVisible('dyke:minor', { floor: 'major' }), true,
+    'a stale `floor` param from a shared link must not hide anything');
+  assert.equal(damGroupVisible('dam:minor', {}), true, 'the bottom rung is never chip-hidden');
+
+  assert.equal(damGroupVisible('dyke:major', { kinds: 'dams' }), false);
+  assert.equal(damGroupVisible('dam:major', { kinds: 'dykes' }), false);
+  assert.equal(damGroupVisible('dyke:major', { kinds: 'dykes' }), true);
+  assert.equal(damGroupVisible('dyke:minor', { kinds: 'dykes' }), true);
 
   // The 25 double-tagged features are kept by BOTH chips: they genuinely are
   // both, and hiding them from either view would make a filter lie.
-  assert.equal(damTierVisible('dam+dyke:major', { kinds: 'dams' }), true);
-  assert.equal(damTierVisible('dam+dyke:major', { kinds: 'dykes' }), true);
+  assert.equal(damGroupVisible('dam+dyke:major', { kinds: 'dams' }), true);
+  assert.equal(damGroupVisible('dam+dyke:major', { kinds: 'dykes' }), true);
 
-  // The unclassified world half rides with BARRAGES rather than vanishing.
-  assert.equal(damTierVisible(':major', { kinds: 'dams' }), true);
-  assert.equal(damTierVisible(':major', { kinds: 'dykes' }), false);
+  // The unclassified world tail rides with BARRAGES rather than vanishing.
+  assert.equal(damGroupVisible(':major', { kinds: 'dams' }), true);
+  assert.equal(damGroupVisible(':major', { kinds: 'dykes' }), false);
 
   // An unknown chip shows everything rather than emptying the map.
-  assert.equal(damTierVisible('dyke:major', { kinds: 'nope' }), true);
+  assert.equal(damGroupVisible('dyke:major', { kinds: 'nope' }), true);
 });
 
 test('the group key carries both axes, and survives a missing one', () => {
@@ -476,10 +474,11 @@ test('the shipped pack is French-complete, graded, and carries nothing it should
   const features = readFileSync(PACK, 'utf8')
     .split('\n').filter((line) => line.trim()).map((line) => JSON.parse(line));
 
-  // Rebuilt 2026-09-01 with dykes: 7,432 features, 6,771 of them in France.
-  // Floors, not equalities — OSM growing is upstream working; the pack HALVING
-  // is a broken extraction, and only the second should fail here.
-  assert.ok(features.length > 6800, `pack shrank unexpectedly (${features.length})`);
+  // Rebuilt 2026-09-01 with dykes, split 2026-09-14: 6,840 features, 6,771 of
+  // them in France. Floors, not equalities — OSM growing is upstream working;
+  // the pack HALVING is a broken extraction, and only the second should fail
+  // here.
+  assert.ok(features.length > 6700, `pack shrank unexpectedly (${features.length})`);
 
   const ALLOWED = new Set([
     'name', 'osm', 'operator', 'river', 'heightM', 'spanM',
@@ -532,18 +531,31 @@ test('the shipped pack is French-complete, graded, and carries nothing it should
   // the pack held 25 dykes and could not say so — they were filed as dams,
   // and seven features named "Digue …" were labelled "Grand barrage".
   assert.ok(dykes > 800, `the dykes did not survive the rebuild (${dykes})`);
-  // …and the carried-over world half stays UNCLASSIFIED rather than defaulting
-  // to dam, which would recreate the conflation where nobody would notice.
-  assert.ok(unclassified > 400, `the world half lost its honest blank (${unclassified})`);
-  assert.ok(unclassified < 1000, `too much of the pack is unclassified (${unclassified})`);
+  // …and the world tail stays UNCLASSIFIED rather than defaulting to dam,
+  // which would recreate the conflation where nobody would notice.
+  assert.ok(unclassified > 40, `the world tail lost its honest blank (${unclassified})`);
+  assert.ok(unclassified < 200, `too much of the pack is unclassified (${unclassified})`);
+
+  // THE 2026-09-14 HANDOVER. 592 of the world half's 661 features carried
+  // `hydro: true`, because that half was never an extraction of dam STRUCTURES
+  // at all — it was the old Open Infrastructure Map POWER-PLANT layer. They
+  // are drawn by `fr-hydro-plants` now. This pack's subject is the structure,
+  // so nothing that generates may ship here without a `kind`: a feature with
+  // neither is, by construction, a power station filed as a wall.
+  for (const feature of features) {
+    assert.ok(!(feature.properties.hydro === true && feature.properties.kind === undefined),
+      `${feature.id} is an unclassified generating station — it belongs to world_hydro`);
+  }
 
   // The whole point of the rebuild: France used to hold 44 of 704 features.
   assert.ok(french > 5000, `French coverage collapsed (${french})`);
-  // And the world half is still there, so the layer is not empty elsewhere.
-  assert.ok(features.length - french > 400, 'the world snapshot was dropped');
+  // And a world tail is still there, so the layer is not empty elsewhere.
+  assert.ok(features.length - french > 40, 'the world snapshot was dropped whole');
 
   // The ladder has to keep separating; a pack where everything is `major` is a
   // classifier that stopped classifying.
+  // After the handover the top tier is 100 % French — which is what makes its
+  // orbital `markerMaxDistance` a statement about France and not an artefact.
   assert.ok(tally.major > 400 && tally.major < features.length / 2, `top tier: ${tally.major}`);
   assert.ok(tally.minor > 2000, `unnamed tier collapsed: ${tally.minor}`);
 
@@ -685,7 +697,7 @@ test('the whole key stays short enough to read at a glance', () => {
 
 test('the shipped pack still has the span coverage the size channel was chosen on', () => {
   const features = readFileSync(PACK, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
-  assert.equal(features.length, 7432, 'the pack this was measured against');
+  assert.equal(features.length, 6840, 'the pack this was measured against');
 
   const counts = new Map();
   let withHeight = 0;
@@ -698,11 +710,11 @@ test('the shipped pack still has the span coverage the size channel was chosen o
     counts.set(key, (counts.get(key) || 0) + 1);
   }
 
-  // THE decision this whole section rests on: `height` is on 2.3 % of the
-  // pack, which is not a size channel, it is a list of 171 objects. If a
+  // THE decision this whole section rests on: `height` is on 2.1 % of the
+  // pack, which is not a size channel, it is a list of 143 objects. If a
   // re-extraction ever pushes it past a usable share, this assertion is the
   // place that says so.
-  assert.equal(withHeight, 171);
+  assert.equal(withHeight, 143);
   assert.ok(withHeight / features.length < 0.05, `height reaches ${withHeight}`);
   assert.equal(withSpan, 5328);
   assert.ok(withSpan / features.length > 0.7, `span reaches ${withSpan}`);
@@ -712,13 +724,15 @@ test('the shipped pack still has the span coverage the size channel was chosen o
   assert.equal(counts.get('span300'), 439);
   assert.equal(counts.get('span100'), 2132);
   assert.equal(counts.get('span25'), 2641);
-  assert.equal(counts.get(DAM_SPAN_UNKNOWN.key), 2104);
+  // 592 fewer than before the hydro handover, and every one of them was a
+  // power-plant outline the pack never had a crest length for.
+  assert.equal(counts.get(DAM_SPAN_UNKNOWN.key), 1512);
   for (const entry of [...DAM_SPAN_CLASSES, DAM_SPAN_UNKNOWN]) {
     assert.equal(entry.count, counts.get(entry.key), `${entry.key} count is stale`);
   }
-  // More than a quarter of the layer is unmeasured. That is precisely why it
+  // More than a fifth of the layer is unmeasured. That is precisely why it
   // gets a mark of its own instead of the smallest disc.
-  assert.ok(counts.get(DAM_SPAN_UNKNOWN.key) / features.length > 0.25);
+  assert.ok(counts.get(DAM_SPAN_UNKNOWN.key) / features.length > 0.2);
 });
 
 // ── The nearest structure, offered to another layer ────────────────────────

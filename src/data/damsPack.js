@@ -40,11 +40,11 @@
  * was to put one of them on the size channel. Measured on the shipped pack
  * before writing a line of it:
  *
- *     heightM   171 of 7 432   2.30 %
- *     spanM   5 328 of 7 432  71.69 %
+ *     heightM   143 of 6 840   2.09 %
+ *     spanM   5 328 of 6 840  77.89 %
  *
- * `height` is REFUSED. At 2.3 % coverage a height-driven size would be a map
- * of 171 objects and 7 261 defaults, and the 171 are not a sample of anything —
+ * `height` is REFUSED. At 2.1 % coverage a height-driven size would be a map
+ * of 143 objects and 6 697 defaults, and the 143 are not a sample of anything —
  * they are the barrages somebody thought worth measuring, which is the ladder
  * `damTier` already reads. `length` is not shipped at all: the allowlist in
  * {@link damFeatureProperties} never carried it.
@@ -58,22 +58,22 @@
  * The four classes are FROZEN DOMAIN thresholds (C1), never quantiles of what
  * is on screen — 100 m, 300 m and 1 000 m, with their measured populations:
  *
- *     ≥ 1 000 m       116   1.56 %
- *     300 – 999 m     439   5.91 %
- *     100 – 299 m   2 132  28.69 %
- *     25 – 99 m     2 641  35.54 %
- *     not measured  2 104  28.31 %   (of which 660 are the world snapshot,
- *                                     which shipped without geometry to measure)
+ *     ≥ 1 000 m       116   1.70 %
+ *     300 – 999 m     439   6.42 %
+ *     100 – 299 m   2 132  31.17 %
+ *     25 – 99 m     2 641  38.61 %
+ *     not measured  1 512  22.11 %   (of which 68 are the world tail, which
+ *                                     shipped without geometry to measure)
  *
- * The 2 104 get a HOLLOW ring, not the smallest disc (A1): "not measured" and
- * "short" are not the same statement, and 28 % of the layer is too much of it
+ * The 1 512 get a HOLLOW ring, not the smallest disc (A1): "not measured" and
+ * "short" are not the same statement, and 22 % of the layer is too much of it
  * to leave silently indistinguishable. That ring is the ONE size row the key
  * prints; the four bands are read off the card, which gives the metre count
  * itself rather than the bracket it falls in.
  *
  * Constant PIXELS, not world units, and deliberately the opposite choice from
  * `datacentersPack.js` next door: a dam's span is a length along an axis this
- * pack does not ship — 5 583 of the features are a single point — so there is
+ * pack does not ship — 5 576 of the features are a single point — so there is
  * no true-size shape to draw. A constant-pixel disc is then the only honest
  * quantitative mark, and it is safe here precisely because this renderer sets
  * `PointGraphics.pixelSize` and never a `scaleByDistance`: nothing composes
@@ -87,7 +87,7 @@
  * Tier now lives entirely on the two channels that were already its own and
  * that no other variable competes for: the label ladder's priority and the
  * distance at which a card stops being offered ({@link DAM_TIERS} `priority`
- * and `cardMaxDistance`), plus the display chips. Colour is untouched — it
+ * and `cardMaxDistance`), plus the mark's own range. Colour is untouched — it
  * still says WHAT the structure is.
  */
 
@@ -555,13 +555,41 @@ export function damFeatureProperties({ tags, osm, spanM = null }) {
  */
 
 /**
- * The three tiers, most important first. This array IS the order: the chips
- * read it top-down and `DAM_DISPLAY_FLOORS` slices it.
+ * The three tiers, most important first. This array IS the order: the legend
+ * renders it top-down.
  *
  * It carries NO `pixelSize` and no `stemWidth` any more — see "WHAT THE SIZE
  * CHANNEL USED TO CARRY" at the top of this file. What is left is what tier
- * legitimately owns: a label-grid priority and the distance at which the card
- * stops being offered.
+ * legitimately owns: a label-grid priority and the two LOD distances.
+ *
+ * ── THE TWO DISTANCES, AND WHY THE SECOND ONE REPLACED A CHIP ───────────────
+ *
+ * `cardMaxDistance` is how far out the NAME is still offered. `markerMaxDistance`
+ * is how far out the MARK is drawn at all. The second is new, and it exists
+ * because it does the ONE job the old TOUS / NOMMÉS / GRANDS chip row actually
+ * did — thin 6 771 French structures down to something readable — without
+ * asking a reader to learn three words for it.
+ *
+ * The chips were removed rather than retuned, and the measurement is why.
+ * `GRANDS` kept 494 French features, but not because they are big: only 65 of
+ * them carry a height at all. The tier's OR admits anything hydroelectric, so
+ * "GRANDS" was a hydro filter wearing a size label — A3, and a chip that named
+ * the wrong fact. What is left says nothing and asks nothing: a pond outlet
+ * arrives when its département fills the frame, a named barrage when its
+ * région does, Serre-Ponçon from orbit.
+ *
+ * 900 km for `minor` is the airports pack's number and the same derivation:
+ * France spans about 1 000 km, and at ~870 km a 1 000 km span fills a 1080 px
+ * viewport. The 5 744 unnamed seuils therefore arrive exactly when France has
+ * stopped being the subject of the frame — which matters more here than next
+ * door, because after the 2026-09 hydro migration this pack is 6 840 features
+ * of which 6 771 are French. Drawn from orbit it would report a dam density
+ * that belongs to the SELECTION and not to the world.
+ *
+ * `named` is set to about 2.5× its card range, so the mark always precedes the
+ * name it belongs to rather than arriving with it. `major` keeps the shared
+ * local-layer ceiling on both: a grand barrage is readable from orbit and its
+ * mark has to be there to be read.
  *
  * Colours are one blue ramp — these are three grades of one thing — around the
  * layer's historical `#0088ff`, and clear of cyan (datacenters), amber (ports)
@@ -573,8 +601,11 @@ export const DAM_TIERS = Object.freeze([
     label: 'Grand barrage',
     color: '#9ad9ff',
     priority: 240,
-    // Readable from orbit: the shared local-layer ceiling, unchanged.
+    // Readable from orbit: the shared local-layer ceiling, unchanged. The mark
+    // matches it — a name offered over a mark that is not drawn is an empty
+    // promise.
     cardMaxDistance: 14_000_000,
+    markerMaxDistance: 14_000_000,
     blurb: 'Au moins 15 m de haut — le seuil international du grand barrage — '
       + 'ou exploité pour l’électricité (EDF, CNR, SHEM), ou nommé et long de 300 m.',
   }),
@@ -583,8 +614,10 @@ export const DAM_TIERS = Object.freeze([
     label: 'Barrage nommé',
     color: '#3fa4e0',
     priority: 110,
-    // Regional scale: the name arrives once a région fills the screen.
+    // Regional scale: the name arrives once a région fills the screen, the
+    // mark about 2.5× earlier so it precedes its own label.
     cardMaxDistance: 1_200_000,
+    markerMaxDistance: 3_000_000,
     blurb: 'Porte un nom dans OpenStreetMap, sans hauteur, exploitant ni '
       + 'envergure qui le hisse au-dessus.',
   }),
@@ -597,9 +630,11 @@ export const DAM_TIERS = Object.freeze([
     label: 'Petit ouvrage',
     color: '#2b6c96',
     priority: 30,
-    // Départemental scale. The marker is always drawn; only its CARD waits
-    // until you are close enough for an unnamed weir to be the point.
+    // Départemental scale for the card. The MARK is no longer always drawn:
+    // 900 km is where France stops overflowing the frame, and below that these
+    // 5 744 nameless ouvrages are the wall this layer was reported for.
     cardMaxDistance: 200_000,
+    markerMaxDistance: 900_000,
     blurb: 'Sans nom, sans hauteur et sans exploitant : sorties d’étang et '
       + 'ouvrages de dérivation, pour l’essentiel.',
   }),
@@ -677,6 +712,7 @@ export const DAM_TIER_STYLES = Object.freeze(Object.fromEntries(
     Object.freeze({
       color: ramp[tier.key],
       cardMaxDistance: tier.cardMaxDistance,
+      markerMaxDistance: tier.markerMaxDistance,
     }),
   ])),
 ));
@@ -713,61 +749,34 @@ export function damTier(props) {
 }
 
 /**
- * The display floors offered as row chips, from "show everything" downward.
+ * Whether a group is drawn, which is now a question about the STRUCTURE alone.
  *
- * `keep` is written out per floor rather than derived from an index, so that
- * reordering DAM_TIERS can never silently redefine what a chip does. These are
- * RUNTIME params, not share-link state: the pack always ships whole and
- * `getStats().count` keeps reporting the total, so a floor hides markers
- * without losing them.
- */
-export const DAM_DISPLAY_FLOORS = Object.freeze([
-  Object.freeze({
-    id: 'all',
-    label: 'TOUS',
-    keep: Object.freeze(['major', 'named', 'minor']),
-    title: 'Tous les ouvrages du paquet',
-  }),
-  Object.freeze({
-    id: 'named',
-    label: 'NOMMÉS',
-    keep: Object.freeze(['major', 'named']),
-    title: 'Masquer les seuils et petits ouvrages sans nom',
-  }),
-  Object.freeze({
-    id: 'major',
-    label: 'GRANDS',
-    keep: Object.freeze(['major']),
-    title: 'Ne garder que les grands barrages et les ouvrages hydroélectriques',
-  }),
-]);
-
-const FLOOR_BY_ID = new Map(DAM_DISPLAY_FLOORS.map((floor) => [floor.id, floor]));
-
-/** The floor a params object selects, falling back to "show everything". */
-export function damDisplayFloor(floorId) {
-  return FLOOR_BY_ID.get(text(floorId)) || DAM_DISPLAY_FLOORS[0];
-}
-
-/**
- * Whether a tier is drawn under the given floor.
- * @param {string} tierKey A DAM_TIERS key.
- * @param {{floor?: string}} [params] Layer runtime params.
+ * The importance half of this predicate went with the old importance chip
+ * row: a tier no longer hides behind a chip, it arrives with the zoom, through
+ * `markerMaxDistance` documented on {@link DAM_TIERS}. The group key still
+ * carries the tier — the renderer resolves one key per feature and bakes the
+ * tier's own LOD distances into its primitives off it — so this reads the key
+ * and answers on its `kind` half.
+ *
+ * @param {string} groupKey A `kind:tier` composite from {@link damGroupKey}.
+ * @param {{kinds?: string}} [params] Layer runtime params.
  * @returns {boolean}
  */
-export function damTierVisible(groupKey, params = {}) {
-  const { kind, tier } = damGroupParts(groupKey);
-  if (!damDisplayFloor(params?.floor).keep.includes(tier)) return false;
-  return damStructureVisible(kind, params);
+export function damGroupVisible(groupKey, params = {}) {
+  return damStructureVisible(damGroupParts(groupKey).kind, params);
 }
 
 /**
- * The structure chips — the second, orthogonal axis.
+ * The structure chips — and, since 2026-09, the ONLY row this layer offers.
  *
- * Runtime params MERGE rather than replace in `createLocalGeoJsonLayer`, so
- * this row coexists with the importance floors without touching the share-link
- * grammar: `local-dams` keeps its single token and the floors stay runtime-only,
- * exactly as documented for `DAM_DISPLAY_FLOORS`.
+ * Three words, two of which a reader already owns: a barrage sits across the
+ * water, a digue runs alongside it. The importance row that used to sit beside
+ * this one is gone; see {@link DAM_TIERS} for what replaced it and what the
+ * measurement was.
+ *
+ * These are RUNTIME params, not share-link state: the pack always ships whole
+ * and `getStats().count` keeps reporting the total, so a chip hides marks
+ * without losing them, and `local-dams` keeps its single share token.
  */
 export const DAM_STRUCTURE_CHIPS = Object.freeze([
   Object.freeze({
@@ -862,9 +871,9 @@ export function damTierLegend(tally) {
   // reader will find that sign on the map, and after the size handover there
   // is no mark on the globe that says "Grand barrage" — the three blues in the
   // old rows were the same three blues as the structure rows above, printed
-  // twice. What tier still does — decide how far out a card is offered, and
-  // what the TOUS/NOMMÉS/GRANDS chips keep — is stated by the chips' own
-  // titles, right beside them. The size rows that follow in the panel come
+  // twice. What tier still does — decide how far out a card and a mark are
+  // offered — is a zoom behaviour, not a row a reader could press. The size
+  // rows that follow in the panel come
   // from `damSpanLegend`, and every one of them names a mark on the globe.
   return legend;
 }
@@ -914,7 +923,7 @@ export const DAM_SPAN_UNKNOWN = Object.freeze({
   key: 'nospan',
   label: 'Longueur inconnue',
   pixelSize: 8,
-  count: 2104,
+  count: 1512,
 });
 
 const SPAN_CLASS_BY_KEY = new Map([

@@ -1,23 +1,62 @@
-# Barrages
+# Barrages & digues
 
-Bundled dam pack behind the `local-dams` layer. **7 432 features**, rebuilt
+Bundled dam pack behind the `local-dams` layer. **6 840 features**, rebuilt
 2026-09-01 with `npm run dams:pack`
-([scripts/build-osm-dams.mjs](../../../../scripts/build-osm-dams.mjs)).
-
-Two halves, one shape:
+([scripts/build-osm-dams.mjs](../../../../scripts/build-osm-dams.mjs)), split
+2026-09-14.
 
 | Half | Features | Source | Geometry |
 |---|---|---|---|
 | France — métropole + outre-mer | 6 771 | OpenStreetMap, extracted directly via the Overpass API on 2026-09-01 | dam AND dyke structures |
-| Rest of the world | 661 | the older Open Infrastructure Map / PostGIS snapshot the pack shipped before | power-station outlines carrying a dam tag |
+| Rest of the world | 69 | the older Open Infrastructure Map / PostGIS snapshot the pack shipped before | outlines with no generator |
 
 The French half is why this file exists. The pack used to be 704 features for
 the entire planet, and **44** of them were in France — so in a France fork
 "Barrages" was a row you switched on to watch nothing happen. France is now
-extracted completely; the world half is carried over feature for feature rather
-than re-extracted, because `waterway=dam` worldwide is tens of megabytes of
-committed geometry for a fork whose subject is France. The taxonomy says so:
-`coverage: 'fr'`.
+extracted completely. The taxonomy says where the layer can be trusted to have
+the set: `coverage: 'fr'`.
+
+## The world half lost 592 features, and they were never dams
+
+The two halves were never the same object. France is an extraction of dam
+STRUCTURES. The world half was the old Open Infrastructure Map **POWER-PLANT**
+layer, filtered on a dam tag — 661 features, **592 of them generating
+stations**. So one row answered a click with a civil-engineering structure in
+France and with a power station everywhere else, and the divergence was loudest
+where a reader looks first: on the top tier, `damTier` promotes anything
+hydroelectric, so it held **592 world features against 494 French ones**.
+Someone who switched on "Barrages" and looked at the globe got a map of the
+world's hydroelectricity.
+
+Those 592 moved to [`../world_hydro/`](../world_hydro/README.md), which the
+**Centrales hydro** layer draws beside France's own register — the layer whose
+subject they have always been. **Nothing was deleted.** The 69 that generate
+nothing (pumping stations, reservoirs, unpowered barrages) stayed here,
+unclassified, because a structure with no generator is this pack's subject and
+nothing else's.
+
+## The row has one chip group, and it did not always
+
+`TOUS / BARRAGES / DIGUES`, and that is all. There used to be a second,
+orthogonal row — `TOUS / NOMMÉS / GRANDS` — and it was removed on 2026-09-14
+rather than retuned, for a measured reason: **`GRANDS` named a size and filtered
+on something else.** It kept 494 French features, of which only **65 carry a
+height at all**; the clause actually doing the work was `hydro === true`, so the
+chip was a hydro filter wearing a size label.
+
+What it legitimately did — thin 6 771 structures down to something readable — is
+the zoom's job now, through `markerMaxDistance` on each tier:
+
+| Tier | Features (FR) | Mark drawn under | Card offered under |
+|---|---|---|---|
+| Grand barrage | 494 | 14 000 km (orbit) | 14 000 km |
+| Barrage nommé | 533 | 3 000 km | 1 200 km |
+| Petit ouvrage | 5 744 | **900 km** | 200 km |
+
+900 km is where France stops overflowing a 1080 px viewport, so the nameless
+seuils arrive exactly when a département is the subject of the frame — and a
+globe seen from orbit stops reporting a French dam density that belongs to the
+SELECTION rather than to the world.
 
 ## Selection
 
@@ -38,13 +77,13 @@ carries `kind`:
 | `dam` | 5 504 | a barrier ACROSS the watercourse, holding it back |
 | `dyke` | 1 243 | an embankment ALONGSIDE the water, containing it |
 | `dam+dyke` | 24 | tagged both in OSM — the mapper did not choose, and neither does this pack |
-| *absent* | 661 | the carried-over world half, whose raw tags are long gone |
+| *absent* | 69 | the world tail, whose raw tags are long gone |
 
 An **absent** `kind` means unclassified, never "dam". Defaulting it would
 recreate the exact conflation the field exists to end, outside France where
 nobody would notice.
 
-`kind` also writes the TITLE of the 5 948 features OpenStreetMap never named —
+`kind` also writes the TITLE of the features OpenStreetMap never named —
 80% of the pack, so this is what most cards and globe labels actually say.
 Colouring a digue ochre and then titling its card "Barrage" loses the
 distinction on the one surface a reader reads: `w860215522` is a 159 m
@@ -87,9 +126,12 @@ different colours, because they are the same size and different objects.
 
 | Importance | | |
 |---|---|---|
-| Grand barrage | 1 086 | ≥ 15 m high, or hydroelectric, or named and ≥ 300 m long |
+| Grand barrage | 494 | ≥ 15 m high, or hydroelectric, or named and ≥ 300 m long |
 | Barrage nommé | 570 | |
 | Petit ouvrage | 5 776 | no name, no height, no operator |
+
+Since the hydro handover the top tier is **100 % French**, which is what makes
+its orbital `markerMaxDistance` honest.
 
 The bottom tier used to be called *"Seuil & petit ouvrage"*. It never contained
 a single OSM-tagged weir — `waterway=weir` has never been in the filters — so
@@ -97,11 +139,11 @@ the label named a thing the pack does not hold. It names the rule instead.
 
 | | |
 |---|---|
-| Named | 1 484 (20%) |
-| Hydroelectric | 972 (13%) |
-| With a height | 171 (2%) |
-| With a measured span | 5 328 (72%) |
-| Footprint polygons / points | 1 845 / 5 583 |
+| Named | 948 (14%) |
+| Hydroelectric | 380 (6%) — the other 94 % of this layer generates nothing |
+| With a height | 143 (2%) |
+| With a measured span | 5 328 (78%) |
+| Footprint polygons / points | 1 264 / 5 576 |
 
 Geometry, and why most dams ship as a point: nodes and closed ways keep what
 OSM has (Point, Polygon); an **open** way ships as a Point at the middle of its
@@ -129,6 +171,9 @@ rather than printing a placeholder.
 npm run dams:pack                       # queries Overpass (~90 s)
 node scripts/build-osm-dams.mjs raw.json  # replays a saved Overpass answer
 ```
+
+`carryOverWorld` drops any carried feature that is `hydro` and unclassified, so
+a rebuild re-applies the 2026-09-14 split rather than resurrecting the 592.
 
 Idempotent and deterministic: the world half is read back out of the file the
 script writes, features are emitted in code-point order of their OSM id, and

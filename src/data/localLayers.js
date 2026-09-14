@@ -9,12 +9,11 @@ import {
   airportTierVisible,
 } from './airportsPack.js';
 import {
-  DAM_DISPLAY_FLOORS,
   DAM_STRUCTURE_CHIPS,
   DAM_TIER_STYLES,
   damGroupKey,
+  damGroupVisible,
   damTierLegend,
-  damTierVisible,
 } from './damsPack.js';
 import { publishJoin } from './layerJoins.js';
 import { nearestDam } from './damsPack.js';
@@ -43,15 +42,19 @@ const datacenters = createLocalGeoJsonLayer({
   labelGridPx: 138,
 });
 
-// OpenStreetMap dams — ODbL, bundled. France (métropole + outre-mer) is a full
-// extraction of the dam STRUCTURES, 5 529 of them; the rest of the world is the
-// older Open Infrastructure Map snapshot the pack shipped before, kept so the
-// layer is not empty outside France. `source` said "USACE" for a year and never
-// was: nothing here has ever come from the US Army Corps of Engineers.
+// OpenStreetMap dam structures — ODbL, bundled. France (métropole + outre-mer)
+// is a full extraction, 6 771 features; 69 unclassified world features trail
+// behind it. `source` said "USACE" for a year and never was: nothing here has
+// ever come from the US Army Corps of Engineers.
+//
+// The name says "& digues" because 1 267 of the French features ARE digues,
+// and a reader who switched on "Barrages" and got an anti-ruissellement bund
+// was reading a row that had promised something else. The pack has separated
+// the two since 2026-09-01; the row now says so before the first click.
 const dams = createLocalGeoJsonLayer({
   id: 'local-dams',
   url: damsUrl,
-  name: 'Barrages',
+  name: 'Barrages & digues',
   color: '#0088ff', // Blue — the polygon footprints; points are graded below.
   icon: '▰',
   source: 'OpenStreetMap',
@@ -74,11 +77,12 @@ const dams = createLocalGeoJsonLayer({
   // group key per feature at load and bakes its style into the primitives.
   groupOf: damGroupKey,
   groupStyles: DAM_TIER_STYLES,
-  groupVisible: damTierVisible,
-  // Opens on TOUS/TOUS, like the airports pack: someone who switches the layer
-  // on asked to see the barrages, and hiding four fifths of them before being
-  // asked would answer a question nobody put.
-  defaultParams: { floor: DAM_DISPLAY_FLOORS[0].id, kinds: DAM_STRUCTURE_CHIPS[0].id },
+  groupVisible: damGroupVisible,
+  // Opens on TOUS, like the airports pack: someone who switches the layer on
+  // asked to see the ouvrages, and hiding a structure class before being asked
+  // would answer a question nobody put. Thinning by importance is not a chip
+  // any more — it is the zoom, through the tiers' `markerMaxDistance`.
+  defaultParams: { kinds: DAM_STRUCTURE_CHIPS[0].id },
 
   // ── The neighbourhood, offered to the small-hydro register ──────────────
   // A hydro plant's card names its head and its power and never the structure
@@ -105,27 +109,19 @@ const dams = createLocalGeoJsonLayer({
     return publishJoin('dams/nearest', (lat, lon, maxM) => nearestDam(rows, lat, lon, maxM));
   },
   rowControls: (params, tally) => ({
-    // Two rows in the one array the panel renders. Runtime params MERGE, so
-    // the two axes stay independent and neither touches the share-link
-    // grammar — `local-dams` keeps its single token.
-    chips: [
-      ...DAM_STRUCTURE_CHIPS.map((chip) => ({
-        id: `kinds:${chip.id}`,
-        label: chip.label,
-        active: (params.kinds || DAM_STRUCTURE_CHIPS[0].id) === chip.id,
-        state: (params.kinds || DAM_STRUCTURE_CHIPS[0].id) === chip.id ? 'active' : 'idle',
-        title: chip.title,
-        params: { kinds: chip.id },
-      })),
-      ...DAM_DISPLAY_FLOORS.map((floor) => ({
-        id: floor.id,
-        label: floor.label,
-        active: params.floor === floor.id,
-        state: params.floor === floor.id ? 'active' : 'idle',
-        title: floor.title,
-        params: { floor: floor.id },
-      })),
-    ],
+    // ONE row, three words. The importance row that used to sit under this one
+    // — TOUS / NOMMÉS / GRANDS — is gone: it named a size and filtered on
+    // something else (only 65 of GRANDS' 494 French features carry a height at
+    // all), and the thinning it did is a zoom behaviour now. Runtime params
+    // still MERGE, and `local-dams` still keeps its single share token.
+    chips: DAM_STRUCTURE_CHIPS.map((chip) => ({
+      id: `kinds:${chip.id}`,
+      label: chip.label,
+      active: (params.kinds || DAM_STRUCTURE_CHIPS[0].id) === chip.id,
+      state: (params.kinds || DAM_STRUCTURE_CHIPS[0].id) === chip.id ? 'active' : 'idle',
+      title: chip.title,
+      params: { kinds: chip.id },
+    })),
     legend: damTierLegend(tally),
   }),
 });

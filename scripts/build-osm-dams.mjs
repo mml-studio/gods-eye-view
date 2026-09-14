@@ -377,13 +377,16 @@ function flattenLineGeometry(geometry) {
  * @returns {{kept: object[], migrated: number, superseded: number, doubled: number}}
  */
 function carryOverWorld(freshIds) {
-  if (!fs.existsSync(OUT_JSONL)) return { kept: [], migrated: 0, superseded: 0, doubled: 0 };
+  if (!fs.existsSync(OUT_JSONL)) {
+    return { kept: [], migrated: 0, superseded: 0, doubled: 0, handedToHydro: 0 };
+  }
   const lines = fs.readFileSync(OUT_JSONL, 'utf8').split('\n').filter((line) => line.trim());
   const kept = [];
   const keptIds = new Set();
   let migrated = 0;
   let superseded = 0;
   let doubled = 0;
+  let handedToHydro = 0;
 
   for (const line of lines) {
     const feature = JSON.parse(line);
@@ -407,6 +410,29 @@ function carryOverWorld(freshIds) {
       doubled += 1;
       continue;
     }
+    // THE HYDRO HANDOVER (2026-09-14). 592 of the world half's 661 features
+    // carry `hydro: true`, because that half was never an extraction of dam
+    // STRUCTURES at all — it is the old Open Infrastructure Map POWER-PLANT
+    // layer, filtered on a dam tag. So the pack said two different things
+    // depending on where the camera was: in France, a civil-engineering
+    // structure; outside it, a generating station. On the top tier that
+    // divergence was the loudest, 592 world features against 494 French ones,
+    // and a reader who asked for "les barrages" got a map of the world's
+    // hydroelectricity.
+    //
+    // They are not deleted. They moved to `world_hydro`, which the hydro
+    // register layer draws beside France's own — the layer whose subject they
+    // have always been. The 69 that are NOT hydro (pumping stations,
+    // reservoirs, unpowered barrages) stay here, unclassified, because a
+    // structure with no generator is this pack's subject and nothing else's.
+    //
+    // Idempotent, like everything else in this function: the handed-over ids
+    // are gone from the file this reads, so a second run finds nothing to hand
+    // over and writes the same bytes.
+    if (properties.hydro === true && !properties.kind) {
+      handedToHydro += 1;
+      continue;
+    }
     if (id) keptIds.add(id);
     if (properties.tags) {
       migrated += 1;
@@ -426,7 +452,7 @@ function carryOverWorld(freshIds) {
     }
     kept.push({ ...feature, geometry: flattenLineGeometry(feature.geometry) });
   }
-  return { kept, migrated, superseded, doubled };
+  return { kept, migrated, superseded, doubled, handedToHydro };
 }
 
 /**
@@ -496,7 +522,9 @@ async function main() {
   if (french.length === 0) throw new Error('the French extraction came back empty — refusing to write');
 
   const freshIds = new Set(french.map((feature) => String(feature.id)));
-  const { kept, migrated, superseded, doubled } = carryOverWorld(freshIds);
+  const {
+    kept, migrated, superseded, doubled, handedToHydro,
+  } = carryOverWorld(freshIds);
 
   const features = french.concat(kept);
   // Code-point order, NOT localeCompare — this file is committed and two
@@ -546,14 +574,15 @@ async function main() {
     `Dropped           ${droppedForGeometry} for a missing position`,
     `Carried over      ${kept.length.toLocaleString('en-US')} world features `
       + `(${migrated} migrated to the shipped shape, ${superseded} superseded by the French `
-      + `extraction, ${doubled} dropped as a second decoding of the same OSM object)`,
+      + `extraction, ${doubled} dropped as a second decoding of the same OSM object`
+      + `${handedToHydro ? `, ${handedToHydro} handed to world_hydro` : ''})`,
     `Written           ${features.length.toLocaleString('en-US')} features → ${OUT_JSONL} (${(bytes / 1e6).toFixed(2)} MB)`,
     '',
     ...DAM_STRUCTURES.map((structure) => (
       `  ${structure.label.padEnd(15)} ${(kinds[structure.key] || 0).toLocaleString('en-US')}`
     )),
     `  ${'Non classé'.padEnd(15)} ${(kinds['(non classé)'] || 0).toLocaleString('en-US')}`
-      + '  (the carried-over world half — no tags left to classify)',
+      + '  (the world tail — no tags left to classify, and no generator either)',
     '',
     `  Grand barrage   ${tally.major.toLocaleString('en-US')}`,
     `  Barrage nommé   ${tally.named.toLocaleString('en-US')}`,

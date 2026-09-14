@@ -266,8 +266,9 @@ export const LAYER_FUSIONS = Object.freeze([
       }),
       Object.freeze({
         id: 'fr-hydro-plants',
-        chip: 'Petite hydro',
-        title: 'Registre ODRÉ des petites centrales hydroélectriques',
+        chip: 'Centrales hydro',
+        title: 'Registre ODRÉ — toute la filière hydraulique française, '
+          + 'plus 592 centrales cartographiées hors de France',
       }),
     ]),
   }),
