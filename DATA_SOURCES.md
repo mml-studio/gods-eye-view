@@ -548,7 +548,7 @@ Static datasets shipped in the repo for an out-of-the-box experience. **None are
 
 | Dataset | Folder | License | Commercial use? | Attribution |
 |---------|--------|---------|-----------------|-------------|
-| **Datacenters** (~4.3K) | `datacenters/` | **ODbL 1.0** (OpenStreetMap extract) | ✅ (attribution + share-alike on data) | "© OpenStreetMap contributors" |
+| **Datacenters** (4 638 — 4 351 OpenStreetMap features worldwide, plus **287 French sites in operation that OSM has never mapped**, appended from DCWatch) | `datacenters/` | **ODbL 1.0** (OpenStreetMap extract) **+ ODbL** (DCWatch release `2026.04.09`, Hubblo — after the ADEME/Arcep study of January 2026) | ✅ (attribution + share-alike on data, for both halves) | "© OpenStreetMap contributors" + "DCWatch" |
 | **Barrages et digues** (6,840 — 6,771 in France; 5,504 dams, 1,243 dykes, 24 both, 69 unclassified) | `dams/` | **ODbL 1.0** (OSM via Overpass for France; OpenInfraMap snapshot elsewhere) | ✅ (attribution + share-alike on data) | "© OpenStreetMap contributors" (+ Open Infrastructure Map for the world tail) |
 | **Centrales hydro hors de France** (592 — 536 named, 273 with a published power) | `world_hydro/` | **ODbL 1.0** (OSM via the Open Infrastructure Map snapshot) | ✅ (attribution + share-alike on data) | "© OpenStreetMap contributors" + Open Infrastructure Map |
 | **NGA World Port Index** (2,951 ports) | `ports/` | **Public domain** (U.S. Government work, 17 U.S.C. § 105) | ✅ (no restrictions) | "NGA World Port Index (Pub. 150)" (courtesy — not legally required) |
@@ -571,6 +571,19 @@ The submarine-cable GeoJSON is **CC BY-NC-SA 3.0** (Attribution-**NonCommercial*
 The richer structured dataset is licensed separately/commercially by TeleGeography.
 
 ### ODbL share-alike (datacenters, dams)
+
+**The datacenter pack is a merge of two ODbL databases, and `datacenters.geojsonl`
+is a build output, not an extract.** OpenStreetMap draws the footprints;
+[DCWatch](https://gitlab.com/hubblo/datacenter-watch) supplies the one thing OSM
+does not have — how much electricity a French site draws. `data_center:power` is
+set on five French OSM features out of 372; DCWatch publishes a collected figure
+in megawatts for 400 of its 427 French rows, and after the join **333 French
+sites carry a power, 2 301 MW in total**. Both databases are ODbL, so the
+share-alike obligation below covers the whole pack without a second regime. The
+join rules, the two DCWatch columns that are deliberately NOT copied (their
+floor areas are one number and a constant), and the refresh procedure are in
+`src/data/local_data/datacenters/README.md` and `dcwatch/SOURCE.md`; regenerate
+with `node scripts/build-datacenters-power.mjs`.
 
 The OSM-derived datasets are under the **Open Database License**. ODbL's share-alike applies to the **data / derived database, not this MIT-licensed code** — the two coexist (exactly how Open Infrastructure Map ships: MIT software + ODbL data). If you publicly distribute a *modified* version of these databases, you must offer it under ODbL. Keep the "© OpenStreetMap contributors" notice (link: https://www.openstreetmap.org/copyright).
 

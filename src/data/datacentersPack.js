@@ -1,5 +1,10 @@
 /*
- * DATACENTERS PACK — what the bundled OpenStreetMap snapshot can honestly say.
+ * DATACENTERS PACK — what the bundled snapshots can honestly say.
+ *
+ * The pack is now TWO databases under one ODbL licence: the OpenStreetMap
+ * extract this file was written for, and — in France only — the megawatts
+ * OpenStreetMap does not have. See "THE POWER OSM DOES NOT HAVE" below, and
+ * scripts/build-datacenters-power.mjs for how the two are joined.
  *
  * The layer drew 4 351 sites and its card said almost nothing about any of
  * them: 2 428 of them (55.8 %) rendered as a title and no detail line at all,
@@ -57,19 +62,26 @@
  * from 10 px to 6 px and stops being the size channel; it is now only the
  * stem's head and the card's hook.
  *
- * Measured over the whole pack, the four render classes and their counts:
+ * Measured over the whole shipped pack (4 638 features), the four render
+ * classes and their counts:
  *
- *     volume   461  10.6 %   building polygon + a published height
- *     slab   2 739  63.0 %   building polygon, height NOT published
- *     site     317   7.3 %   polygon with no `building` tag — a fence
- *     point    834  19.2 %   no polygon at all
+ *     volume   461   9.9 %   building polygon + a published height
+ *     slab   2 739  59.1 %   building polygon, height NOT published
+ *     site     317   6.8 %   polygon with no `building` tag — a fence
+ *     point  1 121  24.2 %   no polygon at all
  *
- * `slab` is 63 % of the pack and it is the reason nothing gets a default
- * height (A1): six features in ten would then be standing at a height nobody
- * measured. A slab is flat, and flat is the sign for "emprise connue, hauteur
- * inconnue". A `point` is a HOLLOW ring, not a disc, because there is no
- * emprise to be small — there is no emprise at all, and "small" and "absent"
- * must not share a mark.
+ * `point` is the class the DCWatch merge grew: 834 OSM nodes plus the 287
+ * French sites DCWatch locates and nobody has ever traced. They draw the same
+ * hollow ring for the same reason — the position is known and the emprise was
+ * never surveyed — so the merge needed no fifth sign.
+ *
+ * `slab` is 59 % of the pack — and 63 % of its OSM half, which is the
+ * population the decision was made on — and it is the reason nothing gets a
+ * default height (A1): six OSM features in ten would then be standing at a
+ * height nobody measured. A slab is flat, and flat is the sign for "emprise
+ * connue, hauteur inconnue". A `point` is a HOLLOW ring, not a disc, because
+ * there is no emprise to be small — there is no emprise at all, and "small"
+ * and "absent" must not share a mark.
  *
  * Height is read from `height` first (154 features, 3.5 %) because it is
  * already metres, then from `building:levels` (374, 8.6 %), which has to be
@@ -102,10 +114,38 @@
  * Areas are prefixed `≈` and rounded to two significant figures. OSM outlines
  * are volunteer tracings, not a survey, and the number must not read like one.
  *
- * Source:   OpenStreetMap (`telecom=data_center`), ODbL 1.0.
+ * ── THE POWER OSM DOES NOT HAVE ─────────────────────────────────────────────
+ *
+ * Everything above is what a volunteer can trace from the outside. How much
+ * electricity the building draws is not, and it shows: five French features in
+ * 372 publish `data_center:power`, and the three other capacity keys the card
+ * reads match one feature each in the whole world.
+ *
+ * DCWatch — a collaborative research database under ODbL, built after the
+ * ADEME/Arcep work published in January 2026 — publishes a collected figure in
+ * megawatts for 400 of its 427 French rows. `scripts/build-datacenters-power.mjs`
+ * folds it in, and the result over the shipped pack is:
+ *
+ *      53  OSM features pinned to a DCWatch row, 51 of them with a power
+ *     287  DCWatch sites in operation appended as Points, 282 with a power
+ *      78  DCWatch PROJECTS deliberately left out — see the build script
+ *     333  French sites now carrying a power, 2 301 MW in total
+ *
+ * Only two DCWatch columns reach this file: `power_total_mw` and
+ * `operation_start_year`. The two floor areas do not, because they are one
+ * number and a constant — the build script measures the ratio and says so —
+ * and this module must have no field a reader could mistake for a survey.
+ *
+ * Where a DCWatch value reaches a card, {@link datacenterCardDetails} signs the
+ * card. A mapped `data_center:power` always outranks the DCWatch figure, so
+ * signing is not merely decorative: it says which of two databases spoke.
+ *
+ * Sources:  OpenStreetMap (`telecom=data_center`), ODbL 1.0, and
+ *           DCWatch (https://gitlab.com/hubblo/datacenter-watch), ODbL.
  * See also: src/data/local_data/datacenters/README.md, which records that the
- *           snapshot's extraction date and query were never written down — so
- *           this module reads what is there and claims nothing about vintage.
+ *           OSM snapshot's extraction date and query were never written down —
+ *           so this module reads what is there and claims nothing about its
+ *           vintage — and dcwatch/SOURCE.md, which records DCWatch's.
  */
 
 /** Mean Earth radius (m). Matches the value the rest of the app measures with. */
@@ -174,7 +214,7 @@ function ringAreaM2(ring, lat0) {
 /**
  * Footprint area of a GeoJSON geometry, with inner rings subtracted.
  *
- * Returns 0 for Points and for anything unparseable — 834 features (19.2 %)
+ * Returns 0 for Points and for anything unparseable — 1 121 features (24.2 %)
  * are Points and have no footprint at all, and they must simply produce no
  * line rather than a zero.
  *
@@ -281,6 +321,50 @@ export function datacenterYear(value) {
   return year >= 1950 && year <= 2100 ? match[1] : '';
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * DCWATCH — the power OpenStreetMap does not have
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The `dcwatch` block a feature carries, or null.
+ *
+ * `scripts/build-datacenters-power.mjs` attaches this at build time from the
+ * vendored DCWatch snapshot: either onto an OSM feature it could pin the row
+ * to, or onto a Point it appended because OSM had never mapped the site. Both
+ * kinds read identically here — the block is the same shape — and the caller
+ * does not need to know which it is holding.
+ *
+ * There is deliberately NO floor area in this block. DCWatch publishes two,
+ * and they are one number and a constant — see dcwatch/SOURCE.md.
+ *
+ * @param {object} props Unwrapped feature properties.
+ * @returns {{powerMw?:number, startYear?:number, operator?:string,
+ *            name?:string, department?:string, release?:string,
+ *            id?:number}|null}
+ */
+export function datacenterDcwatch(props) {
+  const block = props && typeof props === 'object' ? props.dcwatch : null;
+  return block && typeof block === 'object' ? block : null;
+}
+
+/**
+ * Electrical power as a card prints it.
+ *
+ * Rounded to one decimal below 10 MW and to the whole megawatt above it. The
+ * French pack runs 0.03 MW → 85 MW with a median of 4; at the bottom of that
+ * range a tenth is the difference between two sites and at the top it is
+ * noise, and DCWatch's own figures carry three decimals it never measured to.
+ *
+ * @param {number} megawatts
+ * @returns {string} e.g. '15,6 MW', '85 MW', or '' when there is no figure.
+ */
+export function formatPowerMw(megawatts) {
+  const value = Number(megawatts);
+  if (!Number.isFinite(value) || value <= 0) return '';
+  const digits = value < 10 ? 1 : 0;
+  return `${value.toLocaleString('fr-FR', { maximumFractionDigits: digits })} MW`;
+}
+
 /**
  * The card lines for one datacenter, in reading order.
  *
@@ -290,14 +374,23 @@ export function datacenterYear(value) {
  * dashes. Measured over the pack, this takes "at least one detail line" from
  * 44.2 % to 93.4 %, and 64.1 % get two.
  *
- * @param {object} props Unwrapped feature properties (`{tags, ...}`).
+ * A French feature may also carry a `dcwatch` block, and where it does the
+ * card gains what OpenStreetMap could never tell it: the site's electrical
+ * power, the floor area of its halls, and the year it went into service. Those
+ * three are kept in the SAME slots as their OSM counterparts rather than being
+ * appended as extra lines — a reader looking for "how big" should find one
+ * answer in one place — but the line that carries them is signed, because a
+ * figure collected by a third party must not read as a surveyed tag.
+ *
+ * @param {object} props Unwrapped feature properties (`{tags, dcwatch, ...}`).
  * @param {{areaM2?: number}} [options] Footprint measured from the geometry.
- * @returns {string[]} Up to three lines.
+ * @returns {string[]} Up to four lines.
  */
 export function datacenterCardDetails(props, { areaM2 = 0 } = {}) {
   const source = props && typeof props === 'object' ? props : {};
   const tags = source.tags && typeof source.tags === 'object' ? source.tags : {};
   const title = text(source.name || tags.name).toLocaleLowerCase('fr-FR');
+  const dcwatch = datacenterDcwatch(source);
   const lines = [];
 
   // ── 1. Who runs it, and how big the IT load is when anyone said.
@@ -311,12 +404,19 @@ export function datacenterCardDetails(props, { areaM2 = 0 } = {}) {
   // actually an IT-load figure, and the three the old card looked for match one
   // feature each. They stay as tail fallbacks rather than being deleted,
   // because a future re-extraction may well populate them.
-  const power = firstText([
+  //
+  // DCWatch comes LAST in this chain, not first: five French features publish
+  // `data_center:power` in OSM and all five also have a DCWatch row, so this
+  // ordering only changes what those five print — and a value somebody mapped
+  // on the ground outranks one collected from filings. Everywhere else the
+  // OSM chain is empty and DCWatch is the only figure there is.
+  const mappedPower = firstText([
     tags['data_center:power'],
     tags['capacity:it_load'],
     tags.it_load,
     tags.capacity,
   ]);
+  const power = mappedPower || formatPowerMw(dcwatch?.powerMw);
   // A `ref` is industry naming worth showing — 'MRS1', 'TH3', 'BX1' — but 66 %
   // of them are already a substring of the name they sit under. Printed only
   // when it is a token the title does not already carry.
@@ -346,8 +446,33 @@ export function datacenterCardDetails(props, { areaM2 = 0 } = {}) {
   if (fabric) lines.push(fabric);
 
   // ── 3. Since when.
-  const year = datacenterYear(tags.start_date);
+  //
+  // `start_date` is on four French features in the whole pack. DCWatch carries
+  // a commissioning year for 274 of its 427 French rows, which is the
+  // difference between a line nobody ever sees and a line most French sites
+  // now get.
+  const mappedYear = datacenterYear(tags.start_date);
+  const year = mappedYear || datacenterYear(dcwatch?.startYear);
   if (year) lines.push(`en service depuis ${year}`);
+
+  // ── 4. Who said so.
+  //
+  // Only when a DCWatch figure actually reached one of the lines above, and
+  // naming exactly which one. The pack mixes two databases under the same ODbL
+  // licence and the card is the one place a reader can find out which of them
+  // is speaking; a site whose every line came from OSM does not get this line,
+  // because the layer's own credit already says OpenStreetMap.
+  // Kept under the host's 48-character clamp: 'puissance et mise en service'
+  // spelled out reaches 50 and comes back truncated mid-date, which is a worse
+  // provenance line than no provenance line.
+  const fromDcwatch = [
+    !mappedPower && power ? 'puissance' : '',
+    !mappedYear && year ? 'année' : '',
+  ].filter(Boolean);
+  if (fromDcwatch.length) {
+    const release = dcwatch?.release ? ` ${dcwatch.release}` : '';
+    lines.push(`${fromDcwatch.join(', ')} : DCWatch${release}`);
+  }
 
   return lines;
 }
@@ -478,10 +603,11 @@ export const DATACENTER_SURFACES = Object.freeze([
     key: 'point',
     label: 'Sans emprise',
     color: DATACENTER_HALL_COLOR,
-    count: 834,
-    blurb: 'Point OSM : aucune surface publiée. Anneau creux et non disque '
-      + 'plein, parce qu’« absent » ne doit pas se lire « petit ». '
-      + '834 objets, 19,2 %.',
+    count: 1121,
+    blurb: 'Aucune surface publiée. Anneau creux et non disque plein, parce '
+      + 'qu’« absent » ne doit pas se lire « petit ». 1 121 objets, 24,2 % : '
+      + '834 nœuds OSM, plus 287 sites français que DCWatch situe et que '
+      + 'personne n’a jamais tracés.',
   }),
 ]);
 

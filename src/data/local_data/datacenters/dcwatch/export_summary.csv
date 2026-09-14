@@ -1,0 +1,521 @@
+id,name,latitude,longitude,address,city_name,department,city_code,region,country,power_total_mw,operation_start_year,total_floor_area_sqm,IT_floor_area_sqm,progress_step,operator
+1,TGCC,48.592,2.191,Campus Teratec- batiment 1- 1er étage 2 Rue de la Piquetterie 91680 Bruyères le Chatel,BRUYÈRES-LE-CHÂTEL,91,91680,Ile-de-France,France,7.500,2010,3651.000,18255.000,operating,CEA - Atos
+2,Société Générale,48.640,2.506,Lieu dit les Combeaux 91250 Tigery,TIGERY,91,91250,Ile-de-France,France,5.500,2009,23640.000,2500.000,operating,Société Générale
+3,DC Alcatel Lucent REMPLACE PAR DATA4 ?,48.660,2.242,Campus Nokia Paris-Saclay- Bâtiment Chappe- Route de Villejust- 91620 NOZAY,NOZAY,91,91620,Ile-de-France,France,10.594,2014,,,operating,ALCATEL Lucent FRANCE
+4,Colt Paris SW,48.682,2.170,15 Avenue Du Cap Horn 91400 Les Ulis,LES ULIS,91,91940,Ile-de-France,France,20.000,2012,18704.000,9352.000,operating,Colt Technology Services
+5,Digital Realty Les Ulis- DC1 et 2- PAR 13,48.682,2.170,"14 rue de l\,Orme à Moineaux- ZA de Courtaboeuf",LES ULIS,91,91940,Ile-de-France,France,20.000,2024,11180.000,5590.000,operating,Digital Reality
+6,Virtual Data Salle Plateau,48.713,2.209,Avenue Chasles- 91120 Palaiseau,PALAISEAU,91,91120,Ile-de-France,France,1.800,2014,0.000,,operating,Laboratoire Leprince-Ringuet
+7,CyrusOne Paris/Wissous,48.732,2.327,"1 Boulevard d\,Arago- 91320 Wissous",WISSOUS,91,91320,Ile-de-France,France,27.000,2021,17480.000,8740.000,operating,CyrusOne
+8,Bouygues Telecom (exploitant et client)- Digital Realty (propriétaire),48.755,2.217,127 Rue de Paris- 91570 Bièvres,BIEVRES,91,91570,Ile-de-France,France,14.473,2008,9778.000,4889.000,operating,Bouygues Telecom
+9,SFR NETCENTER,48.776,1.999,1 Rue Albert Einstein- 78190 Trappes,TRAPPES,78,78190,Ile-de-France,France,12.000,2015,1560.000,1310.000,operating,SFR
+10,Scaleway DC3,48.788,2.392,61- rue Julian Grimau 94400 Vitry sur Seine,VITRY-SUR-SEINE,94,94400,Ile-de-France,France,24.000,2012,10000.000,5000.000,operating,OpCore
+11,Bouygues Telecom,48.781,2.262,17 Avenue Descartes- 92350 Le Plessis-Robinson,LE PLESSIS-ROBINSON,92,92350,Ile-de-France,France,1.248,,1072.000,536.000,operating,Bouygues Telecom
+12,Fiducial (ex KHEOPS Organisation 2),48.781,2.190,"45 avenue de l\,europe 78145 Velizy",VÉLIZY-VILLACOUBLAY,78,78140,Ile-de-France,France,2.000,2011,1005.000,1000.000,operating,Fiducial (ex Kheops Organisation)
+13,DataBank FR3 / GDC3,48.781,2.190,16 avenue de l’Europe 78140 Vélizy Villacoublay,VÉLIZY-VILLACOUBLAY,78,78140,Ile-de-France,France,7.000,2007,4440.000,2220.000,operating,DataBank (ex zColo by Zayo)
+14,Orange Business Services,48.813,2.239,22 Avenue du Maréchal Juin- 92360 Meudon,MEUDON,92,92190,Ile-de-France,France,17.570,,11870.000,5935.000,operating,Orange Business Services
+15,Equinix PA13,48.813,2.239,9 Avenue du Maréchal Juin- 92360 Meudon,MEUDON,92,92190,Ile-de-France,France,28.000,2025,20475.000,10237.500,operating,"Equinix, Inc"
+16,Scaleway DC2,48.788,2.392,29- rue Edith Cavell 94400 Vitry sur Seine,VITRY-SUR-SEINE,94,94400,Ile-de-France,France,18.000,1999,8676.000,4338.000,operating,OpCore
+17,DATAXION,48.776,1.999,"Avenue Jean d\,Alembert- Parc d\,Activités de Pissaloup- 78190 Trappes",TRAPPES,78,78190,Ile-de-France,France,1.200,2013,4817.000,24085.000,operating,Dataxion France
+18,Bouygues Telecom / ascendas reit,48.778,2.032,rue Jean Pierre Timbaud 78180 Montigny-le-Bretonneux,MONTIGNY-LES-BRETONNEUX,78,78180,Ile-de-France,France,20.000,2009,5448.000,2724.000,operating,Bouygues Telecom
+19,Interxion PAR6,48.812,2.387,11-15- rue Galilée 94200 Ivry-sur-Seine,IVRY-SUR-SEINE,94,94200,Ile-de-France,France,5.700,2008,2148.000,1074.000,operating,Interxion (a Digital Realty Company)
+20,BNP Paribas Marne Sud,48.828,2.658,33 Rue des Vieilles Vignes- 77183 Croissy-Beaubourg,CROISSY-BEAUBOURG,77,77183,Ile-de-France,France,4.540,,3900.000,1950.000,operating,BNP Paribas
+21,Colt Node Malakoff (VAL),48.821,2.302,27 Rue Pierre Valette- 92240 Malakoff,MALAKOFF,92,92240,Ile-de-France,France,11.717,2022,7916.000,3958.000,operating,Colt Technology Services
+22,Azur Datacenter - AZ 01,48.828,2.658,4 Rue des Vieilles Vignes 77183 Croissy-Beaubourg,CROISSY-BEAUBOURG,77,77183,Ile-de-France,France,6.000,2004,3800.000,2100.000,operating,Azur Datacenter
+23,Interxion PAR12,48.821,2.705,16 Avenue Joseph Froelicher- Ferrières-en-Brie,FERRIERES-EN-BRIE,77,77164,Ile-de-France,France,20.000,2021,11260.000,5630.000,operating,Interxion (a Digital Realty Company)
+24,nLighten Émerainville (ex-oxYa/Hitachi),48.812,2.621,12 rue Vladimir Jankelevitch- 77184 Emerainville,EMERAINVILLE,77,77184,Ile-de-France,France,2.649,,1268.000,634.000,operating,"oxYa, a Hiatchi Group Company"
+25,BNP Paribas Centre de Traitement Informatique (CTI) Marne Nord,48.839,2.717,6 B Avenue Gutenberg  77600 Bussy-Saint-Georges,BUSSY-SAINT-GEORGES,77,77600,Ile-de-France,France,18.540,2007,8700.000,4350.000,operating,BNP Paribas
+26,IBM / KYNDRYL collegien,48.836,2.673,35 Allée du Clos des Charmes- 77090 Collégien,COLLÉGIEN,77,77090,Ile-de-France,France,3.143,2008,6036.000,3018.000,operating,Kyndryl
+27,Euroclear,48.839,2.717,"Parc d\,activités Gustave Eiffel 77600 Bussy-Saint-Georges",BUSSY-SAINT-GEORGES,77,77600,Ile-de-France,France,5.562,2006,5616.000,2808.000,operating,Euroclear Pappers=BNP Paribas
+28,BNP Paribas Marne Est 1,48.847,2.821,11 Avenue Johannes Gutenberg - ZAC du Prieuré - Marne la Vallée,BAILLY-ROMAINVILLIERS,77,77700,Ile-de-France,France,22.000,2015,19572.000,9786.000,operating,BNP Paribas
+29,Sungard AS Lognes Facility / penta-infra,48.838,2.633,93 Cours des Petites Ecuries- 77185 Lognes,LOGNES,77,77185,Ile-de-France,France,16.000,,9378.000,4689.000,operating,Penta Infra ? / Sungard Availability Services
+30,Datacenter Banque de France,48.857,2.786,Centre Michèle Bergstein 77700 Serris,SERRIS,77,77700,Ile-de-France,France,5.297,2014,13000.000,6500.000,operating,Banque de France
+31,Euclyde DC6 - IDF,48.838,2.633,NEWTON A- 3-5 mail Barthélémy Thimonnier 77185 Lognes,LOGNES,77,77185,Ile-de-France,France,2.000,,5500.000,2000.000,operating,Euclyde Data Centers
+32,Orange DC,48.835,2.632,59 Bd du Mandinet,Lognes,77,77185,Ile-de-France,France,1.306,,1122.000,561.000,operating,Orange
+33,SIRIUS Albiant-IT,48.632,2.551,100 RUE ALFRED KASTLER 77127 LIEUSAINT,LIEUSAINT,77,77230,Ile-de-France,France,24.632,2010,34887.000,17443.000,operating,"Albiant IT (pour Groupe BPCE, Natixis)"
+34,VEGA Albiant,48.847,2.821,2 Rue du Gue- 77700 Bailly-Romainvilliers,BAILLY-ROMAINVILLIERS,77,77700,Ile-de-France,France,8.211,2010,12531.000,6175.000,operating,Natixis/BPCE
+35,SAPHIR Albiant,43.605,2.241,3 Av. de la Montagne Noire- 81100 Castres,CASTRES,81,81100,Occitanie,France,7.824,2010,6721.000,3360.500,operating,Natixis/BPCE
+36,TOPAZE Albiant,43.540,2.263,14 Rue Georges Charpak- 81290 Labruguière,Labruguière,81,81920,Occitanie,France,6.852,,5886.000,2943.000,operating,Natixis/BPCE
+37,Telehouse 2 Voltaire (TH2),48.860,2.378,137- boulevard Voltaire 75011 Paris,PARIS 11ÈME,75,75011,Ile-de-France,France,24.000,1999,14000.000,7000.000,operating,Telehouse Europe
+38,Interxion PAR4,48.892,2.207,"21- rue du Port - Parc de l\,Ile - Allée Bleue 92000 Nanterre",NANTERRE,92,92000,Ile-de-France,France,10.000,2009,14546.000,1260.000,operating,Interxion (a Digital Realty Company)
+39,Equinix / IBX PA4,48.897,2.402,110 bis- avenue du Général-Leclerc 93500 Pantin,PANTIN,93,93500,Ile-de-France,France,39.000,2012,23320.000,11660.000,operating,"Equinix, Inc"
+40,Global Switch Paris Est,48.903,2.306,7-9- rue Petit 92582 Clichy Cedex,CLICHY,92,92110,Ile-de-France,France,38.000,2000,34915.000,17457.500,operating,Global Switch
+41,Global Switch Paris Ouest,48.903,2.306,7-9- rue Petit 92582 Clichy Cedex,CLICHY,92,92110,Ile-de-France,France,25.000,2011,16700.000,8350.000,operating,Global Switch
+42,IBX PA8x,48.897,2.402,110 bis- avenue du Général-Leclerc 93500 Pantin,PANTIN,93,93500,Ile-de-France,France,14.000,2019,9892.000,4946.000,operating,"Equinix, Inc"
+43,Interxion / Digital Reality PAR1,48.915,2.382,Bâtiment 260- 45 avenue Victor Hugo- 93300 Aubervilliers,AUBERVILLIERS,75,93300,Ile-de-France,France,6.213,1999,2712.000,1356.000,operating,Interxion (a Digital Realty Company)
+44,Equinix / IBX PA5,48.915,2.382,45- avenue Victor Hugo- Bati 254  Zone EMGP - rue du Mimosa 93300 Aubervilliers,AUBERVILLIERS,93,93300,Ile-de-France,France,3.200,2007,2320.000,1160.000,operating,"Equinix, Inc"
+45,GTT Paris,48.915,2.382,34- rue des Gardinoux 93300 Aubervilliers,AUBERVILLIERS,93,93300,Ile-de-France,France,4.000,2003,2050.000,1025.000,operating,GTT Communications
+46,Agarik - Atos 3,48.912,2.334,20- rue Dieumegard  93400 Saint-Ouen,SAINT-OUEN,93,93400,Ile-de-France,France,15.000,2009,29960.000,2000.000,operating,Atos - Agarik (Bull Group Compagny)
+47,"Orange Business Services - autogenerated #2",48.915,2.382,21 rue de la motte 93300 Aubervilliers,AUBERVILLIERS,93,93300,Ile-de-France,France,13.000,,6882.000,3441.000,operating,Orange Business Services
+48,Atos,48.910,2.396,Rue de la Motte- 93300 Aubervilliers,AUBERVILLIERS,93,93300,Ile-de-France,France,3.500,2011,4488.000,2244.000,operating,Atos Infogerance
+49,UltraEdge Netcenter Auberbilliers / DCC-IDF,48.915,2.382,35- rue de la Motte 93300 Aubervilliers,AUBERVILLIERS,93,93300,Ile-de-France,France,8.117,,11256.000,3000.000,operating,Completel
+50,Equinix / IBX PA6,48.915,2.382,Building 520- 10- rue Waldek Rochert 93300 Aubervilliers,AUBERVILLIERS,93,93300,Ile-de-France,France,14.000,2008,9922.000,4961.000,operating,"Equinix, Inc"
+51,Interxion / Digital Reality PAR5,48.938,2.363,11-13 Avenue des Arts et Metiers 93200 Saint Denis Paris,SAINT-DENIS,93,93200,Ile-de-France,France,17.752,2009,8934.000,4467.000,operating,Interxion (a Digital Realty Company)
+52,Interxion / Digital Reality PAR3,48.938,2.363,7-9- avenue des Arts et Métiers 93200 Saint Denis Paris,SAINT-DENIS,93,93200,Ile-de-France,France,9.000,2007,6214.000,3107.000,operating,Interxion (a Digital Realty Company)
+53,"RTE Centre National d\,Exploitation du Système",50.037,2.122,22 Boulevard Finot- 93200 Saint-Ouen,SAINT-OUEN,93,93210,Ile-de-France,France,1.326,1999,1139.000,569.000,operating,RTE
+54,Interxion PAR7,48.927,2.390,1-3 rue Râteau- 93120 La Courneuve,LA COURNEUVE,93,93120,Ile-de-France,France,32.000,2011,19570.000,9785.000,operating,Interxion (a Digital Realty Company)
+55,Equinix / IBX PA3,48.938,2.363,114- rue Ambroise Croizat 93200 Saint Denis,SAINT-DENIS,93,93200,Ile-de-France,France,40.000,2007,10400.000,6506.000,operating,"Equinix, Inc"
+56,Equinix / IBX PA9x,48.938,2.363,114- rue Ambroise Croizat 93200 Saint Denis,SAINT-DENIS,93,93200,Ile-de-France,France,18.678,2021,5500.000,2750.000,operating,"Equinix, Inc"
+57,Equinix / IBX PA2,48.938,2.363,114- rue Ambroise Croizat 93200 Saint Denis,SAINT-DENIS,93,93200,Ile-de-France,France,30.000,2008,15638.000,7819.000,operating,"Equinix, Inc"
+59,Equinix / IBX PA10,48.938,2.363,114- rue Ambroise Croizat 93200 Saint Denis,SAINT-DENIS,93,93200,Ile-de-France,France,15.295,2022,11550.000,5775.000,operating,"Equinix, Inc"
+60,Interxion/Digital Reality PAR8,48.927,2.390,2-20 Rue Marcel Cachin- 93120 La Courneuve,LA COURNEUVE,93,93120,Ile-de-France,France,19.200,2019,19200.000,9600.000,operating,Interxion (a Digital Realty Company)
+61,Interxion PAR9,48.927,2.390,2-20 Rue Marcel Cachin- 93120 La Courneuve,LA COURNEUVE,93,93120,Ile-de-France,France,19.200,2021,19200.000,9600.000,operating,Interxion (a Digital Realty Company)
+62,Merisac (TDF ?) / Ad Valem ?,48.938,2.363,6- boulevard de la Liberation 93200 Saint Denis,SAINT-DENIS,93,93200,Ile-de-France,France,0.518,2008,440.000,220.000,operating,MERISAC Instruments
+63,Thésée DataCenter (phase 1/6- 1 batiment en 2024),48.959,1.855,32 Rue du Clos Reine- 78410 Aubergenville,AUBERGENVILLE,78,78410,Ile-de-France,France,3.000,2021,2000.000,1000.000,operating,Thésée DataCenter
+64,SFR NETCENTER (Campus),48.968,2.069,203-209- Avenue du Général Charles de Gaulle,ACHERES,78,78260,Ile-de-France,France,0.444,2002,2165.000,500.000,operating,SFR
+65,"Bouygues Telecom - autogenerated #2",48.982,2.061,ZA Les Gaudines- rue Gustal Eiffel,ANDRÉSY,78,78570,Ile-de-France,France,1.762,,1514.000,757.000,operating,Bouygues Telecom
+66,Equinix / IBX PA1,49.003,2.518,Paris Nord 2- 167 rue de la Belle Étoile- 95948 Roissy,ROISSY-EN-FRANCE,95,95700,Ile-de-France,France,4.500,2007,5297.000,2648.000,operating,"Equinix, Inc"
+67,Scaleway DC5,49.045,2.106,"25 Avenue de l\,Eguillette - Parc d’activités du Vert-Galant","SAINT-OUEN-L\,AUMÔNE",95,95310,Ile-de-France,France,28.000,2018,14552.000,7276.000,operating,OpCore
+68,Centre Informatique Douanier (CID),49.066,2.061,27 rue des beaux soleils- 95520 Osny,OSNY,95,95520,Ile-de-France,France,1.600,,1600.000,800.000,operating,Ministère de lEconomie et des Finances
+69,Moji1,48.892,2.207,189 Rue de Suresnes- 92000 Nanterre,NANTERRE,92,92000,Ile-de-France,France,1.211,2018,1029.000,5145.000,operating,MOJI
+71,Colt Paris SW DH10+,48.682,2.170,15 Avenue Du Cap Horn 91400 Les Ulis,LES ULIS,91,91940,Ile-de-France,France,40.000,2022,10384.000,5192.000,operating,Colt Technology Services
+72,Centre de Recherche et de Surveillance Galileo,48.936,2.092,Av. du Président John Fitzgerald Kennedy,Saint-Germain-en-Laye,78,78100,Ile-de-France,France,6.070,2022,4581.000,22905.000,operating,CENTRE DE SURVEILLANCE DE LA SECURITE GALILEO
+73,Thésée Data Center (Site Secondaire),48.770,2.049,146 AV JOSEPH KESSEL,VOISINS-LE-BRETONNEUX,78,78960,Ile-de-France,France,8.931,2021,6034.000,3017.000,operating,Thésée DataCenter
+74,Eclairion,48.592,2.191,2 rue de la Libération- 91680 Bruyères-le-Châtel,BRUYÈRES-LE-CHÂTEL,91,91680,Ile-de-France,France,60.000,2023,20000.000,10000.000,operating,ECLAIRION
+75,DATA4 DC12,48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,4.000,2021,7796.000,3600.000,operating,DATA4 Group
+76,DATA4 DC09,48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,4.000,2019,7796.000,3600.000,operating,DATA4 Group
+77,DATA4 DC11,48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,4.000,2021,7796.000,3600.000,operating,DATA4 Group
+78,DATA4 DC03,48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,2.950,,5158.000,3600.000,operating,DATA4 Group
+79,DATA4 DC10,48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,3.500,2020,7796.000,3600.000,operating,DATA4 Group
+80,DATA4 DC02,48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,3.328,2008,4998.000,3600.000,operating,DATA4 Group
+81,DATA4 D3,48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,3.800,2009,7400.000,3600.000,operating,DATA4 Group
+82,DATA4 DC01,48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,2.500,2007,4705.000,3600.000,operating,DATA4 Group
+83,DATA4 DC04 / CYLLENNE ALTER-04 ?,48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,4.500,2009,5110.000,3600.000,operating,DATA4 Group
+84,DATA4 DC08,48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,2.700,2012,5179.000,3600.000,operating,DATA4 Group
+85,DATA4 DC07,48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,5.500,2016,5307.000,3600.000,operating,DATA4 Group
+86,DATA4 DC06,48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,4.000,2019,6256.000,3600.000,operating,DATA4 Group
+87,DATA4 DC05,48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,3.600,2017,7140.000,3600.000,operating,DATA4 Group
+88,TH3 Paris Magny,48.724,2.084,1- rue Pablo Picasso 78114 Magny-les-Hameaux,MAGNY-LES-HAMEAUX,78,78114,Ile-de-France,France,23.100,2009,20666.000,10333.000,operating,Telehouse International Corporation
+89,ex-IBM DC / kyndryl ?,48.839,2.717,15- avenue Graham Bell 77600 BUSSY ST GEORGES,BUSSY-SAINT-GEORGES,77,77600,Ile-de-France,France,3.143,,4840.000,2420.000,operating,"Incertain, ex-IBM, etat inconnu"
+90,"SFR NETCENTER - autogenerated #2",48.895,2.256,124- boulevard de Verdun 92400 Courbevoie,COURBEVOIE,92,92400,Ile-de-France,France,30.000,,42801.000,500.000,operating,SFR
+91,Virtual Data Salle Vallée,48.697,2.163,"206 Domaine de l\,Université de Paris- 91440 Burs-sur-Yvette",BURES-SUR-YVETTE,91,91440,Ile-de-France,France,1.800,2012,1272.000,636.000,operating,Laboratoire Leprince-Ringuet
+92,CNRS - IDRIS,48.699,2.187,"Campus universitaire d\,Orsay- Batiment 506- Rue John Von Neumann- 91403 Orsay",ORSAY,91,91400,Ile-de-France,France,4.500,2020,3000.000,1000.000,operating,IDRIS du CNRS
+93,CloudData,48.781,2.262,"Centre d\,affaires LA BOURSIDIERE 92357 Le Plessis Robinson",LE PLESSIS-ROBINSON,92,92350,Ile-de-France,France,6.000,2012,,,operating,CloudData
+94,Fiducial (ex KHEOPS Organisation 1),48.781,2.262,"Centre d\,affaires LA BOURSIDIERE 92357 Le Plessis Robinson",LE PLESSIS-ROBINSON,92,92350,Ile-de-France,France,3.000,,1444.000,722.000,operating,Fiducial (ex Kheops Organisation)
+95,dc2scale Vélizy,48.781,2.190,16- rue Grange Dame Rose 78140 Vélizy Villacoublay,VÉLIZY-VILLACOUBLAY,78,78140,Ile-de-France,France,0.300,2010,10560.000,250.000,operating,DC2SCALE
+96,Celeonet,48.788,2.392,70 Rue Berthie Albrecht- 94400 Vitry-sur-Seine,VITRY-SUR-SEINE,94,94400,Ile-de-France,France,0.053,2003,0.000,0.000,operating,Celeonet
+97,Aqua Ray - Ivy 1,48.812,2.387,14 Rue Jules Vanzuppe- 94200 Ivry-sur-Seine,IVRY-SUR-SEINE,94,94200,Ile-de-France,France,12.330,2020,8330.000,4165.000,operating,Aqua Ray
+98,BT Services Paris,48.830,2.363,30- rue du Château des Rentiers 75013 Paris,PARIS 13ÈME,75,75013,Ile-de-France,France,29.055,,19629.000,9814.500,operating,BT Services
+99,Scaleway DC4,48.841,2.296,58 Boulevard Lefebvre 75015 Paris,PARIS 15ÈME,75,75015,Ile-de-France,France,12.000,2017,7026.000,3513.000,operating,OpCore
+100,Colt Wattignies,48.835,2.421,60- rue de Wattignies 75012 Paris,PARIS 12ÈME,75,75012,Ile-de-France,France,1.600,2008,18151.000,9075.500,operating,Colt Technology Services
+101,Prosodie (Odigo),48.836,2.240,150- rue Gallieni 92100 Boulogne-Billancourt,BOULOGNE-BILLANCOURT,92,92100,Ile-de-France,France,0.000,2009,0.000,0.000,operating,Odigo (ex Prosodie - Capgemini)
+102,Foliateam Paris Nation,48.835,2.421,9- rue Mousset Robert 75012 Paris,PARIS 12ÈME,75,75012,Ile-de-France,France,5.297,2001,9723.000,4861.500,operating,Foliateam
+104,Etix Everywhere FR1 (DataBank FR1),48.868,2.343,19-21 Rue Poissonnière- 75002 Paris,PARIS  2ÈME,75,75002,Ile-de-France,France,1.200,2013,12537.000,6268.500,operating,Etix Everywhere
+105,Leonix Datacenter,48.868,2.343,35 Rue des Jeuneurs- 75002 Paris,PARIS  2ÈME,75,75002,Ile-de-France,France,0.250,,445.000,2225.000,operating,Leonix Télécom
+106,KDDI Telehouse 1 Jeûneurs,48.868,2.343,38- rue des Jeûneurs- 75002 Paris,PARIS  2ÈME,75,75002,Ile-de-France,France,4.300,1996,4805.000,24025.000,operating,Telehouse Europe
+107,Claranet Faubourg Elysées,48.873,2.311,68- rue du Faubourg Saint Honoré- 75008 Paris,PARIS  8ÈME,75,75008,Ile-de-France,France,0.200,2001,10140.000,5070.000,operating,Claranet Limited
+108,Global SP,48.887,2.307,78 Rue la Condamine 75017 Paris,PARIS 17ÈME,75,75017,Ile-de-France,France,1.589,2001,1530.000,765.000,operating,Global SP
+109,Spie Cloud Services Média Data Center,48.887,2.307,73- rue de Saussure 75017 Paris,PARIS 17ÈME,75,75017,Ile-de-France,France,0.600,2006,2020.000,1010.000,operating,SPIE
+110,OVHCloud DC1,48.887,2.385,12 rue Riquet 75019 Paris,PARIS 19ÈME,75,75019,Ile-de-France,France,3.973,2008,2443.000,12215.000,operating,OVHCloud
+111,Hexatom/Green Data,48.892,2.207,Le Capitol 55- Avenue des Champs Pierreux 92012 Nanterre,NANTERRE,92,92000,Ile-de-France,France,12.000,2019,4500.000,2000.000,operating,"Hexatom Datacenter Services, Green Computing"
+112,Mairie de Paris-AP-HP,48.893,2.348,Hôtel logistique Chapelle Internationale- 61 Rue de la Chapelle- 75018 Paris,PARIS 18ÈME,75,75018,Ile-de-France,France,2.013,2021,568.000,284.000,operating,Mairie de Paris
+113,ATLASEDGE PARIS_CDG001 (Colt Bessieres),48.887,2.307,63 boulevard Bessieres 75017 Paris,PARIS 17ÈME,75,75017,Ile-de-France,France,3.300,2001,20043.000,10021.500,operating,ATLASEDGE
+114,Defense Datacenter,48.892,2.207,3- boulevard des Bouvets 92000 Nanterre,NANTERRE,92,92000,Ile-de-France,France,3.000,2011,3531.000,1765.000,operating,Defense Datacenter
+115,Equinix / IBX PA7,48.895,2.256,9 Energy Park - 130-136 boulevard de Verdun 92413 Courbevoie,COURBEVOIE,92,92400,Ile-de-France,France,7.532,2000,3938.000,1969.000,operating,"Equinix, Inc"
+116,TelCo Center,48.895,2.256,37- rue du Moulin des Bruyères 92400 Courbevoie,COURBEVOIE,92,92400,Ile-de-France,France,4.500,2010,7650.000,3825.000,operating,Alphalink (télécommunication)
+117,Interxion PAR2,48.915,2.382,20-22- rue des Gardinoux 93534 Aubervilliers Cedex,AUBERVILLIERS,93,93300,Ile-de-France,France,12.000,2000,5878.000,2939.000,operating,Interxion (a Digital Realty Company)
+118,Cogent Data Center-Paris1,48.781,2.190,16 Rue Grande Dame Rose,Velizy-Villacoublay,92,78140,Ile-de-France,France,0.400,2003,1200.000,600.000,operating,"Cogent Communications, Inc."
+119,Cogent Data Center-Paris2,48.907,2.245,78 boulevard de la République,LA GARENNE-COLOMBES,93,92250,Ile-de-France,France,0.250,2003,1.000,600.000,operating,"Cogent Communications, Inc."
+120,ex-Activium ID,48.911,2.289,4 Avenue Laurent Cély- 92600 Asnières-sur-Seine,ASNIERES,92,92600,Ile-de-France,France,,,,,operating,ex-Activium ID / Ex ResaCloud
+121,Data Center EDF,48.920,2.342,Place aux Grumes- 93200 Saint-Denis,SAINT-DENIS,93,93200,Ile-de-France,France,9.708,1999,6695.000,3347.500,operating,EDF
+122,DC VESI (ex DELL),48.938,2.363,8 Avenue du Stade de France- 93200 Saint-Denis,SAINT-DENIS,93,93200,Ile-de-France,France,0.000,2011,0.000,0.000,operating,VINCI Energies Systèmes dInformation (VESI)
+123,Comarch Data Center Santé,49.053,2.039,8 Place du Ponceau- 95001 Cergy-Pontoise CEDEX,CERGY,95,95000,Ile-de-France,France,2.258,,1918.000,959.000,operating,COMARCH (Healthcare)
+124,Alionis DC1,48.700,2.228,14- avenue du Quebec 91140 Villebon sur Yvette ZA Courtaboeuf,VILLEBON-SUR-YVETTE,91,91140,Ile-de-France,France,6.000,2005,2000.000,1000.000,operating,Alionis
+125,EDF Lab Paris-Saclay,48.714,2.245,7 bd Gaspard Monge- 91120 Palaiseau,PALAISEAU,91,91120,Ile-de-France,France,11.600,2016,10000.000,5000.000,operating,EDF
+127,Thales,48.791,1.974,2 Avenue Gay Lussac,ELANCOURT,78,78990,Ile-de-France,France,6.621,2016,9616.000,4808.000,operating,Thales
+128,CNRS Délégation Paris-Villejuif,48.792,2.363,7 Rue Guy Môquet- 94800 Villejuif,VILLEJUIF,94,94800,Ile-de-France,France,0.598,,414.000,207.000,operating,CNRS
+129,Agarik - Atos 4,48.821,1.987,rue Jean Jaurès - 78340 Les Clayes-sous-Bois,LES CLAYES-SOUS-BOIS,78,78340,Ile-de-France,France,1.000,2018,5219.000,700.000,operating,Atos - Evidian (Bull Group Compagny)
+130,Agarik - Atos 5,48.821,1.987,rue Jean Jaurès - 78340 Les Clayes-sous-Bois,LES CLAYES-SOUS-BOIS,78,78340,Ile-de-France,France,0.000,,0.000,0.000,operating,Atos - Evidian (Bull Group Compagny)
+131,IBM France / kyndryl ?,48.849,2.552,"1 Place Jean-Baptiste Clément / 11 Boulevard du Mont d\,Est",NOISY-LE-GRAND,93,93160,Ile-de-France,France,38.681,,32856.000,16428.000,operating,IBM
+132,"Datacenter Banque de France - autogenerated #2",48.846,2.620,2 Av. Pierre Mendès France- 77186 Noisiel / 2 bis Avenue Pierre Mendès France 77315 Marne-La-Vallee,NOISIEL,77,77186,Ile-de-France,France,7.330,,6320.000,2160.000,operating,Banque de France
+133,ALFA-SAFETY PARIS_1,48.840,2.335,166 Boulevard du Montparnasse,PARIS,75,75014,Ile-de-France,France,4.158,,3532.000,1766.000,operating,Alfa Safety
+134,ALFA-SAFETY PARIS_2,48.840,2.335,166 Boulevard du Montparnasse,PARIS,75,75015,Ile-de-France,France,4.158,,3532.000,1766.000,operating,Alfa Safety
+135,CYLLENE NANTERRE,48.903,2.229,105 Rue Veuve Lacroix,NANTERRE,92,92000,Ile-de-France,France,0.321,,273.000,1365.000,operating,Cyllene
+136,CYLLENE MONTIGNY-LE-BRETONNEUX,48.770,2.038,8 Av. des 3 Peuples,MONTIGNY-LE-BRETONNEUX,78,78180,Ile-de-France,France,1.208,,1026.000,513.000,operating,Cyllene
+137,ETIX_EVERYWHERE PAR3,48.781,2.190,"14-16 Av. de l\,Europe- 78140 Vélizy-Villacoublay",VELIZY,78,78130,Ile-de-France,France,3.800,1999,1480.000,3400.000,operating,Etix Everywhere
+138,"IMA\,DIFF",48.875,2.349,3 Cité Paradis,PARIS,75,75010,Ile-de-France,France,1.954,,1660.000,830.000,operating,Imadiff
+139,ADISTA AIX_EN_PROVENCE,43.488,5.341,290- Avenue Galilée,Aix-en-Provence,13,13100,"Provence-Alpes-Côte d\,Azur",France,14.914,2009,10076.000,5038.000,operating,ADISTA
+140,ADISTA BOURGES,47.081,2.399,14 rue Didier Daurat Esplanade de l’aéroport,Bourges,18,18000,Centre-Val de Loire,France,0.518,2016,440.000,220.000,operating,ADISTA
+141,ADISTA MAXÉVILLE,48.703,6.139,9 Rue Blaise Pascal,Maxéville,54,54320,Grand Est,France,1.000,2012,1434.000,717.000,operating,ADISTA
+142,ADISTA SAINT-ETIENNE,45.459,4.396,1 Rue de la Presse,Saint-Étienne,42,42000,Auvergne-Rhône-Alpes,France,4.256,2005,3615.000,18075.000,operating,ADISTA
+143,ADISTA_FINGERPRINT,45.049,5.086,5 Rue Jean Charcot,Romans-sur-Isère,26,26100,Auvergne-Rhône-Alpes,France,0.348,1990,300.000,150.000,operating,ADISTA
+144,ADVANCED_MEDIOMATRIX,49.086,6.239,"1 Rue du Jardin d\,Ecosse",Peltre,57,57245,Grand Est,France,1.600,,2700.000,600.000,operating,ADVANCED
+145,AGARIK ATOS_1 & 2,47.452,-0.484,210 Boulevard André Bahonneau,Trélazé,50,49800,Pays de la Loire,France,4.500,,19776.000,3120.000,operating,AGARIK
+146,AGS_CLOUD,43.649,3.974,265 RUE DE LA GARRIGUETTE,Saint-Aunès,34,34130,Occitanie,France,0.644,2012,547.000,2735.000,operating,AGS
+147,ALLIANCE_RÉSEAUX ARCALPIN,45.267,6.368,26 Rue de Saint-Exupéry,Saint-Jean-de-Maurienne,73,73300,Auvergne-Rhône-Alpes,France,0.526,2018,447.000,2235.000,operating,ALLIANCE
+148,ALPES_NETWORKS,45.891,6.079,17 rue Mira,Annecy,75,74650,Auvergne-Rhône-Alpes,France,2.094,2021,1779.000,8895.000,operating,ALPES
+149,AQUITEM_&_ALIÉNOR.NET,44.861,-0.593,375 Av. de Tivoli,Le Bouscat,33,33110,Nouvelle-Aquitaine,France,1.406,2004,1194.000,597.000,operating,AQUITEM
+150,AtaCenter - ATARAXIE,43.217,2.345,"80- Allée d\,Iéna",Carcassonne,11,11000,Occitanie,France,0.235,,200.000,100.000,operating,ATARAXIE
+151,AZNETWORK,48.431,0.091,40 Rue André Ampere,Alençon,61,61000,Normandie,France,0.366,2007,311.000,1555.000,operating,AZNETWORK
+152,AZUR_DATACENTER AZ02,43.615,7.074,950 route des Colles,Biot,6,6410,"Provence-Alpes-Côte d\,Azur",France,2.000,2007,1000.000,500.000,operating,AZUR
+153,BLUE CHÂTEAUBOURG,48.102,-1.403,2 Rue Blaise Pascal,Châteaubourg,35,35220,Bretagne,France,4.444,2010,3002.000,1500.000,operating,BLUE
+154,BLUE NANTES,47.223,-1.635,7 RUE DE BRUXELLES 44300 NANTES,Saint-Herblain,45,44821,Pays de la Loire,France,3.120,2024,2108.000,2000.000,operating,BLUE
+155,C-DATACENTERS AIX-EN-PROVENCE,43.534,5.362,La Provençale,Aix-en-Provence,14,13510,"Provence-Alpes-Côte d\,Azur",France,2.000,,3000.000,1500.000,operating,C-DATACENTERS
+156,C-DATACENTERS / Casino IT / Groupe Casino Saint Etienne,45.440,4.387,35 Rue de la Montat- 42000 Saint-Étienne,Saint-Étienne,42,42000,Auvergne-Rhône-Alpes,France,3.000,2007,2062.000,960.000,operating,Casino IT / C-DATACENTERS
+157,CASTLE_IT,47.347,0.769,1 - 3 Rue des Pies-Grièches,Larçay,37,37270,Centre-Val de Loire,France,1.000,,1300.000,650.000,operating,CASTLE
+158,CELESTE ARMOR,47.231,-1.631,2 Impasse Joséphine Baker,Saint-Herblain,44,44800,Pays de la Loire,France,1.000,2011,1163.000,900.000,operating,CELESTE
+159,"CELESTE FIL_D\,ARIANE",43.928,2.148,1 Rue Pierre gilles de Gennes,Albi,81,81000,Occitanie,France,2.000,2018,3294.000,1647.000,operating,CELESTE
+160,CELESTE - MARYLIN,48.835,2.588,20 rue Albert Einstein,Champs-sur-Marne,77,77420,Ile-de-France,France,6.000,2011,4600.000,2300.000,operating,CELESTE
+161,CIVICOS_NETWORKING ROUBAIX,50.691,3.200,1 Rue Kellermann,Roubaix,59,59100,Hauts-de-France,France,0.800,,100.000,60.000,operating,Civicos Networking
+162,"CM\,IN CHARTRES_MÉTROPOLE_INNOVATION_NUMÉRIQUE",48.421,1.501,Le Coudray,Le Coudray,28,28630,Centre-Val de Loire,France,1.156,2022,982.000,491.000,operating,C Chartres Innovations Numériques - CCIN
+163,COGENT BORDEAUX,44.884,-0.560,hangar g2- Bassin à Flots,Bassens- Bordeaux,33,33300,Nouvelle-Aquitaine,France,0.400,2018,400.000,400.000,operating,"Cogent Communications, Inc."
+164,COGENT DIJON,47.309,5.029,41 Quai Gauthey,Dijon,21,21000,Bourgogne-Franche-Comté,France,0.200,2018,250.000,250.000,operating,"Cogent Communications, Inc."
+165,COGENT GRENOBLE,45.190,5.737,33 rue Joseph Chanrion,Grenoble,38,38000,Auvergne-Rhône-Alpes,France,0.400,,450.000,450.000,operating,"Cogent Communications, Inc."
+166,COGENT LILLE,50.638,3.091,72 rue Jenner,Lille,59,59000,Hauts-de-France,France,0.400,,500.000,500.000,operating,"Cogent Communications, Inc."
+167,COGENT MONTPELLIER,43.611,3.877,"189 Rue du 56ÈME Régiment d\,Artillerie",Montpellier,34,34070,Occitanie,France,0.400,,500.000,500.000,operating,"Cogent Communications, Inc."
+168,COGENT NANTES,47.219,-1.554,32 Bd Victor Hugo- 44000 Nantes,Nantes,44,44007,Pays de la Loire,France,0.640,,500.000,500.000,operating,"Cogent Communications, Inc."
+169,COGENT NICE,43.703,7.260,16 AVENUE THIERS,Nice,60,6000,"Provence-Alpes-Côte d\,Azur",France,0.010,,90.000,90.000,operating,"Cogent Communications, Inc."
+170,COGENT POITIERS,46.580,0.340,"18 Bd Jeanne d\,Arc- 86000 Poitiers",Poitiers,86,86000,Nouvelle-Aquitaine,France,0.500,,450.000,450.000,operating,"Cogent Communications, Inc."
+171,COGENT RENNES,48.111,-1.680,Parc Lorans- Av. Chardonnet- 35000 Rennes,Rennes,35,35000,Bretagne,France,0.300,,460.000,460.000,operating,"Cogent Communications, Inc."
+172,COGENT ROUEN,49.429,1.076,20 Rue Alexandre Barrabé,Rouen,76,76100,Normandie,France,1.012,,350.000,350.000,operating,"Cogent Communications, Inc."
+173,COGENT SOPHIA-ANTIPOLIS,43.581,7.124,Pôle Entreprise Euro 95 165 rue Cistes,Antibes,66,6600,"Provence-Alpes-Côte d\,Azur",France,1.134,,450.000,450.000,operating,"Cogent Communications, Inc."
+174,COGENT STRASBOURG,48.601,7.744,46 Rte de Bischwiller,Schiltigheim,67,67300,Grand Est,France,1.267,,500.000,500.000,operating,"Cogent Communications, Inc."
+175,COGENT TOULOUSE,43.604,1.444,125 Chem. du Sang de Serp,Toulouse,31,31200,Occitanie,France,1.600,,600.000,600.000,operating,"Cogent Communications, Inc."
+176,COGENT TOURS,47.432,0.686,171 Rue des Douets,Tours,37,37100,Centre-Val de Loire,France,1.139,,450.000,450.000,operating,"Cogent Communications, Inc."
+177,COM6,45.806,4.754,15 Chem. des Hirondelles,Dardilly,69,69570,Auvergne-Rhône-Alpes,France,2.444,,2076.000,1038.000,operating,Com6
+178,COMARCH,50.615,3.117,17 Rue Paul Langevin ZI du Hellu,Lezennes,59,59260,Hauts-de-France,France,2.600,2017,2410.000,350.000,operating,COMARCH (Healthcare)
+179,ADISTA - CYRÈS_GROUPE,47.436,0.695,9 Rue de Suède,Tours,37,37100,Centre-Val de Loire,France,0.808,2015,686.000,343.000,operating,ADISTA
+180,D-LAKE,45.908,6.103,3 Esplanade Augustin,Annecy,74,74960,Auvergne-Rhône-Alpes,France,4.558,,3872.000,1936.000,operating,D-Lake
+181,DATA_17,45.930,-0.520,"350 Rue de la Prairie- 17400 Saint-Jean-d\,Angély",Fossemagne,17,17400,Nouvelle-Aquitaine,France,0.400,2020,700.000,350.000,operating,Data 17
+182,DATACAMPUS CASSIN_1,46.651,0.375,Technopole du Futuroscope 86360 Chasseneuil,Chasseneuil-du-Poitou,86,86360,Nouvelle-Aquitaine,France,0.038,,327.000,1635.000,operating,DATACAMPUS
+183,DATAGREX,48.054,0.188,28 Rue de Villeneuve,Saint-Saturnin,72,72650,Pays de la Loire,France,13.099,2014,11126.000,5563.000,operating,Datagrex
+184,DATAOUEST_1,49.106,-1.060,77 Rue Leny Escudero,Saint-Lô,50,50000,Normandie,France,0.200,,200.000,100.000,operating,Dataouest
+185,DATAOUEST_2,49.106,-1.060,77 Rue Leny Escudero,Saint-Lô,50,50000,Normandie,France,0.200,2022,200.000,100.000,operating,Dataouest
+186,DC2SCALE_GRENOBLE_ALP1,45.191,5.704,37 Rue Diderot,Grenoble,38,38000,Auvergne-Rhône-Alpes,France,0.630,2020,302.000,151.000,operating,DC2SCALE
+187,DÉCIMA ENTREPÔT_NUMÉRIQUE,50.290,2.804,2 rue François Hennebique,Saint-Laurent-Blangy,62,62223,Hauts-de-France,France,7.793,,3771.000,26325.000,operating,Decima
+188,DÉCIMA POUDRIÈRE_NUMÉRIQUE,,,Rue François Hennebicque,Arras,62,62000,Hauts-de-France,France,3.202,2016,2760.000,1380.000,operating,Decima
+189,Digital Reality MRS1,43.310,5.373,40 Avenue Roger Salengro,Marseille,13,13003,"Provence-Alpes-Côte d\,Azur",France,15.600,2015,6200.000,5890.000,operating,Digital Reality
+190,Digital Reality MRS2,43.296,5.370,Enceinte Portuaire- Porte 4,Marseille,13,13016,"Provence-Alpes-Côte d\,Azur",France,16.000,2018,8800.000,4400.000,operating,Digital Reality
+191,Digital Reality MRS3,43.296,5.370,Enceinte Portuaire- Porte 4,Marseille,13,13016,"Provence-Alpes-Côte d\,Azur",France,25.000,2020,14200.000,7100.000,operating,Digital Reality
+192,Digital Reality MRS4,43.296,5.370,Enceinte Portuaire- Porte 4,Marseille,13,13016,"Provence-Alpes-Côte d\,Azur",France,13.600,2022,13400.000,6700.000,operating,Digital Reality
+193,DTIX_DATACENTER CHALON-SUR-SAÔNE,46.781,4.845,Avenue Georges Pompidou,Chalon-sur-Saône,71,71100,Bourgogne-Franche-Comté,France,0.871,2024,740.000,350.000,operating,DTIX
+194,DTIX_DATACENTER DIJON,47.324,5.039,Rue des Godrans 48,Dijon,21,21000,Bourgogne-Franche-Comté,France,2.709,2020,2301.000,450.000,operating,DTIX
+195,EOLAS LYON (OBS/Orange),45.758,4.832,13 Quai du Dr Gailleton,Lyon,69,69002,Auvergne-Rhône-Alpes,France,3.000,,2000.000,1000.000,operating,Eolas
+196,EOLAS MANGIN_1,45.169,5.715,73 rue Général Mangin,Grenoble,38,38100,Auvergne-Rhône-Alpes,France,0.717,,609.000,450.000,operating,Eolas
+197,EOLAS MANGIN_2,45.169,5.715,73 rue Général Mangin,Grenoble,38,38100,Auvergne-Rhône-Alpes,France,0.757,2022,643.000,3215.000,operating,Eolas
+198,EQUINIX BX1,44.896,-0.612,39 Rue de Strasbourg,Bruges,33,33520,Nouvelle-Aquitaine,France,20.000,2021,4572.000,2286.000,operating,"Equinix, Inc"
+199,"ETIX_EVERYWHERE LILLE_#1",50.700,3.160,101 Boulevard Constantin Descat,Roubaix,59,59100,Hauts-de-France,France,0.600,2018,675.000,337.000,operating,Etix Everywhere
+200,"ETIX_EVERYWHERE LILLE_#2",50.584,3.137,1681 Rue des Saules,Sainghin-en-Mélantois,59,59262,Hauts-de-France,France,1.500,2010,1872.000,936.000,operating,Etix Everywhere
+201,"ETIX_EVERYWHERE LILLE_#3",50.378,3.522,486 Av. Augusta Ada-King,Anzin,59,59410,Hauts-de-France,France,1.860,2016,1751.000,8755.000,operating,Etix Everywhere
+202,ETIX_EVERYWHERE MPL1,43.585,3.872,143 Rue Emile Julien,Montpellier,34,34070,Occitanie,France,1.500,2008,374.000,187.000,operating,Etix Everywhere
+203,"ETIX_EVERYWHERE NANTES_#1",47.231,-1.631,2 Impasse Joséphine Baker,Saint-Herblain,44,44800,Pays de la Loire,France,0.350,2011,400.000,200.000,operating,Etix Everywhere
+204,"ETIX_EVERYWHERE NANTES_#2",47.277,-1.470,14 Rue Véga,Carquefou,44,44470,Pays de la Loire,France,0.900,2014,1733.000,8665.000,operating,Etix Everywhere
+205,"ETIX_EVERYWHERE NANTES_#3",47.239,-1.668,1 rue des Forgerons,Couëron,44,44220,Pays de la Loire,France,1.200,,2505.000,12525.000,operating,Etix Everywhere
+206,ETIX_EVERYWHERE TLS1,43.625,1.487,10 Rue des Freres Peugeot,Balma,31,31130,Occitanie,France,1.500,2011,766.000,383.000,operating,Etix Everywhere
+207,"ETIX_EVERYWHERE VENDÉE_#1",46.666,-1.353,4 Imp. Philippe Gozola,La Roche-sur-Yon,85,85000,Pays de la Loire,France,0.270,2014,416.000,208.000,operating,Etix Everywhere
+208,EUCLYDE DC1,43.605,7.076,49- rue Emile Hugues,Antibes,66,6600,"Provence-Alpes-Côte d\,Azur",France,8.500,2009,3500.000,1500.000,operating,Euclyde Data Centers
+209,EUCLYDE DC2,47.226,5.973,2- rue Albert Einstein,Besançon,25,25000,Bourgogne-Franche-Comté,France,0.700,2012,650.000,345.000,operating,Euclyde Data Centers
+210,EUCLYDE DC3,43.624,7.038,930- route des Dolines,Valbonne,65,6560,"Provence-Alpes-Côte d\,Azur",France,2.000,2013,3000.000,620.000,operating,Euclyde Data Centers
+211,EUCLYDE DC5,45.771,4.889,45-47 rue Francis de Pressensé,Villeurbanne,69,69100,Auvergne-Rhône-Alpes,France,3.000,2018,1200.000,600.000,operating,Euclyde Data Centers
+212,EUCLYDE DC7,48.602,7.784,Rue du Parc 5,Strasbourg,67,67000,Grand Est,France,0.800,2021,1500.000,720.000,operating,Euclyde Data Centers
+213,EURA_DC DOUAI,50.376,3.094,2 Rue Ludwig van Beethoven,Douai,59,59500,Hauts-de-France,France,0.800,2024,5670.000,2835.000,operating,Eura DC
+214,EXTENDO_DATACENTER,47.645,6.843,31 Rue Becquerel,Belfort,90,90000,Bourgogne-Franche-Comté,France,0.400,2019,1700.000,200.000,operating,Extendo DC
+215,FIDUCIAL_CLOUD AIX_EN_PROVENCE,43.480,5.373,30 Rue Paul Langevin,Aix-en-Provence,13,13290,"Provence-Alpes-Côte d\,Azur",France,1.200,,1019.000,5095.000,operating,Fiducial (ex Kheops Organisation)
+216,FIDUCIAL_CLOUD LYON,45.771,4.804,19 rue Cottin,Lyon,69,69009,Auvergne-Rhône-Alpes,France,2.459,,20890.000,10445.000,operating,Fiducial (ex Kheops Organisation)
+217,FIRSTHEBERG,50.345,3.543,70 Rue Jean Jaurès,Marly,59,59770,Hauts-de-France,France,0.441,2019,375.000,1875.000,operating,Techcrea Solutions
+218,FMI,45.714,4.955,4 Rue de Lombardie,Saint-Priest,69,69800,Auvergne-Rhône-Alpes,France,1.000,2013,5130.000,2565.000,operating,Groupe FMI
+219,FREE_PRO LYON,45.807,4.772,1 Rue des Vergers,Limonest,69,69760,Auvergne-Rhône-Alpes,France,3.537,2011,3004.000,1502.000,operating,Free Pro
+220,FREE_PRO MRS01,43.296,5.370,70 Chem. du Passet,Marseille,13,13016,"Provence-Alpes-Côte d\,Azur",France,6.596,,4456.000,2228.000,operating,Free Pro
+221,FREE_PRO ROCK,45.740,4.888,60 Av. Rockefeller,Lyon,69,69008,Auvergne-Rhône-Alpes,France,4.000,2019,502.000,900.000,operating,Free Pro
+222,FULLSAVE TLS00,43.621,1.421,131 chemin du Sang de Serp,Toulouse,31,31000,Occitanie,France,34.444,2014,3344.000,700.000,operating,Fullsave
+223,FULLSAVE - AUC00,43.642,0.597,47 Av. Sambre et Meuse,Auch,32,32000,Occitanie,France,1.000,2023,280.000,140.000,operating,Fullsave
+224,GROUPE_ASTEN BREST,48.391,-4.486,26 Rue Gaston Planté- 29850 Gouesnou,Brest,29,29200,Bretagne,France,1.091,2014,927.000,4635.000,operating,Groupe Asten
+225,GROUPE_ASTEN RENNES,,,,Rennes,35,35000,Bretagne,France,0.200,2009,235.000,117.000,operating,Groupe Asten
+226,HDC34 SAINT-AUNÈS,43.648,3.972,125 rue de la Sarriette,Saint-Aunès,34,34130,Occitanie,France,0.851,2017,723.000,3615.000,operating,Xefi
+227,HEXANET REIMS,49.258,4.032,Les Dauphinelles- 3 Allée Albert Caquot,Reims,51,51100,Grand Est,France,0.800,2015,1342.000,671.000,operating,Hexanet
+228,HEXATOM SOPHIA_ANTIPOLIS,43.615,7.074,950 route des colles,Biot,64,6410,"Provence-Alpes-Côte d\,Azur",France,2.842,2018,2414.000,1207.000,operating,"Hexatom Datacenter Services, Green Computing"
+229,HOSTELYON,45.729,4.844,"81 Boulevard du Parc d\,Artillerie",Lyon,69,69007,Auvergne-Rhône-Alpes,France,0.600,1987,394.000,300.000,operating,Etix Everywhere
+230,ICODIA,48.103,-1.625,"22 Rue de l\,Erbonière",Cesson-Sévigné,35,35510,Bretagne,France,1.250,2000,680.000,300.000,operating,Icodia
+231,IKOULA IKDC01,49.234,4.034,34 Rue du Pont Assy,Reims,51,51100,Grand Est,France,3.000,2006,1750.000,750.000,operating,Ikoula
+232,IKOULA IKDC02,49.560,3.743,495 RUE DE SISSONNE,Eppes,28,2840,Hauts-de-France,France,1.300,,800.000,450.000,operating,Ikoula
+233,INFORSUD_TECHNOLOGIES ALBI,43.910,2.103,16 IMPASSE DE CRINS,Le Sequestre,81,81990,Occitanie,France,2.963,,2517.000,12585.000,operating,Inforsud
+234,INFORSUD_TECHNOLOGIES RODEZ,44.470,2.721,Lieu dit Causse Comtal,Bozouls,12,12340,Occitanie,France,4.938,1985,3451.000,3393.500,operating,Inforsud
+235,INFORSUD_TECHNOLOGIES TOULOUSE,43.584,1.495,2- rue Maryse Hilsz,Toulouse,31,31500,Occitanie,France,1.373,,1166.000,583.000,operating,Inforsud
+236,KOESIO_DATACENTER,44.905,4.905,53 avenue des Langories,Valence,26,26000,Auvergne-Rhône-Alpes,France,4.581,,3891.000,19455.000,operating,Koesio Groupe
+237,KYNDRYL FRCLFMI1,45.777,3.082,18 All. Evariste Galois- 63170 Aubière,Clermont-Ferrand,63,63100,Auvergne-Rhône-Alpes,France,3.143,,1297.000,6485.000,operating,Kyndryl
+238,KYNDRYL FRCLFMI2,,,1 Rue Condorcet,Gerzat,63,63360,Auvergne-Rhône-Alpes,France,3.143,,3074.000,1537.000,operating,Kyndryl
+239,KYNDRYL FRGRABEL,43.647,3.796,83 IMPASSE PIERRE MAGNOL 34790 GRABELS,Grabels,34,34790,Occitanie,France,3.143,2012,3713.000,18565.000,operating,Kyndryl
+240,KYNDRYL FRMARCQ1,50.637,3.064,31 RUE WINSTON CHURCHILL 59000 LILLE,Lille,59,59700,Hauts-de-France,France,3.143,,2078.000,1039.000,operating,Kyndryl
+241,KYNDRYL FRSECLIN,50.545,3.025,14 RUE DE LORIVAL 59113 SECLIN,Seclin,59,59113,Hauts-de-France,France,3.143,2010,4295.000,21475.000,operating,Kyndryl
+242,Worldline Seclin,50.567,3.040,2 Rue Marcel Dassault,Seclin,59,59113,Hauts-de-France,France,2.159,,1855.000,9275.000,operating,Atos / Worldline
+243,"""La pointe 1"" Atos Worldline Noyelles-les-Seclin",50.567,3.029,23 Rue de la Pointe,Noyelles-lès-Seclin,59,59139,Hauts-de-France,France,5.727,,4920.000,2460.000,operating,Atos / Worldline
+244,KYNDRYL FRVENISS,45.698,4.886,81 RUE SANS SOUCI 69760 LIMONEST,Vénissieux,69,69200,Auvergne-Rhône-Alpes,France,3.143,,4268.000,2134.000,operating,Kyndryl
+245,KYNDRYL MOPMAIN,43.611,3.877,650 RUE DE LA VIEILLE POSTE 34000 MONTPELLIER,Montpellier,34,34000,Occitanie,France,3.143,,200.000,100.000,operating,Kyndryl
+246,KYNDRYL CLERMONT,45.777,3.082,45.807642- 3.142409 - Rue de Chantemerle- 63100 Clermont-Ferrand,Clermont-Ferrand,63,63000,Auvergne-Rhône-Alpes,France,3.143,,3618.000,1809.000,operating,Kyndryl
+247,LA_CITADELLE_DATACENTER_1,45.777,3.082,46 RUE DU PORT 63000 CLERMONT-FERRAND,Clermont-Ferrand,63,63000,Auvergne-Rhône-Alpes,France,0.128,,109.000,545.000,operating,BeYs Cloud France
+248,LA_CITADELLE_DATACENTER_2,45.777,3.082,46 RUE DU RESSORT 63100 CLERMONT-FERRAND,Clermont-Ferrand,63,63000,Auvergne-Rhône-Alpes,France,2.866,2014,2434.000,1217.000,operating,BeYs Cloud France
+249,LINKT,47.484,-0.507,48 Bd de la Romanerie,"Saint-Barthélemy-d\,Anjou",49,49124,Pays de la Loire,France,1.273,,1081.000,5405.000,operating,Linkt SAS
+250,MAXNOD,46.069,4.916,1411 Rte de Sandrans,Saint-Trivier-sur-Moignans,19,1990,Auvergne-Rhône-Alpes,France,1.445,2009,1227.000,6135.000,operating,Adeli – SAS
+251,MSI,50.651,3.107,15 rue Jules Lammens,Mons-en-Baroeul,59,59370,Hauts-de-France,France,0.562,2011,477.000,2385.000,operating,Micro et services informatiques SAS
+252,NDC NORMANDIE,49.272,1.213,Voie Marmaille- 9001 LA CHAUSSEE 27100 VAL-DE-REUIL,Val-de-Reuil,27,27100,Normandie,France,3.975,,3376.000,1688.000,operating,Nation Data Center
+253,NDC Roazhon,48.114,-1.523,7 Rue Alain Fournier- 35530 Noyal-sur-Vilaine,Noyal-sur-Vilaine,35,35530,Bretagne,France,3.000,2025,2000.000,1000.000,operating,Nation Data Center
+254,NETIWAN,43.801,4.425,13/15 Rue Etienne Velay- 30230 Bouillargues,Bouillargues,30,30230,Occitanie,France,1.121,2018,37.000,476.000,operating,Netiwan
+255,NEXEREN CIVRIEUX_1,45.921,4.883,220 RUE LEONARD DE VINCI 01390 CIVRIEUX,Civrieux,13,1390,Auvergne-Rhône-Alpes,France,2.000,2013,900.000,450.000,operating,Nexeren
+256,NEXEREN CIVRIEUX_2,45.921,4.883,40 RUE LEONARD DE VINCI 01390 CIVRIEUX,Civrieux,13,1390,Auvergne-Rhône-Alpes,France,0.742,2013,630.000,315.000,operating,Nexeren
+257,XEFI / NEXEREN CLERMONT-FERRAND,45.784,3.131,35 Rue Jules Verne,Clermont-Ferrand,63,63000,Auvergne-Rhône-Alpes,France,1.221,,1037.000,5185.000,operating,Xefi
+258,NEXEREN ECOCENTER,45.830,3.115,95 Rue Pierre Gilles de Gennes,Cébazat,63,63118,Auvergne-Rhône-Alpes,France,0.801,2014,680.000,340.000,operating,Nexeren
+259,XEFI / NEXEREN VIENNE,45.496,4.835,242 Rte du Barrage,Reventin-Vaugris,38,38121,Auvergne-Rhône-Alpes,France,1.820,2022,1546.000,773.000,operating,Xefi
+260,NFRANCE,43.613,1.430,9 rue Ritay,Toulouse,31,31000,Occitanie,France,4.376,2023,3717.000,18585.000,operating,NFrance
+261,O2SWITCH,45.777,3.082,Chem. des Pardiaux,Clermont-Ferrand,63,63000,Auvergne-Rhône-Alpes,France,0.232,,200.000,100.000,operating,O2Switch
+262,ONE_SYSTEM,45.824,4.953,ZAE FOLLIOUSES- 29 Rue de Folliouse,Miribel,17,1700,Auvergne-Rhône-Alpes,France,0.690,2015,586.000,293.000,operating,ONE SYSTEM
+263,ORANGE_BUSINESS_SERVICES CHARTRES,48.442,1.393,5 rue du Commandant Charcot,Amilly,28,28300,Centre-Val de Loire,France,28.492,2022,17808.000,5000.000,operating,Orange Business Services
+264,ORANGE_BUSINESS_SERVICES NORMANDIE_1,49.261,1.187,"7 Voie de l\,Orée",Val de Reuil,27,27100,Normandie,France,24.219,2012,16362.000,8181.000,operating,Orange
+265,ORANGE_BUSINESS_SERVICES NORMANDIE_2,49.261,1.187,"7 Voie de l\,Orée",Val-de-Reuil,27,27100,Normandie,France,23.683,2022,16000.000,5000.000,operating,Orange
+266,Centre Noé EDF,49.261,1.187,"2 voie de l \,orée",Val-de-Reuil,27,27100,Normandie,France,20.000,,8400.000,4200.000,operating,EDF
+267,OVHCloud GRA-1,51.016,2.158,Rte de la Frm Masson,Gravelines,59,59820,Hauts-de-France,France,7.500,2012,5538.000,5538.000,operating,OVHCloud
+268,OVHCloud GRA-2,51.016,2.158,Rte de la Frm Masson,Gravelines,59,59820,Hauts-de-France,France,7.500,2012,5538.000,2769.000,operating,OVHCloud
+269,OVHCloud GRA-3,51.016,2.158,Rte de la Frm Masson,Gravelines,59,59820,Hauts-de-France,France,7.500,2012,5538.000,2769.000,operating,OVHCloud
+270,OVHCloud GRA-4,51.016,2.158,Rte de la Frm Masson,Gravelines,59,59820,Hauts-de-France,France,7.500,2012,5538.000,2769.000,operating,OVHCloud
+271,OVHCloud RBX-2,50.692,3.200,2 Rue Kellermann,Roubaix,59,59100,Hauts-de-France,France,5.000,2011,4681.000,2340.000,operating,OVHCloud
+272,OVHCloud RBX-3,50.692,3.200,2 Rue Kellermann,Roubaix,59,59100,Hauts-de-France,France,5.000,2010,4681.000,2340.000,operating,OVHCloud
+273,OVHCloud RBX-4,50.692,3.200,2 Rue Kellermann,Roubaix,59,59100,Hauts-de-France,France,5.000,2011,4681.000,2340.000,operating,OVHCloud
+274,OVHCloud RBX-5,50.692,3.200,2 Rue Kellermann,Roubaix,59,59100,Hauts-de-France,France,5.000,2022,4681.000,2340.000,operating,OVHCloud
+275,OVHCloud RBX-6,50.692,3.200,2 Rue Kellermann,Roubaix,59,59100,Hauts-de-France,France,5.000,,4681.000,2340.000,operating,OVHCloud
+276,OVHCloud RBX-7,50.692,3.200,2 Rue Kellermann,Roubaix,59,59100,Hauts-de-France,France,5.000,,7669.000,2340.000,operating,OVHCloud
+277,OVHCloud RBX-8,50.692,3.200,2 Rue Kellermann,Roubaix,59,59100,Hauts-de-France,France,5.000,2022,4681.000,2340.000,operating,OVHCloud
+278,OVHCloud RBX-9,50.692,3.174,2 Rue Kellerman,Roubaix,59,59100,Hauts-de-France,France,5.000,,4681.000,2340.000,operating,OVHCloud
+279,OVHCloud SBG-1,48.585,7.751,"9 Rue du Bass. de l\,Industrie",Strasbourg,67,67000,Grand Est,France,4.000,2012,2273.000,11365.000,operating,OVHCloud
+280,OVHCloud SBG-2,48.585,7.751,"9 Rue du Bass. de l\,Industrie",Strasbourg,67,67000,Grand Est,France,4.000,2012,2273.000,11365.000,operating,OVHCloud
+281,OVHCloud SBG-3,48.585,7.751,"10 Rue du Bass. de l\,Industrie",Strasbourg,,67000,Grand Est,France,4.000,2012,1700.000,850.000,operating,OVHCloud
+282,OVHCloud SBG-4,48.585,7.751,"11 Rue du Bass. de l\,Industrie",Strasbourg,,67000,Grand Est,France,4.000,2012,1700.000,850.000,operating,OVHCloud
+283,OVHCloud SBG-5,48.585,7.751,"12 Rue du Bass. de l\,Industrie",Strasbourg,,67000,Grand Est,France,4.000,2022,1700.000,850.000,operating,OVHCloud
+284,PHOCEA_DC,43.296,5.370,3e Arrondissement,Marseille,13,13003,"Provence-Alpes-Côte d\,Azur",France,1.200,2025,1700.000,850.000,operating,SAS PHOCEA DC
+285,PROSOLUCE,43.104,0.785,Rue du Chêne Besson,Estancarbon,31,31800,Occitanie,France,0.883,2023,750.000,375.000,operating,PROSOLUCE
+286,RUBIX_DATACENTER,46.794,4.436,"Boulevard de l\,industrie",LE CREUSOT,71,71200,Bourgogne-Franche-Comté,France,0.942,2023,800.000,400.000,operating,SARL RUBIX DATACENTER
+287,Sartera,,,108 Rue Molière,Le mans,72,72000,Pays de la Loire,France,1.227,2024,850.000,425.000,operating,Sartel
+288,SICLOUD,43.712,3.833,525 Avenue de Saint-Sauveur,Saint-Clément-de-Rivière,34,34980,Occitanie,France,0.200,2022,1289.000,6445.000,operating,si-cloud
+289,SIGMA CARQUEFOU,47.277,-1.470,14 Rue Véga,Carquefou,44,44470,Pays de la Loire,France,0.000,,0.000,0.000,operating,Sigma
+290,SIGMA LA_CHAPELLE-SUR-ERDRE,47.262,-1.549,8 Rue Newton,La Chapelle-sur-Erdre,44,44240,Pays de la Loire,France,6.277,2014,4241.000,21205.000,operating,Sigma
+291,SITEC AIACCIU,41.926,8.738,Zone Industrielle du Vazzio,Ajaccio,20,20090,Corse,France,0.887,,753.000,3765.000,operating,Sitec
+292,SITEC BASTIA,42.658,9.415,Parc Technologique Erbajolo,Furiani,20,20601,Corse,France,0.809,,687.000,3435.000,operating,Sitec
+293,SOMME_NUMÉRIQUE,49.871,2.281,43 Avenue d’Italie,Amiens,80,80000,Hauts-de-France,France,0.217,,150.000,75.000,operating,Syndicat mixte Somme Numérique
+294,SYNAAPS VILLEURBANNE,45.785,4.888,49 Avenue Albert Einstein,Villeurbanne,69,69100,Auvergne-Rhône-Alpes,France,2.717,2010,1619.000,1154.000,operating,SYNAPS SYSTEM
+295,TAS_GROUP,43.627,7.052,15 traverse des Brucs,Valbonne,65,6560,"Provence-Alpes-Côte d\,Azur",France,1.739,,1477.000,7385.000,operating,TAS FRANCE
+296,TDF AIX-MARSEILLE,43.504,5.333,"6505 Route de la Tour d\,Arbois",Aix-en-Provence,13,13290,"Provence-Alpes-Côte d\,Azur",France,4.118,2014,2700.000,1350.000,operating,TDF
+297,TDF BORDEAUX-BOULIAC,44.818,-0.506,Avenue du Domaine de Vialle,Bouliac,33,33270,Nouvelle-Aquitaine,France,2.834,2013,2407.000,12035.000,operating,TDF
+298,TDF LILLE,50.649,3.040,35 Rue Gambetta,Lambersart,59,59130,Hauts-de-France,France,1.500,2014,598.000,299.000,operating,TDF
+299,TDF RENNES,48.125,-1.628,2 Rue du Clos Courtel,Rennes,35,35700,Bretagne,France,1.749,2014,1486.000,743.000,operating,TDF
+300,TELEHOUSE THM1 / proxicenter,43.361,5.339,71 Avenue André Roussin,Marseille,13,13016,"Provence-Alpes-Côte d\,Azur",France,12.000,2021,4456.000,2228.000,operating,Telehouse Europe
+301,TELFAX,45.851,3.169,2- rue Blaise Pascal,Saint-Beauzire,63,63360,Auvergne-Rhône-Alpes,France,0.549,2019,466.000,233.000,operating,PROXDATA By TELFAX Communications
+302,TITAN_DATACENTER DC1,43.601,6.996,1210 Chem. de la Plaine,Mougins,62,6250,"Provence-Alpes-Côte d\,Azur",France,6.090,2021,8400.000,4200.000,operating,Titan Datacenter
+303,SFR Bunisess Team / ULTRAEDGE BORDEAUX_PERY_NETCENTER,44.841,-0.580,Technolac- 1 Rue Docteur Gabriel Perri 10 Av. des 3 Cardinaux- 33300 Bordeaux,Bordeaux,33,33000,Nouvelle-Aquitaine,France,6.000,2001,3871.000,19355.000,operating,UltraEdge
+304,SFR / ULTRAEDGE LILLE_NETCENTER,50.637,3.064,Port de Lille   - 1ère Avenue - Bat B,Lille,59,59000,Hauts-de-France,France,0.500,,1000.000,500.000,operating,UltraEdge
+305,ULTRAEDGE RENNES_NETCENTER,48.120,-1.604,7-9 ALLEE DE BRAY - lieu-dit LA BARAQUE,CESSON SEVIGNE,35,35510,Bretagne,France,6.000,,2584.000,1292.000,operating,UltraEdge
+306,SFR / ULTRAEDGE STRASBOURG_NETCENTER,48.569,7.782,1 rue du Havre,Strasbourg,67,67000,Grand Est,France,18.000,,1000.000,500.000,operating,UltraEdge
+307,ULTRAEDGE VENISSIEUX_NETCENTER,45.723,4.861,6 RUE GEORGES MARRANE,VENISSIEUX,69,69200,Auvergne-Rhône-Alpes,France,6.700,2000,5123.000,3487.500,operating,UltraEdge
+308,UNIMEDIA,47.482,-0.605,14 Bd de Lavoisier,Angers,49,49000,Pays de la Loire,France,1.753,,1489.000,7445.000,operating,Unimédia Services
+309,VIRTUA_NETWORKS,47.805,3.579,24 rue des Champoulains,Auxerre,89,89000,Bourgogne-Franche-Comté,France,1.413,2015,1200.000,900.000,operating,Virtua Networks
+310,Orange DC OU NRO ?,49.258,4.032,101 Rue de Louvois- 51100 Reims,Reims,51,51100,Grand Est,France,1.947,,1673.000,8365.000,operating,Orange
+311,Airbus - Toulouse,43.604,1.444,43.59340- 1.37101 - 2 CH LOUIS JOUVET 31000 TOULOUSE,Toulouse,31,31500,Occitanie,France,0.000,,1892.000,946.000,operating,Airbus
+312,Airbus - Valbonne,43.604,1.444,1201 Rte des Crêtes- 06560 Valbonne- France,Toulouse,31,31500,Occitanie,France,11.777,2017,10117.000,5058.500,operating,Airbus
+313,Allianz – Plaisir (à confirmer : détruit et terrain racheté par SEGRO),48.796,1.952,Avenue de Dreux,Plaisir,78,78370,Ile-de-France,France,5.430,,4416.000,2208.000,operating,TO BE IDENTIFIED
+314,Oxya (Hitachi) Loos,50.609,3.016,3 Rue de Londres- 59120 Loos- France,Loos,59,59120,Hauts-de-France,France,3.000,2013,2968.000,900.000,operating,"oxYa, a Hiatchi Group Company"
+315,Eskemm Data,48.115,-1.639,,Rennes,35,35000,Bretagne,France,0.233,,200.000,100.000,operating,Eskemm Numérique
+316,DC Université de Strasbourg,48.585,7.751,"Campus de l\,Esplanade",Strasbourg,67,67000,Grand Est,France,1.200,2019,450.000,400.000,operating,Université de Strasbourg
+317,Oméga 1,-20.935,55.292,4 Imp. des Piments- Le Port 97420- Réunion,Le port,974,97420,La réunion,France,1.000,,1091.000,5455.000,operating,Omega Data Centers
+318,IGN datacenter,48.846,2.425,73 Av. de Paris,Saint-Mandé,94,94160,Ile-de-France,France,0.060,2016,250.000,144.000,operating,IGN
+319,ArteOne,45.158,1.533,3-5 Rue des Frères Goncourt- 19100 Brive-la-Gaillarde,Brive-la-Gaillarde,19,19100,Ile-de-France,France,0.203,2012,140.000,70.000,operating,Artefact
+320,XL360 Toulon,43.126,5.930,244 Bd Commandant Nicolas- 83000 Toulon,Toulon,83,83000,"Provence-Alpes-Côte d\,Azur",France,0.706,2022,600.000,300.000,operating,XL Datacenter
+321,Datacube,43.708,-1.052,1 Av. de la Gare- 40100 Dax,Dax,40,40100,Nouvelle-Aquitaine,France,0.056,2015,65.000,32.000,operating,Communauté d’Agglomération du Grand DAX
+322,Atlantis 3 - Sea-west - Soullans,46.797,-1.899,7 Rue des Acacias- 85300 Soullans,Soullans,85,85300,Pays de la Loire,France,1.342,,1140.000,570.000,operating,Sea-West
+323,Proginov La Chevrolière,47.089,-1.555,36 Rue de la Guillauderie,La Chevrolière,44,44118,Pays de la Loire,France,0.824,2024,700.000,350.000,operating,Proginov
+324,Ascendas Reit,48.731,2.173,Carrefour du Christ de Saclay- Route de Bièvres and Route Nationale 306,Saclay,91,91400,Ile-de-France,France,2.700,,3178.000,1589.000,operating,Ascendas Reit
+325,Verizon CDG1,48.911,2.363,14 Rue de la Montjoie,Saint-Denis,93,93210,Ile-de-France,France,19.971,2001,4176.000,2088.000,operating,Verizon
+326,Neo Telecoms Metz,49.149,6.171,3 avenue des Deux Fontaines,Woippy,57,57140,Grand Est,France,0.600,2008,200.000,100.000,operating,databank / neo telecom / etix everywhere
+327,Neo Telecoms Nancy,48.710,6.169,13 rue Jean Jaures,Maxeville,54,54320,Grand Est,France,0.300,2008,200.000,100.000,operating,databank / neo telecom / etix everywhere
+328,TAS France,43.620,7.052,1300 route des Cretes- World Trade Center 1-B7,Sophia-Antipolis,6,6560,"Provence-Alpes-Côte d\,Azur",France,2.000,2017,720.000,360.000,operating,TAS France
+329,Orange/France Telecom RueChappe,48.590,7.736,1 Rue Claude Chappe,Strasbourg,67,67000,Grand Est,France,0.584,2009,1430.000,715.000,operating,Orange Business Services
+330,SFR Netcenter Reze (Nantes),47.197,-1.561,24 rue Felix Eboue,Reze,44,44400,Ile-de-France,France,6.000,,840.000,420.000,operating,SFR
+331,NavLink France Data Center,43.604,7.077,51 rue Henri Laugier,Antibes,6,6600,"Provence-Alpes-Côte d\,Azur",France,0.135,2002,2000.000,1000.000,operating,NAVLink
+332,Groupama Mordelles,48.073,-1.849,Parc des Perrières- 2 Rte de Chavagne- 35310 Mordelles,Mordelles,35,35310,Bretagne,France,3.623,,3112.000,1556.000,operating,Groupama
+333,SM5 / SM6 / SM7 Crédit Mutuel / Euro-information Verlinghem,50.681,3.016,2 chemin du bleu bourdeau,Verlinghem,59,59237,Hauts-de-France,France,11.641,,10000.000,5000.000,operating,Euro-information
+334,SM4 Crédit Mutuel / Euro-information Verlinghem,50.682,2.998,36 Rue de Messines- 59237 Verlinghem,Verlinghem,59,59237,Hauts-de-France,France,1.778,,1527.000,7635.000,operating,Euro-information
+335,Socrate SNCF Réseaux Lille,50.637,3.064,Pont de Tournai,Lille,59,59800,Hauts-de-France,France,3.455,,2968.000,1484.000,operating,SNCF
+336,Orange/France Telecom Blanqui,50.627,3.078,Rue Blanqui,Lille,59,59800,Hauts-de-France,France,2.270,,1950.000,975.000,operating,Orange
+337,CERN Préssevin-Moens,46.256,6.055,870 Rte Dirac,Prévessin-Moëns,1,1630,Auvergne-Rhône-Alpes,France,12.000,2025,6000.000,3000.000,operating,CERN
+338,Heliantis,43.320,-0.309,20 rue Johannes Kepler,Pau,64,64000,Nouvelle-Aquitaine,France,1.500,,236.000,118.000,operating,Heliantis
+339,Silca,48.451,1.449,"63 Rue du Château d\,Eau",Mainvilliers,28,28300,Centre-Val De Loire,France,7.980,2011,13443.000,5600.000,operating,Credit Agricole
+340,Vulcain BRED / Banque populaire,48.086,-1.626,19 rue des loges,Chantepie,35,35135,Bretagne,France,1.959,,1683.000,8415.000,operating,BRED / Banque populaire
+341,LCP-FR-DC1 (PROJET),48.614,2.482,224 Boulevard John Kenedy- 91100 Corbeil-Essonnes,CORBEIL-ESSONNES,91,91100,Ile-de-France,France,125.000,,0.000,,project,LCP-FR
+342,Amazon Web Services (PROJET),48.610,2.308,"Avenue du Centres d\,Essais en Vol- 91220 Brétigny-sur-Orge",BRETIGNY-SUR-ORGE,91,91220,Ile-de-France,France,188.047,,0.000,,project,Amazon Web Services
+343,CLOUD HQ France - CDG 1,48.596,2.424,parc d’activités Léonard de Vinci Lisses,LISSES,91,91090,Ile-de-France,France,120.000,2025,10000.000,5000.000,operating,Cloud HQ FRANCE
+344,CLOUD HQ France (PROJET) - CDG 2,48.596,2.424,parc d’activités Léonard de Vinci Lisses,LISSES,91,91090,Ile-de-France,France,120.000,2031,0.000,,project,Cloud HQ FRANCE
+345,Equinix PA15 (extension de PA13 en projet),48.813,2.239,9 Avenue du Maréchal Juin- 92360 Meudon,MEUDON,92,92190,Ile-de-France,France,20.000,,,,project,"Equinix, Inc"
+346,Telehouse 2.2 (KDDI DC leon Frot),48.860,2.378,65 RUE LEON FROT 75011 PARIS,PARIS 11ÈME,75,75011,Ile-de-France,France,5.000,2021,4653.000,2495.000,project,Telehouse Europe (KDDI)
+347,Interxion PAR10,48.927,2.390,2-20 Rue Marcel Cachin- 93120 La Courneuve,LA COURNEUVE,93,93120,Ile-de-France,France,19.200,2021,8878.000,5775.000,project,Interxion (a Digital Realty Company)
+348,Interxion PAR11,48.927,2.390,2-20 Rue Marcel Cachin- 93120 La Courneuve,LA COURNEUVE,93,93120,Ile-de-France,France,19.200,2021,8878.000,4439.000,project,Interxion (a Digital Realty Company)
+349,Equinix (PROJET),48.948,2.248,1-3 rue Charles Michel/Rue de Montigny- 95100 Argenteuil,ARGENTEUIL,95,95100,Ile-de-France,France,80.000,,6936.000,3468.000,project,"Equinix, Inc"
+350,Digital Realty Les Ulis (PROJET) (DC2),48.682,2.170,"Site l\,Orme à Moineaux- ZA de Courtaboeuf",LES ULIS,91,91940,Ile-de-France,France,0.000,,0.000,0.000,project,Digital Reality
+351,LCP-FR-DC2 (PROJET),48.614,2.482,224 Boulevard John Kenedy- 91100 Corbeil-Essonnes,CORBEIL-ESSONNES,91,91100,Ile-de-France,France,0.000,,0.000,0.000,project,LCP-FR
+352,LCP-FR-DC3 (PROJET),48.614,2.482,224 Boulevard John Kenedy- 91100 Corbeil-Essonnes,CORBEIL-ESSONNES,91,91100,Ile-de-France,France,0.000,,0.000,0.000,project,LCP-FR
+353,DATA4 DC22 (PROJET),48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,4.800,2029,7200.000,3600.000,project,DATA4 Group
+354,DATA4 DC21 (PROJET),48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,4.800,2029,7200.000,3600.000,project,DATA4 Group
+355,DATA4 DC13 (PROJET),48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,4.800,2029,7200.000,3600.000,project,DATA4 Group
+356,DATA4 DC14 (PROJET),48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,4.800,2029,7200.000,3600.000,project,DATA4 Group
+357,DATA4 DC20 (PROJET),48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,4.800,2029,7200.000,3600.000,project,DATA4 Group
+358,DATA4 DC19 (PROJET),48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,4.800,2029,7200.000,3600.000,project,DATA4 Group
+359,DATA4 DC18 (PROJET),48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,4.800,2029,7200.000,3600.000,project,DATA4 Group
+360,DATA4 DC17 (PROJET),48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,4.800,2029,7200.000,3600.000,project,DATA4 Group
+361,DATA4 DC16 (PROJET),48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,4.800,2029,7200.000,3600.000,project,DATA4 Group
+362,DATA4 DC15 (PROJET),48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,4.800,2029,7200.000,3600.000,project,DATA4 Group
+363,DATA4 DC23 (PROJET),48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,4.800,,7200.000,3600.000,project,DATA4 Group
+364,DATA4 DC24 (PROJET),48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,4.800,,7200.000,3600.000,project,DATA4 Group
+365,DATA4 DC25 (PROJET),48.643,2.231,Route de Nozay- 91460 Marcoussis,MARCOUSSIS,91,91460,Ile-de-France,France,8.320,,7200.000,3600.000,project,DATA4 Group
+366,TH3 Paris Magny 2,48.724,2.084,1- rue Pablo Picasso 78114 Magny-les-Hameaux,MAGNY-LES-HAMEAUX,78,78114,Ile-de-France,France,18.000,2025,0.000,0.000,project,Telehouse International Corporation
+367,Data Center Linkcity (PROJET),48.847,2.821,ZAC du Prieuré- avenue Joahnnes Gutenberg- Bailly Romainvilliers,BAILLY-ROMAINVILLIERS,77,77700,Ile-de-France,France,5.297,,0.000,0.000,project,NR (MOA Linkcity)
+368,Digital Reality MRS5 (PROJET),43.340,5.333,,Marseille,13,13016,"Provence-Alpes-Côte d\,Azur",France,100.000,2026,,,project,Digital Reality
+369,SEGRO MARSEILLE,43.354,5.329,,Marseille,13,13000,"Provence-Alpes-Côte d\,Azur",France,20.000,,,,project,Segro
+370,OVHCloud RBX-10,50.692,3.198,,Roubaix,59,59100,Hauts-de-France,France,,,,,project,OVHCloud
+371,OVHCloud SBG-7,48.585,7.793,9 Rue du Bass. de l'Industrie,Strasbourg,67,67001,Grand Est,France,,,,,project,OVHCloud
+372,Goodman 1 (PROJET),48.739,2.451,34 Rue Louis Armand- 94190 Villeneuve-Saint-Georges,Villeneuve-Saint-George,94,94190,Ile-de-France,France,105.000,,53880.000,26940.000,project,Goodman
+373,Goodman 2 (PROJET),48.739,2.451,34 Rue Louis Armand- 94190 Villeneuve-Saint-Georges,Villeneuve-Saint-George,94,94190,Ile-de-France,France,105.000,,0.000,,project,Goodman
+374,Digital Reality Dugny (PROJET),48.971,2.450,,Dugny,93,93440,Ile-de-France,France,200.000,2025,41000.000,20500.000,project,Digital Reality
+375,Data Center du Crédit Mutuel - Fauverney,47.255,5.145,1 Zone D’Activite la Boulouze,Fauverney,21,21110,Bourgogne-Franche-Comté,France,11.641,2025,10000.000,5000.000,operating,Euro-information
+376,Data Center du Crédit Mutuel - Saint Appolinaire,47.337,5.109,310 Rue Frédéric Lescure,Saint-Apollinaire,21,21850,Bourgogne-Franche-Comté,France,11.641,2025,10000.000,5000.000,operating,Euro-information
+377,Sesterce,44.933,4.892,"Parc d\,activité Rovaltain",Valence,26,26000,Auvergne-Rhône-Alpes,France,50.000,2026,14000.000,7000.000,project,Sesterce
+378,Sesterce Grand Est 1,48.830,5.320,,,,,Grand Est,France,300.000,2028,,,project,Sesterce
+379,Sesterce Grand Est 2,48.830,5.320,,,,,Grand Est,France,300.000,2028,,,project,Sesterce
+380,DataOne,45.156,5.741,5 Rue Raymond Chanas,Eybens,38,38320,Auvergne-Rhône-Alpes,France,200.000,2027,,,project,DataOne
+381,"DataOne - autogenerated #2",45.624,5.165,Av. Steve Biko,Villefontaine,38,38090,Auvergne-Rhône-Alpes,France,200.000,2027,,,project,DataOne
+382,Evroc Mougins,43.611,7.011,Anciens locaux de Titan,Mougins,6,6250,"Provence-Alpes-Côte d\,Azur",France,96.000,2028,8500.000,4250.000,project,Evroc
+383,Evroc projet 1,,,,,,,,France,100.000,2030,,,project,Evroc
+384,Evroc projet 2,,,,,,,,France,100.000,2030,,,project,Evroc
+385,TCS,43.632,1.357,,Blagnac,31,31000,Occitanie,France,,,,1000.000,project,TCS
+386,MiPih Amiens,49.878,2.268,,Amiens,,80000,Hauts-de-France,France,1.392,,1200.000,600.000,operating,MiPih
+387,Porcheville (info IPR),48.972,1.777,Ancienne centrale EDF ?,Porcheville,78,78440,Ile-de-France,France,,,,,project,TO BE IDENTIFIED
+388,Goodman Ballainvilliers,48.671,2.294,25 Chem. des Bellebats,Baillainvilliers,91,91160,Ile-de-France,France,,,,,project,Goodman
+389,Dammary lès lys,,,,Dammary lès lys,77,77190,Ile-de-France,France,,,,,project,TO BE IDENTIFIED
+390,Villaroche,48.601,2.648,,Montereau-sur-le-Jard,77,77950,Ile-de-France,France,,,,,project,TO BE IDENTIFIED
+391,Data 4 / Brookfield Cambrai,50.220,3.166,"D643, 62860 Épinoy",Cambrai,59,59400,Hauts-de-France,France,1000.000,2030,,,project,DATA4 Group
+392,Prologis,,,,,,,Ile-de-France,France,146.000,2035,,,project,Prologis
+393,"Prologis - autogenerated #2",,,,,,,Ile-de-France,France,146.000,2035,,,project,Prologis
+394,COLT PAR 5,48.675,2.195,,Les Ulis,91,91940,Ile-de-France,France,85.000,2030,,,project,Colt Technology Services
+395,COLT PAR 6,48.675,2.195,,Les Ulis,91,91940,Ile-de-France,France,,2031,,,project,Colt Technology Services
+396,COLT VILLEBON PAR 2,48.700,2.228,20 avenue du Québec- ZA Courtabeuf,Villebon-sur-Yvette,91,91140,Ile-de-France,France,40.000,2028,11000.000,5500.000,project,Colt Technology Services
+397,COLT VILLEBON PAR 3,48.700,2.228,20 avenue du Québec- ZA Courtabeuf,Villebon-sur-Yvette,91,91140,Ile-de-France,France,40.000,2029,,,project,Colt Technology Services
+398,COLT VILLEBON PAR 4,48.700,2.228,20 avenue du Québec- ZA Courtabeuf,Villebon-sur-Yvette,91,91140,Ile-de-France,France,40.000,2029,,,project,Colt Technology Services
+399,Eclairion Bessé-sur-Braye,47.826,0.743,17 Rue du 8 Mai 1945,Bessé-sur-Braye,72,72310,Pays de la Loire,France,,,,,project,Éclairion / HPC
+400,Océanis à Mirapolis,49.053,1.998,,Courdimanche,95,95800,Ile-de-France,France,,,,,project,TO BE IDENTIFIED
+401,Microsoft - La Janais- Chartre de Bretagne ,48.060,-1.714,,Chartres-de-bretagne,35,35131,Bretagne,France,,,,,project,Microsoft
+402,Campus IA MGX-Mistral AI Fouju,48.588,2.742,,Fouju,77,77390,Ile-de-France,France,1400.000,2030,,,project,TO BE IDENTIFIED
+403,OpCore/EDF Montereau,48.379,2.839,,Montereau-Fault-Yonne,77,77130,Ile-de-France,France,700.000,,,,project,OpCore
+404,ZAC du plateau de Colombelle,49.192,-0.306,Rue des Ateliers- 14460 Colombelles,Caen,14,14000,Normandie,France,,,,,project,TO BE IDENTIFIED
+405,La Hague,49.200,-0.282,ZAC du plateau de Colombelles,La Hague,50,50440,Normandie,France,,,,,project,TO BE IDENTIFIED
+406,Microsoft- Petit-Landau,47.746,7.529,,Petit-Landau,68,68490,Grand-Est,France,,,,,project,Microsoft
+407,Equinix PA12,48.949,2.211,1-3 rue Charles Michels,Argenteuil,95,95100,Ile-de-France,France,28.000,,,,project,"Equinix, Inc"
+408,Equinix PA16,48.949,2.211,5 rue Charles Michels,Argenteuil,95,95100,Ile-de-France,France,55.000,,,,project,"Equinix, Inc"
+409,DC du pôle audiovisuel Nemoa / AXA,48.836,2.536,Studios de Bry,Bry-sur-marne,94,94360,Ile-de-France,France,34.951,,30130.000,15065.000,project,TO BE IDENTIFIED
+410,Segro Bourget,48.934,2.431,45 Rue du Commandant Rolland,Le Bourget,93,93350,Ile-de-France,France,75.000,,25300.000,12650.000,project,Segro
+411,Tricolore Computing / Google Etrechet,46.790,1.744,ZAC d’Ozans,Étrechet,36,36120,Centre-Val De Loire,France,500.000,,,,project,Digital Reality
+412,Decknet Buzançais,46.893,1.409,,Buzançais,37,36500,Centre-Val De Loire,France,,2027,,,project,Goodman
+413,"Vieux Reng, aérodrome de la salmagne",50.317,4.029,aérodrome de la salmagne,Vieux-Reng,59,59600,Hauts-de-France,France,,,,,project,TO BE IDENTIFIED
+414,Les Sybilles -  Telehouse,43.415,5.271,,Les Pennes-Mirabeau,13,13170,"Provence-Alpes-Côte d\,Azur",France,,,,,project,Telehouse International Corporation
+415,Zouafques,50.823,2.056,"Située à l'intersection de l'A26 et de la D943, entre Calais et Saint-Omer",Zouafques,62,62890,Hauts-de-France,France,,,,,project,TO BE IDENTIFIED
+416,Quaëdypre,50.954,2.358,"secteur dit de la Croix-Rouge, près de la RD110",Quaëdypre,59,59380,Hauts-de-France,France,,,,,project,TO BE IDENTIFIED
+417,Data Village Paris-Essonne – NTT,48.571,2.456,,Coudray-Montceaux,91,91830,Ile-de-France,France,84.000,,25800.000,12900.000,project,NTT
+418,Vielle Eglise,50.936,1.995,,Vielle-Église,62,62162,Hauts-de-France,France,,,,,project,TO BE IDENTIFIED
+419,Icade Rungis,48.744,2.350,,Rungis,94,94150,Ile-de-France,France,130.000,,,,project,TO BE IDENTIFIED
+420,Digital Realty MRS6,43.431,5.391,ZAC des Chabauds,Bouc-Bel-Air,13,13320,"Provence-Alpes-Côte d\,Azur",France,,,,,project,Digital Reality
+421,Goodman Tremblay,48.969,2.566,13 rue charles cros,Tremblay-en-france,93,93290,Ile-de-France,France,105.000,,,,project,Goodman
+422,SNC Data Hills Aulnay-sous-bois,48.960,2.485,,Aulnay-sous-bois,93,93600,Ile-de-France,France,240.000,,,,project,Data Hills
+423,Axtom Blanquefort,44.915,-0.609,ex usine ford,Blanquefort,33,33290,Nouvelle-Aquitaine,France,,,,,project,TO BE IDENTIFIED
+424,Eclairion Richemont,49.304,6.016,,Richemont,57,57270,Grand Est,France,,,,,project,ECLAIRION
+425,Eclairion La Maxe,49.160,6.116,,La Maxe,57,57140,Grand Est,France,,,,,project,ECLAIRION
+426,Data4 Escaudain,50.323,3.351,Requalification Parc Premium des Soufflantes,Escaudain,59,59124,Hauts-de-France,France,,,,,project,DATA4 Group
+427,BrownFields friche SaintLouis Sucre Cagny,49.142,-0.255,Friche Saint Louis Sucre,Cagny,14,14630,Normandie,France,,,,,project,TO BE IDENTIFIED
+428,"SBG-2 - autogenerated #2",48.585,7.795,"9 Rue du Bass. de l\,Industrie",Strasbourg,67,67000,Grand Est,France,4.000,2012,2273.000,11365.000,project,OVHCloud
+429,Vantage DC – Campus ZRH1,47.500,8.761,Fabrikstrasse 12,Winterthur,84,8400,Zürich,Switzerland,3.118,,2688.000,1344.000,operating,Vantage DC
+430,Stack Infrastructures AVE01,46.888,7.046,"Rte de l\,Estivage 10",Avenches,15,1580,Vaud,Switzerland,,,,,operating,Stack Infrastructures
+431,Stack Infrastructures GEN01,46.166,6.106,Chem. du Pré-Fleuri 20,Plan-les-Ouates,12,1228,Genève,Switzerland,2.598,,2240.000,1120.000,operating,Stack Infrastructures
+432,Stack Infrastructures GEN02,49.049,3.463,Rte des Avouillons 32,Gland,11,1196,Vaud,Switzerland,3.758,,3240.000,1620.000,operating,Stack Infrastructures
+433,Stack Infrastructures ZUR01,47.601,8.541,Industriestrasse 16,Rafz,81,8197,Zürich,Switzerland,9.558,,8240.000,4120.000,operating,Stack Infrastructures
+434,Stack Infrastructures ZUR02,47.693,8.584,Industriestrasse 531A,Beringen,80,8222,Zürich,Switzerland,36.000,,8652.000,4326.000,operating,Stack Infrastructures
+435,Swiss Data Safe,,,Gotthardstrasse 1,Amsteg,64,6474,Uri,Switzerland,0.000,,0.000,,operating,Swiss Data Safe
+436,Swiss Colocation,45.848,9.015,Viale Serfontana 7,Morbio Inferiore,68,6834,Tessin,Switzerland,0.872,,752.000,376.000,operating,Swiss Colocation
+437,RZO,49.904,2.321,Forren 8,Gais,90,9056,Appenzell Rhodes-Extérieures,Switzerland,1.000,,1800.000,900.000,operating,RZO
+438,SenseLAN Bonnstrasse,46.858,7.185,Bonnstrasse 20,Düdingen,31,3186,Fribourg,Switzerland,1.499,,1292.000,646.000,operating,SenseLAN
+439,SenseLAN Duenstrasse,46.845,7.191,Duensstrasse 1,Düdingen,31,3186,Fribourg,Switzerland,0.470,,405.000,202.500,operating,SenseLAN
+440,NRB Herstal,50.696,5.611,2ème Avenue 65,Herstal,40,4040,Liège,Belgium,3.443,,2968.000,1484.000,operating,NRB
+441,NRB Villers-le-Bouillet,50.579,5.262,Rue de la Science 3,Villers-le-Bouillet,45,4530,Liège,Belgium,1.322,,1140.000,570.000,operating,NRB
+442,NTS Colocation Bern Nord,45.007,-0.627,Wölflistrasse 1d,Bern,30,3019,Bern,Switzerland,1.666,,1436.500,718.250,operating,NTS
+443,NTS Colocation Bern Sud,45.007,-0.627,Chutzenstrasse 24,Bern,30,3019,Bern,Switzerland,1.206,,1040.000,520.000,operating,NTS
+444,NTS Colocation Zurich,47.383,8.493,Badenerstrasse 569,Zürich,80,8000,Zürich,Switzerland,2.900,,2500.000,1250.000,operating,NTS
+445,NTT Zürich,47.448,8.540,Hofwisenstrasse 56,Rümlang,81,8153,Zürich,Switzerland,7.787,,6713.000,3356.500,operating,NTT
+446,Monaco Telecom DC1,43.742,7.420,Monte-Carlo,Monaco,98,98000,,Monaco,1.545,,1332.000,666.000,operating,Monaco Telecom
+447,Monaco Telecom DC2,43.742,7.420,19 Bd du Larvotto,Monaco,98,98000,,Monaco,1.545,,1332.000,666.000,operating,Monaco Telecom
+448,Monaco Telecom DC3,43.729,7.413,4 Av. Albert II,Monaco,98,98000,,Monaco,1.545,,1332.000,666.000,operating,Monaco Telecom
+450,MORESI,45.933,8.975,Via Pedemonte di Sopra 1,Val Mara,68,6817,Tessin,Switzerland,0.501,,432.000,216.000,operating,Moresi
+451,Mount10 Swiss Fort Knox I,47.037,8.445,Lusflue-Weg,Blankenburg,37,3771,Bern,Switzerland,0.232,,200.000,100.000,operating,Mount 10
+452,Mount 10 Swiss Forg Knox II,47.037,8.445,Allmistrasse 11,Saanen,37,3792,Bern,Switzerland,0.232,,200.000,100.000,operating,Mount 10
+453,LCL Antwerp,43.665,0.908,Noorderlaan 133,Anvers,20,20000,Anvers,Belgium,0.580,,500.000,250.000,operating,LCL
+454,LCL Brussels North,50.887,4.455,Kouterveldstraat 13,Diegem,18,1831,Brabant flamand,Belgium,2.146,,1850.000,925.000,operating,LCL
+455,LCL Brussels West 1,50.914,4.038,Industrielaan 3,Erembodegem,93,9302,Flandre orientale,Belgium,3.601,,3104.000,1552.000,operating,LCL
+456,LCL Brussels West 2,50.914,4.038,Industrielaan 3,Erembodegem,93,9302,Flandre orientale,Belgium,3.601,,3104.000,1552.000,operating,LCL
+457,LCL Wallonia One,50.503,4.717,Rue Guillaume Fouquet 17,Isnes,50,5032,Namur,Belgium,3.422,,2950.000,1475.000,operating,LCL
+458,Google Mons,50.469,3.861,Rue de Ghlin 100,Saint-Ghislain,73,7331,Hainaut,Belgium,76.901,,66294.000,33147.000,operating,Google
+459,Green Datacenter Zürich City,47.404,8.438,Unterrohrstrasse 4,Zürich,89,8000,Zürich,Switzerland,1.007,,868.000,434.000,operating,Green Datacenter
+460,Green Datacenter Zürich Metro,47.482,8.462,FFJ6+MM5 Dielsdorf,Zürich,80,8000,Zürich,Switzerland,9.874,,8512.000,4256.000,operating,Green Datacenter
+461,Green Datacenter Zürich North,47.433,8.559,Cherstrasse 4,Zürich,81,8000,Zürich,Switzerland,2.320,,2000.000,1000.000,operating,Green Datacenter
+462,Green Datacenter Zürich West,47.446,8.210,Industriestrasse 33,Lupfig,52,5242,Argovie,Switzerland,6.626,,5712.000,2856.000,operating,Green Datacenter
+463,European Data Hub DDC1,49.579,6.110,12D Imp. Drosbach,Luxembourg,18,1811,,Luxemburg,8.120,,7000.000,3500.000,operating,European Data Hub
+467,Exa Infrastructure Geneve,46.248,6.060,"Chem. de l\,Epinglier 2",Meyrin,12,1217,Genève,Switzerland,2.691,,2320.000,1160.000,operating,Exa Infrastructure
+468,Exa Infrastructure (nLighten ?) Merelbeke,50.987,3.768,Industriepark 2,Lemberge,98,9820,Flandre orientale,Belgium,1.846,,1591.000,795.500,operating,Exa Infrastructure
+470,Equinix GV1,44.917,4.824,Rue de la Confédération 6,Genève,12,1200,Genève,Switzerland,4.640,,4000.000,2000.000,operating,"Equinix, Inc"
+471,Equinix GV2,43.707,7.260,Rte du Bois-des-Frères 48,Vernier,12,1214,Genève,Switzerland,2.330,,2009.000,1004.500,operating,"Equinix, Inc"
+472,Equinix ZH2,47.388,8.520,Josefstrasse 225,Zürich,80,8000,Zürich,Switzerland,0.865,,746.000,373.000,operating,"Equinix, Inc"
+473,Equinix ZH4,47.388,8.520,Josefstrasse 225,Zürich,80,8000,Zürich,Switzerland,2.103,,1813.000,906.500,operating,"Equinix, Inc"
+474,Equinix ZH5,47.406,8.461,Allmendstrasse 13,Oberengstringen,81,8102,Zürich,Switzerland,3.905,,3366.000,1683.000,operating,"Equinix, Inc"
+475,"ETIX_EVERYWHERE BELGIUMDC_#1",50.579,5.262,Rue de la Science 3,Villers-le-Bouillet,45,4530,Liège,Belgium,1.557,,1342.000,671.000,operating,Etix Everywhere
+476,Zugernet Convotis (ex acdalis),47.190,8.515,Neuhofstrasse 21d,Baar,63,6340,Zoug,Switzerland,0.232,,200.000,100.000,operating,Convotis
+477,BANCADATI,46.024,8.916,Centro Galleria 2,Manno,69,6928,Tessin,Switzerland,2.784,,2400.000,1200.000,operating,BANCADATI
+479,BCE Junglinster 1,49.720,6.263,6 Station Radio,Junglinster,61,6141,,Luxemburg,0.186,,160.000,80.000,operating,BCE
+480,BCE Junglinster 2,49.720,6.263,6 Station Radio,Junglinster,61,6141,,Luxemburg,0.464,,400.000,200.000,operating,BCE
+481,BCE Kirchberg,47.726,0.447,43 Bd Pierre Frieden,Luxembourg,15,1543,,Luxemburg,2.107,,1816.000,908.000,operating,BCE
+482,BEDAG BERN,46.954,7.440,Engehaldenstrasse 12,Bern,30,3019,Bern,Switzerland,0.325,,280.000,140.000,operating,Bedag
+483,BEDAG WETTINGEN_DC,47.456,8.338,Hardstrstrasse 73,Wettingen,54,5430,Argovie,Switzerland,0.290,,250.000,125.000,operating,Bedag
+484,DATA4 Luxembourg,47.726,0.447,8 Rue Henri M. Schnadt,Gasperich,25,2530,Luxembourg,Luxemburg,6.960,,6000.000,3000.000,operating,DATA4 Group
+486,Datacenter United ANTWERP_DC,43.665,0.908,Haïfastraat 6,Anvers,20,2000,Anvers,Belgium,5.806,,5005.000,2502.500,operating,Datacenter United
+487,Datacenter United BRUSSELS_DC,50.881,4.454,Excelsiorlaan 15,Zaventem,19,1930,Brabant flamand,Belgium,0.668,,576.000,288.000,operating,Datacenter United
+488,Datacenter United DATACENTER_VLAANDEREN,43.665,0.908,Noorderlaan 147,Anvers,20,2000,Anvers,Belgium,1.000,,862.000,431.000,operating,Datacenter United
+489,Datawire ZG01,47.187,8.479,Hinterbergstrasse 28,Steinhausen,63,6312,Zoug,Switzerland,0.232,,200.000,100.000,operating,Datawire
+490,Datawire ZG02,47.187,8.479,Hinterbergstrasse 22,Steinhausen,63,6312,Zoug,Switzerland,0.232,,200.000,100.000,operating,Datawire
+491,DCStar (DCB?) – DCB,51.211,4.345,Antwerpsesteenweg 221,Burcht,20,2000,Anvers,Belgium,0.858,,740.000,370.000,operating,DCStar
+492,DCStar (DCB?) – DCG,49.512,4.236,Poortakkerstraat 35,Gand,90,9000,Flandre orientale,Belgium,0.664,,572.000,286.000,operating,DCStar
+493,DCStar (DCB?) – DCO,51.167,3.235,Brugsestraat 194,Oostkamp,80,8020,Flandre-Occidentale,Belgium,3.162,,2726.000,1363.000,operating,DCStar
+494,ALPINEDC,46.546,6.575,Rue de la Vernie 12,Crissier,10,1023,Vaud,Switzerland,0.232,,200.000,100.000,operating,Alpine DC
+495,ATLASEDGE BRUXELLES,50.872,4.504,Mercuriusstraat 30,Nossegem,19,1930,Brabant flamand,Belgium,6.106,,5264.000,2632.000,operating,ATLASEDGE
+496,ATLASEDGE ZÜRICH,47.394,8.473,Badenerstrasse 820,Zürich,80,8000,Zürich,Switzerland,2.115,,1823.000,911.500,operating,ATLASEDGE
+497,SIGNALHORN,46.319,7.646,Brentjong 2,Thel,39,,Valais,Switzerland,3.828,,3300.000,1650.000,operating,Signahorn
+498,LuxConnect DC 1.1,49.505,6.112,"202 zone d\,activité Economique Wolser F",Bettemburg,32,3290,Luxemburg,Luxemburg,6.220,,5362.000,2881.250,operating,LuxConnect
+499,LuxConnect DC 1.2,49.505,6.112,"202 zone d\,activité Economique Wolser F",Bettemburg,32,3290,Luxemburg,Luxemburg,4.246,,3660.000,1830.000,operating,LuxConnect
+500,LuxConnect DC 1.3,49.506,6.112,"202 zone d\,activité Economique Wolser F",Bettemburg,32,3290,Luxemburg,Luxemburg,8.964,,7728.000,3864.000,operating,LuxConnect
+501,LuxConnect DC 2,49.788,6.089,1 ZA et Commerciale Klengbusbierg,Bissen,77,7795,Luxemburg,Luxemburg,8.692,,7493.000,3746.500,operating,LuxConnect
+502,BRAINSERVE,46.547,6.573,Rue de la Vernie 17,Crissier,10,1023,Vaud,Switzerland,1.462,,1260.000,630.000,operating,Brainserve
+505,CWK Rotkreuz,47.142,8.409,Rotkreuz,Risch,63,6343,Zoug,Switzerland,0.000,,0.000,,operating,CWK
+506,CWK Sursee,47.178,8.032,Sursee,Sursee,62,6210,Luzern,Switzerland,0.000,,0.000,,operating,CWK
+507,CWK Wolhusen,47.056,8.012,Wolhusen,Wolhusen,61,6110,Luzern,Switzerland,0.000,,0.000,,operating,CWK
+508,CWK Luzern Mitte,47.040,7.727,Stadtmitte,Luzern,60,6000,Luzern,Switzerland,0.000,,0.000,,operating,CWK
+509,CWK Luzern Nord,47.040,7.727,Schwimmbadstrasse 5,Luzern,60,6000,Luzern,Switzerland,0.000,,0.000,,operating,CWK
+510,CWK Luzern Ost,47.040,7.727,Emmen,Luzern,60,6000,Luzern,Switzerland,0.000,,0.000,,operating,CWK
+511,CWK Zug,48.343,7.512,Rotkreuz,Risch,63,6343,Zoug,Switzerland,0.000,,0.000,,operating,CWK
+512,DATA11,47.202,7.529,Glutz-Blotzheim-Strasse 1,Solothurn,45,4500,Soleure,Switzerland,1.547,,1334.000,667.000,operating,Data 11
+513,COLO_Basel,47.523,7.674,Güterstrasse 72,Pratteln,41,4133,Basel-Campagne,Switzerland,4.640,,4000.000,2000.000,operating,Colobale
+515,IWB,47.547,7.581,Margarethenstrasse 40,Basel,40,4023,Basel-Ville,Switzerland,6.000,,0.000,,operating,IWB
+518,Digital Realty BRU1,50.870,4.476,Wezembeekstraat 2,Zaventem,19,,Brabant flamand,Belgium,9.111,,7854.000,3927.000,operating,Digital Reality
+519,Digital Realty BRU3,50.874,4.502,Mercuriusstraat 27,Nossegem,19,1930,Brabant flamand,Belgium,3.362,,2898.000,1449.000,operating,Digital Reality
+520,Digital Realty BRU4,50.874,4.503,Mercuriusstraat 27,Nossegem,19,1930,Brabant flamand,Belgium,4.886,,4212.000,2106.000,operating,Digital Reality
+521,Digital Realty ZUR1,47.433,8.558,Sägereistrasse 35,Opfikon,81,8152,Zürich,Switzerland,5.201,,4484.000,2242.000,operating,Digital Reality
+522,Digital Realty ZUR2,47.433,8.558,Bäulerwiesenstrasse 4,Rümlang,81,8153,Zürich,Switzerland,4.896,,4221.000,2110.500,operating,Digital Reality
+523,Digital Realty ZUR3,47.434,8.558,Sägereistrasse 35,Opfikon,81,8152,Zürich,Switzerland,9.354,,8064.000,4032.000,operating,Digital Reality
+524,EBRC Resilience Centre East,49.694,6.324,Parc Audiovisuel et des Télécommunications,Olingen,68,6950,,Luxemburg,7.308,,6300.000,3150.000,operating,EBRC
+525,EBRC Resilience Centre South,49.498,6.052,210 Rue de Noertzange,Kayl,36,3611,,Luxemburg,7.706,,6643.000,3321.500,operating,EBRC
+526,EBRC Resilience Centre West,49.649,5.958,3 Rue Pierre Flammang,Windhof Koerich,83,8399,Luxemburg,Luxemburg,5.356,,4617.000,2308.500,operating,EBRC
+528,Lumen Evere,46.369,6.327,Av. Léon Grosjean 2,Evere,11,1140,,Belgium,3.441,,2966.000,1483.000,operating,Lumen
+529,Infomaniak DII,46.331,-0.474,Rue Eugène-Marziano 25,Genève,12,1200,Genève,Switzerland,13.862,,11950.000,5975.000,operating,Infomaniak
+530,Infomaniak DIII,46.331,-0.474,Rue Eugène-Marziano 25,Genève,12,1200,Genève,Switzerland,0.000,,0.000,,operating,Infomaniak
+531,HelveticData CLA1,43.163,0.415,Av. du Châtelard 21,Clarens,18,1815,Vaud,Switzerland,0.322,,278.000,139.000,operating,HelveticData
+532,High DC,47.082,6.801,All. des Défricheurs 4,La Chaux-de-Fonds,23,2300,Neuchâtel,Switzerland,0.000,,0.000,,operating,High DC
+533,Euclyde DC-LUX,49.505,6.112,4 A. Graham Bell,Bettemburg,32,3235,Luxemburg,Luxemburg,0.000,,0.000,,operating,Euclyde Data Centers
+534,Stack Infrastructures ZUR03,,,,Zürich,80,8000,Zürich,Switzerland,,,,,project,Stack Infrastructures
+535,NDC Velizy,48.783,2.213,10 Av. Morane Saulnier,VÉLIZY-VILLACOUBLAY,78,78140,Ile-de-France,France,20.000,2027,7461.000,2268.000,project,Nation Data Center
+271,OVHCloud RBX-2,50.692,3.200,2 Rue Kellermann,Roubaix,59,59100,Hauts-de-France,France,5.000,2011,4681.000,2340.000,operating,OVHCloud
+275,OVHCloud RBX-6,50.692,3.200,2 Rue Kellermann,Roubaix,59,59100,Hauts-de-France,France,5.000,,4681.000,2340.000,operating,OVHCloud
