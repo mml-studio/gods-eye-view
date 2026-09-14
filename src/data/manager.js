@@ -290,8 +290,14 @@ export class DataLayerManager {
     this._zoomPromptDismissedSignature = '';
     // Finished flights. Only used to re-key the card so a FAILED one releases
     // its own button — a flight that changed nothing else would otherwise leave
-    // "Zoom en cours…" disabled on screen. See `zoomPromptModel`.
+    // a disabled button on screen. See `zoomPromptModel`.
     this._zoomPromptFlightEpoch = 0;
+    // The situation a flight is under way FOR. The card leaves on the press
+    // rather than on the layer's next verdict — the press IS the answer to its
+    // question — and this is what keeps the scheduled re-reads from bringing it
+    // back mid-flight. Released when the flight settles, so a flight that did
+    // not reach the gate brings the card straight back.
+    this._zoomPromptFlyingSignature = '';
   }
 
   /**
@@ -3343,6 +3349,7 @@ export class DataLayerManager {
       return false;
     } finally {
       this._zoomPromptFlightEpoch += 1;
+      this._zoomPromptFlyingSignature = '';
       // The panel pass repaints the card too, so this is one call and not two —
       // the second would re-run every layer's `getStats()` for nothing. It does
       // decline while the document is hidden, and the card must not be left
@@ -3390,9 +3397,18 @@ export class DataLayerManager {
       model,
       this._zoomPromptDismissedSignature,
       exclusiveSurfaceActive(document),
+      this._zoomPromptFlyingSignature,
     );
     return renderZoomPrompt(host, visible ? model : null, {
-      onFly: (layerId) => { void this.ensureLayerViewGate(layerId); },
+      onFly: (layerId) => {
+        // Take the card off NOW, before the 1,6 s of camera: pressing it is the
+        // answer to what it asked. `ensureLayerViewGate` releases the flag when
+        // the flight settles, and a flight that failed leaves the layer gated —
+        // so the card comes back on the next pass, button re-armed.
+        this._zoomPromptFlyingSignature = model?.signature || '';
+        this._refreshZoomPrompt(layers);
+        void this.ensureLayerViewGate(layerId);
+      },
       onDismiss: (signature) => {
         this._zoomPromptDismissedSignature = signature;
         this._refreshZoomPrompt();

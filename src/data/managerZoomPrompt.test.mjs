@@ -128,6 +128,34 @@ test('the button reaches the layer own view gate, with the manager viewer', asyn
   }
 });
 
+test('the card leaves on the press, and comes back if the flight did not settle it', async () => {
+  const host = makeElement();
+  const restore = installDocument(host);
+  const layer = gatedLayer('power-grid', { canFly: true });
+  // A solver that flies and still leaves the layer gated — the honest failure
+  // mode `applyViewGate` documents (three attempts, then it gives up).
+  let released = null;
+  const mgr = await managerWithLayer(layer);
+  layer.module.ensureViewGate = async () => {
+    released = mgr._zoomPromptFlyingSignature;
+    return false;
+  };
+  try {
+    mgr.refreshZoomPrompt();
+    assert.equal(host.hidden, false);
+    find(host, 'zoom-prompt-fly').click();
+    assert.equal(host.hidden, true, 'gone on the press, not on the layer next verdict');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(released, 'power-grid', 'the flag was held FOR the flight');
+    assert.equal(mgr._zoomPromptFlyingSignature, '', 'and released when it settled');
+    assert.equal(mgr.refreshZoomPrompt(), true, 'a gate that still bites is news again');
+    assert.equal(find(host, 'zoom-prompt-fly').disabled, false, 'with its button re-armed');
+  } finally {
+    await mgr.destroyAll();
+    restore();
+  }
+});
+
 test('a gate that throws is reported as a refusal, not as an unhandled rejection', async () => {
   const host = makeElement();
   const restore = installDocument(host);

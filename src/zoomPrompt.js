@@ -57,6 +57,20 @@ export const ZOOM_PROMPT_MAX_ROWS = 3;
 export const ZOOM_PROMPT_FALLBACK_MESSAGE = 'Zoome pour charger cette couche';
 
 /**
+ * How long the card takes to leave, in ms.
+ *
+ * Pressing « Zoomer ici » used to leave the card standing for the whole flight
+ * and the settle behind it — 1,6 s of camera, then the 600/1 600 ms re-reads
+ * the shell schedules — because the card only withdrew once the LAYER stopped
+ * being gated. That reads as a button that did nothing. The press is the
+ * answer to the card's question, so the card goes on the press, and comes back
+ * only if the flight failed to satisfy the gate.
+ *
+ * Short enough to read as the same gesture, long enough not to be a cut.
+ */
+export const ZOOM_PROMPT_LEAVE_MS = 140;
+
+/**
  * Capitalize a layer's sentence without touching the rest of it.
  *
  * The layers disagree about their own first letter — `roadStatusFrance` writes
@@ -167,11 +181,63 @@ export function zoomPromptModel(layers = [], { canFly = () => false, epoch = 0 }
  * @param {boolean} [exclusiveSurface] Some other surface owns the screen
  *   (`firstRunExperience.exclusiveSurfaceActive`): cockpit, playback, recording,
  *   clean view. The card yields rather than drawing over them.
+ * @param {string} [flyingSignature] The situation a flight is under way FOR.
+ *   Not a dismissal: it is released when the flight settles, so a flight that
+ *   failed to reach the gate brings the card straight back. Without it, the
+ *   card the press dismissed would reappear on the next scheduled re-read,
+ *   mid-flight, while the camera is still moving.
  * @returns {boolean}
  */
-export function zoomPromptVisible(model, dismissedSignature = '', exclusiveSurface = false) {
+export function zoomPromptVisible(
+  model,
+  dismissedSignature = '',
+  exclusiveSurface = false,
+  flyingSignature = '',
+) {
   if (!model || exclusiveSurface) return false;
+  if (flyingSignature && model.signature === flyingSignature) return false;
   return model.signature !== dismissedSignature;
+}
+
+/**
+ * Pending fade-outs, keyed by mount point.
+ *
+ * A WeakMap rather than a property on the element: the host is a DOM node the
+ * app owns, and a harness reading it back should find markup, not bookkeeping.
+ */
+const zoomPromptHideTimers = new WeakMap();
+
+/**
+ * Take the card off the screen, through a short fade when the DOM can do one.
+ *
+ * The synchronous path is not a fallback for old browsers — it is what the unit
+ * tests and the manager's stub document take, and what any caller gets when the
+ * card was already hidden. Nothing waits on the fade: `hidden` is set at the end
+ * of it either way.
+ * @param {HTMLElement} host
+ * @returns {void}
+ */
+function hideZoomPrompt(host) {
+  const finish = () => {
+    host.hidden = true;
+    host.dataset.signature = '';
+    host.dataset.leaving = '';
+    host.classList?.remove?.('zoom-prompt-leaving');
+    if (typeof host.replaceChildren === 'function') host.replaceChildren();
+    zoomPromptHideTimers.delete(host);
+  };
+  if (host.hidden || host.dataset.leaving === '1') {
+    if (host.dataset.leaving !== '1') finish();
+    return;
+  }
+  if (typeof host.classList?.add !== 'function' || typeof setTimeout !== 'function') {
+    finish();
+    return;
+  }
+  host.dataset.leaving = '1';
+  host.classList.add('zoom-prompt-leaving');
+  clearTimeout(zoomPromptHideTimers.get(host));
+  zoomPromptHideTimers.set(host, setTimeout(finish, ZOOM_PROMPT_LEAVE_MS));
 }
 
 /**
@@ -193,10 +259,16 @@ export function zoomPromptVisible(model, dismissedSignature = '', exclusiveSurfa
 export function renderZoomPrompt(host, model, handlers = {}) {
   if (!host || typeof host.querySelector !== 'function') return false;
   if (!model) {
-    host.hidden = true;
-    host.dataset.signature = '';
-    if (typeof host.replaceChildren === 'function') host.replaceChildren();
+    hideZoomPrompt(host);
     return false;
+  }
+  // A card coming back while the previous one is still fading has to cancel
+  // that fade, or it would finish by hiding the new one.
+  if (host.dataset.leaving === '1') {
+    clearTimeout(zoomPromptHideTimers.get(host));
+    zoomPromptHideTimers.delete(host);
+    host.dataset.leaving = '';
+    host.classList?.remove?.('zoom-prompt-leaving');
   }
   host.hidden = false;
   if (host.dataset.signature === model.renderSignature) return true;
@@ -245,10 +317,14 @@ export function renderZoomPrompt(host, model, handlers = {}) {
       fly.addEventListener('click', () => {
         // The flight takes about 1,6 s and can retry twice. A button that stays
         // pressable through it would queue a second solve against a camera the
-        // first one is still moving.
+        // first one is still moving — and it stays pressable for the length of
+        // the fade, which is the whole point of disabling it here rather than
+        // relying on the card being gone.
+        //
+        // It does NOT relabel itself. The card is leaving on this very press;
+        // a word changing inside a fading card is a flicker, not a status.
         fly.disabled = true;
         fly.setAttribute('aria-busy', 'true');
-        fly.textContent = 'Zoom en cours…';
         handlers.onFly?.(row.id);
       });
       item.appendChild(fly);

@@ -2523,6 +2523,13 @@ Three details that are not obvious:
   their own viewport read.
 - **A dismissal is remembered against the SET of waiting layers**, not for the
   session: the same situation stays closed, a different one is news again.
+- **The card leaves on the PRESS of « Zoomer ici », in 140 ms** — not when the
+  layer stops being gated. It used to stand through the 1,6 s flight and the
+  settle behind it, which reads as a button that did nothing. The situation is
+  held in `_zoomPromptFlyingSignature` for the length of the flight so the
+  scheduled re-reads cannot bring it back mid-camera, and released when the
+  flight settles: a flight that did not reach the gate brings the card straight
+  back with its button re-armed.
 
 Every prompt is in French and says **zoome**, which two layers already did and
 eleven did not — three were still in English, the rest said "descends",
