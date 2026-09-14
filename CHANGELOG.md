@@ -233,6 +233,44 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   comme une petite secousse.
 
 ### Fixed
+- **Parler pendant qu'une couche charge la tuait : la voix rendait `irve-fr`
+  éteinte et vide, la main la remplissait de 139 bornes 45 ms plus tard.**
+  L'opérateur demandait une source, la voix répondait qu'il y avait une erreur
+  avec elle, et le même toggle fait à la main marchait du premier coup. La
+  source n'y était pour rien. `input_audio_buffer.speech_started` — le simple
+  fait de se remettre à parler — annule tous les outils en vol, et
+  `set_layer_visibility` refilait ce signal au gestionnaire de couches, qui le
+  relit à quatre phases de cycle de vie et répond à une annulation par
+  `module.disable()`.
+
+  **LE PREMIER ALLUMAGE D'UNE COUCHE DURE DES SECONDES.** Mesuré au-dessus de
+  Bordeaux : 5,5 s pour `irve-fr` dans une vraie session Realtime, 3,0 à 4,5 s
+  en headless. Un tour de parole en fait 6. N'importe quel mot prononcé dans
+  cette fenêtre tuait le chargement — y compris finir sa phrase après que le
+  modèle a déclenché l'outil. Et l'ironie du diagnostic : la tentative vocale
+  ratée payait quand même le `init()`, donc le toggle manuel qui suivait
+  répondait en 45 ms et semblait innocenter tout le reste.
+
+  **DEUX FORMES DE PANNE, UNE SEULE CAUSE.** `irve-fr` et `medecins-fr`
+  revenaient ÉTEINTES avec `{ok:false, cancelled:true, phase:'init'}` et le
+  modèle annonçait un échec de la source ; `traffic` revenait ALLUMÉE et
+  définitivement à 0 enregistrement pendant que l'outil rapportait `ok:true` —
+  une couche cochée sur une carte vide. Après correction, même annulation au
+  même instant : 139, 535 et 3 023 enregistrements.
+
+  **LE SIGNAL DE L'APPELANT NE DÉCIDAIT RIEN.** Le gestionnaire supersède déjà
+  une requête concurrente par son propre protocole d'époques
+  (`activeVisibilityIntent.controller.abort(SUPERSEDED_VISIBILITY_INTENT)`) :
+  le signal ne choisissait pas quel état gagne, seulement si la transaction
+  perdante laissait une couche à moitié construite derrière elle. `isCurrent`
+  continue de filtrer ce qui est DIT, donc un tour supersédé s'annonce comme
+  tel — sans casser la carte pour le faire.
+
+  **LA RADIO GARDE LE SIGNAL.** Son allumage démarre du SON, et parler
+  par-dessus une station est une demande de l'arrêter — `setRadioEnabled` le
+  transmet déjà délibérément pour cette raison. Les deux moitiés sont épinglées
+  par un test unique, `barge-in never tears down a data layer load, and radio
+  still stops for it`.
 - **Une vue de la France entière offrait 51 étiquettes, 28 disaient le même
   mot, et les petites centrales disparaissaient dessous.** Sur la couche
   **Centrales EDF** filtrée sur `Hydraulique › Tous`, à 991 km d'altitude, les
