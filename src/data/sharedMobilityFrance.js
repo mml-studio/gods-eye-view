@@ -60,7 +60,11 @@ import {
 } from '../overlays/worldOverlay.js';
 import { GBFS_MAX_BOX_DEG, VEHICLE_KIND_LABELS, VEHICLE_KIND_PLURALS } from './gbfsFeeds.js';
 import { mobilityOperatorShortLabel, resolveMobilityOperator } from './mobilityOperators.js';
-import { sharedMobilityGlyph, sharedMobilityGlyphKind } from './sharedMobilityIcons.js';
+import {
+  sharedMobilityGlyph,
+  sharedMobilityGlyphKind,
+  sharedMobilityMonogramGlyph,
+} from './sharedMobilityIcons.js';
 
 /** Layer id — also the share-link registry key and the voice-tool enum value. */
 export const SHARED_MOBILITY_FR_LAYER_ID = 'shared-mobility-fr';
@@ -131,16 +135,49 @@ const FLOOR_FILL_KM = 10;
 // on and which no vehicle has: how full it is. So the ring, not the fill,
 // carries the operator there — the alternative was to spend the fill on the
 // operator and lose the only actionable number the layer publishes.
-/** Vehicle glyph footprint, in CSS px at the near end of the distance ramp. */
-const VEHICLE_GLYPH_PX = 17;
-/** Glyph scale ramp: recognisable up close, a coloured speck at gate altitude. */
-const VEHICLE_GLYPH_SCALE = Object.freeze({ near: 500, nearValue: 1.15, far: 45_000, farValue: 0.4 });
+/**
+ * Vehicle plate footprint, in CSS px before the distance ramp.
+ *
+ * 17 until 2026-09-14, raised with the move to a plate: the mark now has to
+ * carry a punched silhouette AND, up close, an operator monogram, and a capital
+ * inside a badge inside a disc needs the room. The far end of the ramp is
+ * unchanged in absolute terms — see {@link VEHICLE_GLYPH_SCALE}.
+ */
+const VEHICLE_GLYPH_PX = 20;
+/**
+ * Glyph scale ramp: recognisable up close, a coloured speck at gate altitude.
+ *
+ * Retuned with the plate, and `near` moved from 500 m to 1,200 m — which is
+ * what actually gives the monogram somewhere to live.
+ *
+ * Cesium does NOT interpolate this linearly. `czm_nearFarScalar` works on
+ * SQUARED distance and then takes `pow(t, 0.2)`, so the falloff is violently
+ * front-loaded: on the old ramp a mark was already down to 15.9 px at 2 km and
+ * to 19.5 px — its own maximum — only below ~600 m. Holding the plate at full
+ * size across the whole street-level band costs nothing legible (it was already
+ * at its maximum down there) and is what makes a badge band exist at all.
+ *
+ * The WIDE end is deliberately unchanged: 20 × 0.34 = 6.8 px is exactly what
+ * 17 × 0.4 drew before. The layer renders up to 6,000 objects and the far end
+ * is a budget, not a taste.
+ */
+const VEHICLE_GLYPH_SCALE = Object.freeze({ near: 1_200, nearValue: 1.2, far: 45_000, farValue: 0.34 });
+/**
+ * Drawn size (CSS px) below which the operator monogram is NOT asked for.
+ *
+ * Measured on the contact sheets rather than picked: a capital inside the badge
+ * resolves from about 22 px of plate and is pure noise under it, where it eats
+ * the silhouette without replacing it. Below this the layer draws the plain
+ * plate and the operator is carried by colour alone — which is exactly what the
+ * mark degrades to anyway as the ramp closes.
+ */
+const MONOGRAM_MIN_DRAWN_PX = 22;
 const STATION_POINT_MIN_PX = 7;
 const STATION_POINT_MAX_PX = 15;
 /** Operator ring on a station dot. Two pixels is the thinnest that reads. */
 const STATION_RING_PX = 2;
 const SELECTED_POINT_PX = 18;
-const SELECTED_GLYPH_PX = 24;
+const SELECTED_GLYPH_PX = 28;
 /** Legend glyph raster — small, and never tinted by an operator. */
 const LEGEND_GLYPH_PX = 32;
 /**
@@ -157,7 +194,11 @@ const KIND_LEGEND_TINT = '#cbd5e1';
  * unrelated lists of the same total.
  */
 const SHAPE_CHANNEL = 'forme = quoi';
-const OPERATOR_CHANNEL = 'couleur = qui';
+// The operator channel gained a second carrier on 2026-09-14: the plate's hue
+// AND, below `monogramAltitudeCeilingM()`, the operator's initial. The label
+// names both, because a reader who has only ever seen the wide view would
+// otherwise meet a letter the key never mentioned.
+const OPERATOR_CHANNEL = 'couleur + lettre = qui';
 /** Operators listed by name in the row legend before the tail is summarised. */
 const MAX_OPERATOR_LEGEND_ROWS = 6;
 
@@ -273,6 +314,8 @@ let _viewer = null;
 let _points = null;
 /** Vehicle glyphs: silhouette = kind, tint = operator. */
 let _billboards = null;
+/** True while the camera is close enough for a monogram to resolve. */
+let _monogramOn = false;
 let _records = new Map();
 let _enabled = false;
 let _clickHandler = null;
@@ -473,6 +516,108 @@ export function cameraSharedMobilityBox(viewer) {
 function cameraAltitudeM(viewer) {
   const carto = viewer?.camera?.positionCartographic;
   return Number.isFinite(carto?.height) ? carto.height : Infinity;
+}
+
+/**
+ * The scale Cesium will actually apply to a billboard at `distance`.
+ *
+ * NOT a linear interpolation, which is the trap this started out in. Cesium's
+ * `czm_nearFarScalar` (built into the vertex shader, see
+ * `Build/Cesium/Cesium.js`) interpolates on SQUARED distance and then raises
+ * the parameter to the 0.2 power:
+ *
+ *     t = ((d² − near²) / (far² − near²))^0.2   clamped to [0, 1]
+ *     scale = mix(nearValue, farValue, t)
+ *
+ * Assuming a straight line between the two ends puts the switch altitude out by
+ * an order of magnitude — it read 5,800 m where the mark is really 22 px only
+ * below ~550 m. Reimplemented here rather than guessed, so the layer and the
+ * GPU agree about how big anything is.
+ *
+ * @param {number} distance Metres from the camera.
+ * @returns {number} Multiplier applied to {@link VEHICLE_GLYPH_PX}.
+ */
+function rampScaleAt(distance) {
+  const { near, nearValue, far, farValue } = VEHICLE_GLYPH_SCALE;
+  const span = far * far - near * near;
+  const raw = span <= 0 ? 0 : (distance * distance - near * near) / span;
+  const t = Math.min(1, Math.max(0, raw)) ** 0.2;
+  return nearValue + t * (farValue - nearValue);
+}
+
+/**
+ * Camera altitude (m) at or below which a plate is drawn at least
+ * {@link MONOGRAM_MIN_DRAWN_PX} wide, and so may carry its monogram.
+ *
+ * DERIVED from the ramp rather than written down beside it: the size the layer
+ * draws and the altitude it switches at are the same equation, and a second
+ * hard-coded number would drift the moment the ramp is retuned.
+ * {@link rampScaleAt} inverted.
+ *
+ * Distance is read as altitude, which holds for the near-nadir views this layer
+ * is gated to and errs on the safe side otherwise — an oblique camera is
+ * FURTHER from the object than its altitude, so the badge comes on slightly
+ * late rather than on a mark too small to carry it.
+ *
+ * It lands just past `near` (1,218 m against 1,200 m) and that is not a
+ * coincidence to tidy away: `pow(t, 0.2)` is near-vertical the moment it leaves
+ * the clamp, so "at least 22 px" and "still at full size" are the same band on
+ * this ramp. The rule the reader gets is therefore the simple one — the plate
+ * carries its letter exactly while it is drawn at full size.
+ *
+ * @returns {number} Metres.
+ */
+function monogramAltitudeCeilingM() {
+  const { near, nearValue, far, farValue } = VEHICLE_GLYPH_SCALE;
+  const wanted = MONOGRAM_MIN_DRAWN_PX / VEHICLE_GLYPH_PX;
+  if (wanted >= nearValue) return near;
+  if (wanted <= farValue) return far;
+  const t = (wanted - nearValue) / (farValue - nearValue);
+  return Math.sqrt(near * near + (t ** 5) * (far * far - near * near));
+}
+
+/**
+ * Whether the plates currently on screen should carry their monogram, and
+ * whether that answer just changed.
+ *
+ * @param {Object} viewer
+ * @returns {boolean} True when the answer flipped and the set needs rewriting.
+ */
+function updateMonogramGate(viewer) {
+  const next = cameraAltitudeM(viewer) <= monogramAltitudeCeilingM();
+  if (next === _monogramOn) return false;
+  _monogramOn = next;
+  return true;
+}
+
+/** The image one vehicle record should be drawing right now. */
+function vehicleGlyphFor(record) {
+  return sharedMobilityGlyph(record.object?.kind, {
+    initial: _monogramOn ? (record.operator?.initial || null) : null,
+  });
+}
+
+/**
+ * Re-point every vehicle plate at the image the current zoom calls for.
+ *
+ * Cheap by construction: the whole layer draws at most seven distinct kinds
+ * times the handful of operators in view, so every assignment here resolves to
+ * an atlas entry Cesium already holds. It walks the set only when
+ * {@link updateMonogramGate} says the answer changed.
+ *
+ * @returns {number} How many plates were rewritten.
+ */
+function syncMonograms() {
+  let changed = 0;
+  for (const record of _records.values()) {
+    if (!record.billboard) continue;
+    const image = vehicleGlyphFor(record);
+    if (record.billboard.image === image) continue;
+    record.billboard.image = image;
+    changed += 1;
+  }
+  if (changed) governorRequestRender('shared-mobility-fr-monogram');
+  return changed;
 }
 
 function updateAltitudeGate(viewer) {
@@ -826,6 +971,10 @@ function reconcile(payload) {
     drawn.push({ type: 'vehicle', id, object: vehicle });
   }
 
+  // Answered BEFORE the plates are built, so a reconcile that follows a zoom
+  // writes the right image once instead of writing it and then rewriting it.
+  updateMonogramGate(_viewer);
+
   const objects = drawn.map((entry) => entry.object);
   // Ground the cold cells against the surface actually being DRAWN before the
   // positions below are taken. Synchronous, no network of ours, ≤40 probes and
@@ -871,7 +1020,9 @@ function reconcile(payload) {
     const billboard = _billboards.add({
       id,
       position,
-      image: sharedMobilityGlyph(object.kind),
+      image: sharedMobilityGlyph(object.kind, {
+        initial: _monogramOn ? (operator.initial || null) : null,
+      }),
       width: VEHICLE_GLYPH_PX,
       height: VEHICLE_GLYPH_PX,
       color: Cesium.Color.fromCssColorString(operator.color),
@@ -1106,6 +1257,10 @@ function onCameraSettled() {
   _cameraDebounceTimer = null;
   resetFloorRetries();
   scheduleFloorRetry();
+  // A zoom that stays inside the view already read reloads nothing — and a zoom
+  // is exactly what decides whether a monogram can be resolved. So the gate is
+  // answered here, on arrival, and not only on the load path.
+  if (updateMonogramGate(_viewer)) syncMonograms();
   void loadViewport();
 }
 
@@ -1469,7 +1624,10 @@ const sharedMobilityFranceLayer = {
         label: kind === 'station' ? 'Stations' : vehicleKindLabel(kind),
         color: KIND_LEGEND_TINT,
         // The legend swatch IS the map glyph, at legend size.
-        glyph: sharedMobilityGlyph(kind === 'station' ? 'station' : sharedMobilityGlyphKind(kind), LEGEND_GLYPH_PX),
+        // The legend swatch IS the map plate, at legend size and with no
+        // monogram: these rows answer "what", and a letter on them would claim
+        // an operator they do not stand for.
+        glyph: sharedMobilityGlyph(kind === 'station' ? 'station' : sharedMobilityGlyphKind(kind), { px: LEGEND_GLYPH_PX }),
         count,
         channel: SHAPE_CHANNEL,
         blurb: kind === 'station'
@@ -1486,6 +1644,12 @@ const sharedMobilityFranceLayer = {
     const listed = ranked.slice(0, MAX_OPERATOR_LEGEND_ROWS).map(({ operator, count }) => ({
       label: operator.label,
       color: operator.color,
+      // Two channels on ONE row: the hue names the operator and the badge shows
+      // the letter its plates carry up close, so the key explains a mark the
+      // reader may only ever have seen at a zoom where it was a bare disc. This
+      // is not a second list by shape — the row is the operator's colour row,
+      // and `manager.js` masks and tints this swatch with that colour.
+      glyph: sharedMobilityMonogramGlyph(operator.initial, { px: LEGEND_GLYPH_PX }),
       count,
       channel: OPERATOR_CHANNEL,
       blurb: operator.curated
@@ -1498,6 +1662,9 @@ const sharedMobilityFranceLayer = {
       listed.push({
         label: `+${hidden.length} exploitants`,
         color: KIND_LEGEND_TINT,
+        // A row that stands for SEVERAL operators badges none of them: a
+        // letter here would name one of the ones it is summarising.
+        glyph: null,
         count: hidden.reduce((sum, entry) => sum + entry.count, 0),
         channel: OPERATOR_CHANNEL,
         blurb: `Également dans la vue : ${hidden.map((entry) => entry.operator.label).join(', ')}.`,
@@ -1577,7 +1744,30 @@ export function _setSharedMobilityStateForTest({ viewer, records, overlayHost })
   _viewer = viewer || null;
   _records = new Map((records || []).map((record) => [record.id, record]));
   _selectedId = null;
+  _monogramOn = false;
   _overlayHost = overlayHost || DEFAULT_OVERLAY_HOST;
+}
+
+/**
+ * Drive the production zoom gate at a given camera altitude.
+ * @param {number} altitudeM
+ * @returns {{on: boolean, flipped: boolean, rewritten: number}}
+ */
+export function _setSharedMobilityAltitudeForTest(altitudeM) {
+  const viewer = { camera: { positionCartographic: { height: altitudeM } } };
+  const flipped = updateMonogramGate(viewer);
+  return { on: _monogramOn, flipped, rewritten: flipped ? syncMonograms() : 0 };
+}
+
+/** The altitude the monogram switches at, derived from the ramp. */
+export function _sharedMobilityMonogramCeilingForTest() {
+  return {
+    ceilingM: monogramAltitudeCeilingM(),
+    glyphPx: VEHICLE_GLYPH_PX,
+    scale: VEHICLE_GLYPH_SCALE,
+    minDrawnPx: MONOGRAM_MIN_DRAWN_PX,
+    drawnPxAt: (distance) => VEHICLE_GLYPH_PX * rampScaleAt(distance),
+  };
 }
 
 /** Exercise the production selection path in focused runtime tests. */

@@ -8,7 +8,9 @@ in the `LICENSE` file next to this notice, or at
 
 Source: https://github.com/mapbox/maki
         icons/<name>.svg
-        Retrieved 2026-09-02 at commit 28e2a3602e4b.
+        Retrieved 2026-09-02 (aerialway, harbor) and 2026-09-14 (bicycle,
+        scooter, car, charging-station) at commit 28e2a3602e4b — the same
+        upstream HEAD on both dates.
 
 CC0 IMPOSES NO CONDITIONS. There is no attribution requirement, no notice to
 propagate, and no obligation to state modifications. This file exists because
@@ -17,20 +19,41 @@ the same reason `DATA_SOURCES.md` records where every feed comes from — and
 because it lets a reader audit the claims below without cloning the upstream
 repository.
 
-WHAT WAS TAKEN. Two glyphs, held in one module.
+WHAT WAS TAKEN. Six glyphs, held in one module.
 
 `src/data/mapIcons.js` holds the artwork:
 
-    aerialway — the `aerial` transit class (téléphérique, télécabine),
-                drawn by `src/data/transitVehicleIcons.js`.
+    aerialway        — the `aerial` transit class (téléphérique, télécabine),
+                       drawn by `src/data/transitVehicleIcons.js`.
 
-    harbor    — `military=naval_base`, drawn by `src/data/militarySiteIcons.js`.
+    harbor           — `military=naval_base`, drawn by
+                       `src/data/militarySiteIcons.js`.
+
+    bicycle          — the `bike` and `ebike` GBFS form factors,
+    scooter          — the `moped` form factor (in France, always a Vespa-type
+                       electric machine),
+    car              — the `car` form factor (Citiz, Leo&Go, the municipal
+                       carsharing networks),
+    charging-station — the ELECTRIC badge that separates an e-bike from a pedal
+                       bike,
+                       all four drawn by `src/data/sharedMobilityIcons.js`.
 
 `aerialway` replaced Material Symbols' `cable_car`, which is an interface glyph:
 a boxed cabin on stubby legs that reads as a building at the 22 CSS px that
 layer draws at. Maki authors for map labels in a 15-unit box, and its cabin
 hangs from a cable, which is the one feature that says "aerial" rather than
 "tram".
+
+`bicycle`, `scooter` and `car` replaced Material Symbols' `pedal_bike`,
+`electric_bike`, `electric_moped` and `directions_car` on 2026-09-14, on a
+measurement rather than a preference. That layer draws at 7-20 CSS px, and at
+those sizes Material's heavier frames close their own counters: the bicycle puts
+86 px² of operator colour out of 88 into ONE contiguous patch at 17 px, so four
+operators in the same Paris street read as the same blob in four hues. Maki's
+bicycle keeps its counters open at 17 and still reads as a bicycle. No kick
+scooter exists in either CC0 set — checked across the whole of Maki and all 557
+Temaki icons on 2026-09-14 — so the trottinette keeps Material's
+`electric_scooter`, and that is the only Material glyph left in that module.
 
 `harbor` replaced Material Symbols' `directions_boat`, a passenger ferry seen
 head-on. The OSM tag says arsenal, not boat, and the ferry's superstructure did
@@ -50,8 +73,15 @@ single spaces so the string can live in JavaScript source. Every command letter,
 every coordinate and their order are untouched, and
 `src/data/mapIcons.test.mjs` pins them.
 
-At render time the path is drawn TWICE by this project: once as a wide dark
+At render time the path is drawn TWICE by `mapIcons.js`: once as a wide dark
 stroke (a halo, so the glyph stays readable over pale terrain) and once as a
 white fill (so Cesium's per-billboard colour multiply can tint it). The viewBox
 is padded to `-1 -1 17 17` so that halo is not clipped by the canvas edge. The
 path geometry itself is untouched.
+
+`sharedMobilityIcons.js` composes them differently and no more invasively: the
+path is PUNCHED out of a tinted plate through an SVG `<mask>`, and the transform
+that fits a 15-unit box into that 96-unit plate is a transform, not a rewrite —
+the coordinates reach the SVG renderer exactly as vendored, which is what
+`src/data/sharedMobilityIcons.test.mjs` asserts by looking for the path string
+itself in what the module draws.

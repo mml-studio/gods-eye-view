@@ -5,6 +5,40 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ## [Unreleased] — 2026-09-14
 
+### Changed
+- **Quatre exploitants dans la même rue dessinaient la même tache.** La couche
+  des véhicules partagés portait l'exploitant sur la COULEUR et la forme sur une
+  silhouette Material teintée. Mesuré aux tailles réelles de la rampe : à 17 px
+  le `pedal_bike` de Google referme ses propres contre-formes et met **86 px² de
+  couleur sur 88 en un seul bloc contigu**. Le canal forme avait déjà disparu —
+  restait « la même tache dans une autre teinte », pour Lime, Dott, Voi et Pony
+  côte à côte.
+
+  La marque est maintenant une **pastille** : un disque à la couleur de
+  l'exploitant, cerclé de noir, avec la silhouette du véhicule **évidée dedans**.
+  L'artwork passe de Material (un jeu d'INTERFACE dessiné pour 24 px dans un
+  menu) à **Maki** (CC0, dessiné dans une boîte de 15 unités pour une étiquette
+  posée sur de l'imagerie) : `bicycle`, `scooter`, `car`, plus `charging-station`
+  comme badge électrique du VAE. La trottinette garde `electric_scooter` de
+  Material — aucun jeu cartographique sous licence permissive n'en publie une,
+  vérifié sur tout Maki et les 557 icônes de Temaki.
+
+- **Et sous 1 218 m, chaque pastille porte l'initiale de son exploitant.** 84
+  exploitants se partagent une palette de 17 teintes : la couleur seule ne peut
+  pas fermer le canal « qui ». Le monogramme est le second canal, non coloré —
+  la capitale d'Inter évidée dans un badge. Il s'allume exactement tant que la
+  pastille est dessinée à sa taille pleine, et s'éteint au-delà plutôt que de
+  laisser une lettre illisible. La clé le montre : chaque ligne d'exploitant
+  porte désormais sa teinte ET sa lettre.
+
+  **Les logos des exploitants ont été essayés d'abord, et mesurés.** Ils échouent
+  sur trois comptes indépendants : aucun flux ne les publie (0 système sur les
+  146 systèmes français joignables ne remplit `brand_assets`) ; les récupérer par
+  le web donne la mauvaise marque en silence (Lime, Voi et Vélib' répondent 403,
+  et le domaine de Cityscoot — faillite en 2024, toujours au catalogue — sert
+  désormais les favicons d'un site sans rapport) ; et un logotype mot ne survit
+  pas à la taille carte. Rendus à l'échelle, seules les marques qui sont DÉJÀ une
+
 ### Fixed
 - **La rampe de puissance était ordonnée, conforme aux deux tests de la règle,
   et trop sombre pour qu'on s'y repère.** Les pastilles livrées le matin même

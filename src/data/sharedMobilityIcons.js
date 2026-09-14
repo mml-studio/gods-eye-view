@@ -1,170 +1,248 @@
 /**
  * @module sharedMobilityIcons
  *
- * WHAT a shared vehicle is, drawn as a silhouette — the shape half of the
- * shared-mobility read (`mobilityOperators.js` owns the colour half).
+ * The mark a shared vehicle wears on the globe: a PLATE that carries its
+ * operator, with its form factor punched through.
  *
- * A GBFS feed states the physical object in `vehicle_types.json`
- * (`form_factor` + `propulsion_type`), and `gbfsFeeds.vehicleKindFromType()`
- * folds that pair to one of six kinds. Those six are genuinely different
- * objects — a docked mechanical bike and a free-floating moped are not the
- * same thing to anyone deciding what to walk to — and a dot cannot say which
- * one it is.
+ * A GBFS feed states the physical object in `vehicle_types.json` (`form_factor`
+ * + `propulsion_type`), and `gbfsFeeds.vehicleKindFromType()` folds that pair
+ * to one of six kinds. Separately, the PAN catalog says who publishes it. Those
+ * are independent facts and they get independent channels — see
+ * `mobilityOperators.js`, which owns the colour half.
  *
- * ── THE ARTWORK IS GOOGLE'S, NOT OURS ───────────────────────────────────────
+ * ── WHY A PLATE, AND NOT A BARE SILHOUETTE ──────────────────────────────────
  *
- * The five vehicle glyphs were hand-drawn here and were replaced by Material
- * Symbols, vendored path by path, for the reason `transitVehicleIcons.js`
- * already recorded when it made the same move: the hand-drawn set was
- * internally consistent and nobody could tell what the shapes were.
- * Recognition beats invention. A visitor has seen `pedal_bike` and
- * `directions_car` ten thousand times in other software; they had seen our
- * diamond-frame bicycle never.
+ * Until 2026-09-14 this module drew Material Symbols' vehicle glyphs as bare
+ * white silhouettes and let `billboard.color` tint them. It was replaced on a
+ * measurement, not a preference.
  *
- * Licence: Apache-2.0. Only each `d` string is vendored, verbatim, in Material
- * Symbols' own `0 -960 960 960` coordinate box — NOT rescaled into the old 96
- * box, because rescaling would make the artwork a modification for no benefit
- * and would falsify the "verbatim" claim in `licenses/material-symbols/NOTICE`.
- * That NOTICE and `licenses/material-symbols/LICENSE` are what satisfy
- * Apache-2.0 §4; §6 grants no trademark rights, which is why nothing here
- * carries an operator's mark.
+ * The layer draws at 17 CSS px on a `scaleByDistance` ramp of 0.4–1.15, so the
+ * real band is 7 to 20 px. Rasterised at those sizes and counted, Material's
+ * `pedal_bike` puts **86 px² of operator colour out of 88 into ONE contiguous
+ * patch at 17 px**: its own counters close and the bicycle collapses into a
+ * blob. Every kind does the same thing at a slightly different size. That is
+ * why four operators in one Paris street read as "the same shape in another
+ * colour" — the shape channel was already gone, and only the colour was left to
+ * carry a distinction the eye then had to make between four saturated hues
+ * scattered across thin, broken strokes.
  *
- * ── WHY NOT THE OPERATORS' OWN LOGOS ────────────────────────────────────────
+ * The plate fixes the half that was actually broken. The colour becomes one
+ * deliberate disc with a hard dark ring instead of an accidental blob with a
+ * ragged edge, and the silhouette — now punched OUT of that disc rather than
+ * drawn in the operator's hue — gets its contrast from the plate instead of
+ * from whatever terrain happens to be underneath.
  *
- * It was the obvious alternative and it fails on three independent counts,
- * each measured on 2026-09-01 rather than assumed:
- *
- * • **There is no feed to read them from.** GBFS v2.3 does define
- *   `system_information.brand_assets.brand_image_url`. Of the 154 reachable
- *   French systems in `config/gbfs_fr_systems.json`, **zero** publish it —
- *   and zero of 203 sampled worldwide. 114 of the French ones declare a
- *   version that could. The field is unadopted, not merely rare here.
- *
- * • **The manual path is 85 trademarks, not one.** 85 distinct operator
- *   identities resolve across the 165 catalogued French systems. A disclaimer
- *   in terms of use is not a licence; it is at best evidence of honest
- *   practice under EUTMR Art. 14(2), and a logo is separately copyrighted
- *   artwork that referential use does not license. Two of the largest
- *   operators' own licence URLs answer 404 and 403.
- *
- * • **The renderer cannot tint a logo, and that is decisive.** Cesium
- *   multiplies `billboard.color` into the texture. A multi-colour mark would
- *   be corrupted by that multiply, so logo billboards would have to draw
- *   white — which deletes the OPERATOR-COLOUR channel — while the logo says
- *   WHO and not WHAT, deleting the SHAPE channel at the same time. The layer
- *   would lose the ability to tell a bike from a car in exchange for telling
- *   you a brand you can already read from the colour.
+ * This deliberately contradicts the rule `militarySiteIcons.js` records, that a
+ * PLACE wears a plate and a MOVING OBJECT does not. A shared vehicle is not a
+ * moving object: GBFS publishes a vehicle only while it is PARKED and
+ * available, and never during a rental. Every dot in this layer is somewhere
+ * you walk to, which is what the plate says.
  *
  * ── TINT-SAFE BY CONSTRUCTION ───────────────────────────────────────────────
  *
- * Every glyph is white artwork over a dark halo, and nothing carries a hue of
- * its own. Cesium multiplies `billboard.color` into the texture, so white
- * takes the operator's colour exactly while the black halo (0 × c = 0)
- * survives multiplication and keeps the glyph readable over pale terrain. A
- * glyph with a baked-in colour would fight the tint and destroy the operator
- * channel.
+ * Cesium multiplies `billboard.color` into the texture, so the plate is drawn
+ * WHITE and every ring is drawn BLACK: white × c = c, and 0 × c = 0. One sprite
+ * per kind then serves all 84 operators, the layer keeps spending
+ * `billboard.color` on the operator, and the cyan selection tint keeps working
+ * without a second set of images. A hue baked into the artwork would fight the
+ * multiply and destroy both channels — the failure `cctv.js` records.
  *
- * ONE GEOMETRY, TWO PASSES. Each body is rendered first as a fat dark stroke
- * and then as the white artwork. That is why the halo can never drift out of
- * register with the shape.
+ * ── THE MONOGRAM, AND WHY IT IS NOT A LOGO ──────────────────────────────────
+ *
+ * Colour alone cannot close the "who" channel: 84 operators resolve across the
+ * French catalogue against a 17-slot palette, so hues collide by construction.
+ * The second half is the operator's INITIAL, punched into a badge on the plate
+ * (`interCapitals.js`).
+ *
+ * Operator logos were the obvious alternative and were measured on 2026-09-14
+ * rather than assumed. Three findings, each independently fatal:
+ *
+ * • **There is no feed to read them from.** GBFS v2.3 defines
+ *   `system_information.brand_assets.brand_image_url`. Of 158 French systems
+ *   probed from `config/gbfs_fr_systems.json`, 146 answered and **zero**
+ *   publish it. (0 of 154 on 2026-09-01, so this is stable, not a bad day.)
+ *
+ * • **Scraping them produces the WRONG mark, silently.** Of ten major
+ *   operators' own sites, Lime, Voi and Vélib' answer 403 to a plain fetch —
+ *   and `cityscoot.eu`, whose operator went bankrupt in 2024 while staying in
+ *   the catalogue, now serves the favicons of an unrelated squatted site. A
+ *   pipeline would have put that logo on the map without raising anything.
+ *
+ * • **A wordmark does not survive map size.** Rendered at true scale, the marks
+ *   split in two: the ones that are ALREADY a single bold letterform (Pony's P,
+ *   Vélo'v's V) read from 12 px, while dott, BIRD, Voi and Lime are an
+ *   illegible smudge below ~24 px. The letter is what worked, so the letter is
+ *   what ships — and it carries no trademark, which the 85 distinct operator
+ *   identities in the catalogue would each have required separately.
  */
 
+import { interCapitalMarkup } from './interCapitals.js';
+import { mapIconArtwork } from './mapIcons.js';
+
 /**
- * Material Symbols' own coordinate box. Kept as published.
- *
- * The two hand-drawn bodies below (`other`, `station`) are authored in it too,
- * so one `viewBox` serves the whole set and no path is ever rescaled.
+ * This module's own coordinate box, shared with `militarySiteIcons.js` so the
+ * two plate packs compose identically.
  */
-const VIEW_BOX = '0 -960 960 960';
+const VIEW = 96;
+const CENTRE = VIEW / 2;
+
+/**
+ * Plate radius and its ring, in box units.
+ *
+ * Same figures as `militarySiteIcons.js`: the plate carries the hue, the ring
+ * carries the edge, and 7 units is what keeps a pale plate off a pale roof. The
+ * two packs draw on the same globe and a plate that differed between them would
+ * read as two renderers.
+ */
+const DISC_R = 40;
+const RING_W = 7;
+
+/**
+ * Ring colour — the same black as the military plate, and darker than the
+ * fleet's `rgba(0,0,0,0.62)` halo on purpose: a halo is a soft shadow around
+ * ink that already reads, while this ring is the mark's only edge.
+ */
+const RING_COLOR = 'rgba(0,0,0,0.88)';
+
+/**
+ * The operator badge: a smaller plate riding the upper right of the main one.
+ *
+ * 20 units of radius is the smallest that still lets a capital read, and the
+ * largest that keeps the badge's own ring INSIDE the 96 box: at (69, 27) the
+ * outer edge lands at 91.25 and 4.75. A badge that overflowed would be clipped
+ * by the canvas on two sides, which is the same mistake `mapIcons.js` records
+ * for an unpadded viewBox — and it showed as a flat-topped badge in the first
+ * contact sheet.
+ *
+ * Upper RIGHT because every vehicle silhouette here is wide and low — a
+ * bicycle, a scooter and a car all leave their top-right corner empty.
+ *
+ * The badge only rides the plate at the near end of the layer's ramp. See
+ * `sharedMobilityFrance.js`: below ~20 CSS px a capital is noise, so the layer
+ * asks for the plain plate instead of drawing a letter nobody can read.
+ */
+const BADGE_CX = 69;
+const BADGE_CY = 27;
+const BADGE_R = 20;
+const BADGE_RING_W = 4.5;
+/** Cap height of the monogram, and the baseline it sits on, in box units. */
+const BADGE_CAP = 22;
+const BADGE_BASELINE = BADGE_CY + BADGE_CAP / 2;
+
+/**
+ * Cap height of the legend's monogram, which takes the whole plate.
+ *
+ * 52 of the 80-unit plate diameter: big enough to read at the 32 px a key row
+ * draws, small enough that a round `O` and the plate's own edge do not touch.
+ */
+const LEGEND_MONOGRAM_CAP = 52;
 
 /**
  * Raster size. Cesium's billboard atlas has no mipmaps, so a texture much
- * larger than its on-screen footprint is GPU-minified into mush. The layer
- * draws these at 17 CSS px with a 1.15 near-scale (~39 device px on Retina),
- * so 64 covers the band at ≤1.6× minification — the same reasoning
- * `aircraftIcons.js` and `transitVehicleIcons.js` record for their rasters.
+ * larger than its on-screen footprint is GPU-minified into mush; 88 covers the
+ * 7–30 CSS px band this layer draws at, the same figure the three sibling packs
+ * record.
  */
-const GLYPH_RASTER_PX = 64;
+const GLYPH_RASTER_PX = 88;
 
 /**
- * Halo pass: wide, dark, drawn under everything.
+ * Material Symbols artwork, verbatim — now ONE glyph, not five.
  *
- * 110 in the 960 box, matching `transitVehicleIcons.js` — the two French
- * layers draw vehicles side by side on the same globe and a halo that differed
- * between them would read as two different renderers.
- */
-const HALO_STROKE = 110;
-
-/**
- * The vendored Material Symbols artwork, verbatim.
+ * `electric_scooter` stays because no permissively-licensed cartographic set
+ * publishes a kick scooter: checked across all 557 Temaki icons and the whole
+ * Maki set on 2026-09-14. The other four moved to Maki for the legibility
+ * reason this module's header records, and their path data is gone from this
+ * project rather than merely unused.
  *
  * Fetched from
  * `https://raw.githubusercontent.com/google/material-design-icons/master/symbols/web/<name>/materialsymbolsrounded/<name>_fill1_24px.svg`
- * on 2026-09-01 — the same pattern `licenses/material-symbols/NOTICE` already
- * records for the transit glyphs. `sharedMobilityIcons.test.mjs` asserts these
- * strings are what the module actually draws, so artwork drift is a failing
- * test rather than a silent redraw.
+ * on 2026-09-01. `sharedMobilityIcons.test.mjs` asserts this string is what the
+ * module actually draws, so artwork drift is a failing test rather than a
+ * silent redraw. Licence: Apache-2.0, see `licenses/material-symbols/NOTICE`.
  */
 export const MATERIAL_SYMBOL_PATHS = Object.freeze({
-  pedal_bike: 'M200-160q-85 0-142.5-57.5T0-360q0-85 58.5-142.5T200-560q77 0 129.5 46T396-400h26l-72-200h-30q-17 0-28.5-11.5T280-640q0-17 11.5-28.5T320-680h120q17 0 28.5 11.5T480-640q0 17-11.5 28.5T440-600h-4l14 40h192l-58-160h-64q-17 0-28.5-11.5T480-760q0-17 11.5-28.5T520-800h64q26 0 46.5 14t29.5 38l68 186h32q83 0 141.5 58.5T960-362q0 84-58 143t-142 59q-72 0-126.5-45T564-320H396q-14 69-68 114.5T200-160Zm112-160v-80h-72q-17 0-28.5 11.5T200-360q0 17 11.5 28.5T240-320h72Zm196-80h56q5-23 13.5-43t22.5-37H478l30 80Zm174-52 24 68q5 16 20.5 23t31.5 1q16-6 23-21t1-31l-26-68-74 28Z',
-  electric_bike: 'M200-280q-85 0-142.5-57.5T0-480q0-85 58.5-142.5T200-680q77 0 129.5 46T396-520h26l-72-200h-30q-17 0-28.5-11.5T280-760q0-17 11.5-28.5T320-800h120q17 0 28.5 11.5T480-760q0 17-11.5 28.5T440-720h-4l14 40h192l-58-160h-64q-17 0-28.5-11.5T480-880q0-17 11.5-28.5T520-920h64q26 0 46.5 14t29.5 38l68 186h32q83 0 141.5 58.5T960-482q0 84-58 143t-142 59q-72 0-126.5-45T564-440H396q-14 69-68 114.5T200-280Zm112-160v-80h-72q-17 0-28.5 11.5T200-480q0 17 11.5 28.5T240-440h72Zm196-80h56q5-23 13.5-43t22.5-37H478l30 80Zm174-52 24 68q5 16 20.5 23t31.5 1q16-6 23-21t1-31l-26-68-74 28ZM520-120v48q0 11-9.5 17T491-54l-173-87q-7-4-5.5-11.5t9.5-7.5h118v-48q0-11 9.5-17t19.5-1l173 87q7 4 5.5 11.5T638-120H520Z',
   electric_scooter: 'M200-240q-50 0-85-35t-35-85q0-50 35-85t85-35q39 0 69.5 22.5T312-400h212q11-68 56.5-119T692-590l-56-250H520q-17 0-28.5-11.5T480-880q0-17 11.5-28.5T520-920h116q28 0 50 17t28 45l69 309q2 11-5 20t-18 9q-63 0-108.5 42.5T601-373q-2 23-18 38t-39 15H312q-12 35-42.5 57.5T200-240Zm560 0q-50 0-85-35t-35-85q0-50 35-85t85-35q50 0 85 35t35 85q0 50-35 85t-85 35ZM520-120v48q0 11-9.5 17T491-54l-173-87q-7-4-5.5-11.5t9.5-7.5h118v-48q0-11 9.5-17t19.5-1l173 87q7 4 5.5 11.5T638-120H520Z',
-  electric_moped: 'M520-120v48q0 11-9.5 17T491-54l-173-87q-7-4-5.5-11.5t9.5-7.5h118v-48q0-11 9.5-17t19.5-1l173 87q7 4 5.5 11.5T638-120H520ZM280-280q-50 0-85-35t-35-85h-40q-17 0-28.5-11.5T80-440v-80q0-66 47-113t113-47h80q33 0 56.5 23.5T400-600v120h140l140-174v-106h-80q-17 0-28.5-11.5T560-800q0-17 11.5-28.5T600-840h80q33 0 56.5 23.5T760-760v106q0 14-4.5 26.5T743-604L604-430q-11 14-28 22t-35 8H400q0 50-35 85t-85 35Zm0-80q17 0 28.5-11.5T320-400h-80q0 17 11.5 28.5T280-360Zm80-360H240q-17 0-28.5-11.5T200-760q0-17 11.5-28.5T240-800h120q17 0 28.5 11.5T400-760q0 17-11.5 28.5T360-720Zm400 440q-50 0-85-35t-35-85q0-50 35-85t85-35q50 0 85 35t35 85q0 50-35 85t-85 35Zm0-80q17 0 28.5-11.5T800-400q0-17-11.5-28.5T760-440q-17 0-28.5 11.5T720-400q0 17 11.5 28.5T760-360Z',
-  directions_car: 'M240-200v20q0 25-17.5 42.5T180-120q-25 0-42.5-17.5T120-180v-286q0-7 1-14t3-13l75-213q8-24 29-39t47-15h410q26 0 47 15t29 39l75 213q2 6 3 13t1 14v286q0 25-17.5 42.5T780-120q-25 0-42.5-17.5T720-180v-20H240Zm-8-360h496l-42-120H274l-42 120Zm68 240q25 0 42.5-17.5T360-380q0-25-17.5-42.5T300-440q-25 0-42.5 17.5T240-380q0 25 17.5 42.5T300-320Zm360 0q25 0 42.5-17.5T720-380q0-25-17.5-42.5T660-440q-25 0-42.5 17.5T600-380q0 25 17.5 42.5T660-320Z',
+});
+
+/** Material's own coordinate box, kept as published rather than rescaled. */
+const MATERIAL_BOX = 960;
+
+/**
+ * What each vehicle kind punches through its plate, and how much of the plate
+ * it takes.
+ *
+ * The fractions are not uniform because the artwork is not: Maki's car fills
+ * its box corner to corner while its bicycle leaves air above and below the
+ * frame. Each is set so the silhouette reads at 17 px without eating the hue
+ * that names its operator.
+ *
+ * `moped` takes Maki's `scooter` — a Vespa — on the evidence rather than by
+ * preference: every moped row in every reachable French `vehicle_types.json` is
+ * an electric machine of exactly that shape. `scooter` (the kick scooter) keeps
+ * Material's `electric_scooter` because no cartographic set draws one.
+ *
+ * `other` punches a plain disc. The feed did not say what the object is, and a
+ * disc states exactly that; borrowing another kind's silhouette would assert
+ * something never published — the rule `transitFrance.js` follows for a vehicle
+ * with no bearing.
+ */
+const KIND_PUNCH = Object.freeze({
+  bike: Object.freeze({ borrow: Object.freeze(['maki', 'bicycle']), fraction: 0.66 }),
+  ebike: Object.freeze({ borrow: Object.freeze(['maki', 'bicycle']), fraction: 0.66, electric: true }),
+  scooter: Object.freeze({ material: 'electric_scooter', fraction: 0.68 }),
+  moped: Object.freeze({ borrow: Object.freeze(['maki', 'scooter']), fraction: 0.70 }),
+  car: Object.freeze({ borrow: Object.freeze(['maki', 'car']), fraction: 0.74 }),
+  other: Object.freeze({ markup: `<circle cx="${CENTRE}" cy="${CENTRE}" r="17"/>`, box: VIEW, fraction: 1 }),
 });
 
 /**
- * The glyph each vehicle kind draws.
+ * The electric badge: Maki's bolt, punched low-left where no silhouette reaches.
  *
- * `scooter` maps to `electric_scooter` and `moped` to `electric_moped` on the
- * evidence rather than by preference: a census of every reachable French
- * `vehicle_types.json` returns 71 `scooter_standing/electric` and 52
- * `scooter/electric` against zero human-powered kick scooters, and all four
- * French moped rows are electric. The neutral `moped` glyph exists upstream and
- * is deliberately not used — it would draw a machine the French feeds do not
- * contain.
- *
- * `bike` and `ebike` are the one pair a reader must separate at a glance, and
- * Material separates them the way the hand-drawn set did: by a bolt. Its bolt
- * sits BELOW the frame rather than above it — see the note on
- * `SHARED_MOBILITY_GLYPH_KINDS` for why that placement was checked rather than
- * assumed.
+ * Only `ebike` carries it. A trottinette and a moped do not need one — the
+ * French feeds contain no human-powered kick scooter and no combustion moped,
+ * so a badge there would discriminate nothing and only spend ink.
  */
-const KIND_SYMBOL = Object.freeze({
-  bike: 'pedal_bike',
-  ebike: 'electric_bike',
-  scooter: 'electric_scooter',
-  moped: 'electric_moped',
-  car: 'directions_car',
+const ELECTRIC_BOLT = Object.freeze({
+  borrow: Object.freeze(['maki', 'charging-station']),
+  fraction: 0.30,
+  cx: 25,
+  cy: 70,
 });
 
 /**
- * The two bodies that stay hand-drawn, and why.
+ * A dock is a PLACE, not a vehicle, and it is drawn as one.
  *
- * `other` — the feed did not say what this is. A disc states exactly that;
- * borrowing another kind's silhouette would assert something never published,
- * the rule `transitFrance.js` follows for a vehicle with no bearing.
+ * A ground rail with three posts reads as somewhere that stays put while its
+ * contents come and go. Material's `bike_dock` renders as a plain bollard and
+ * reads as nothing at any size. Authored directly in the 96 box.
  *
- * `station` — a rack, not a vehicle. Material's `bike_dock` renders as a plain
- * bollard and reads as nothing at any size; a ground rail with three posts
- * reads as a PLACE, which is what a dock is: the thing that stays put while its
- * contents come and go. Keeping it is a legibility decision, not inertia.
- *
- * Both are authored in the 960 box so the whole set shares one viewBox.
+ * Legend-only in practice: the map draws a station as a `PointPrimitive` whose
+ * fill is its availability and whose ring is its operator, because a dock
+ * publishes a number to act on that no vehicle has.
  */
-const LOCAL_BODIES = Object.freeze({
-  other: '<circle cx="480" cy="-480" r="180"/>',
-  // FILLED rects, not a stroked path. The old hand-drawn set had a separate
-  // white STROKE pass and this rack was authored for it; Material's artwork is
-  // fill-only, so that pass is gone and a zero-area path now renders as nothing
-  // at all. It did — the rack was an empty square in the first contact sheet.
-  station: '<rect x="150" y="-320" width="660" height="70" rx="35"/>'
-    + '<rect x="255" y="-660" width="70" height="345" rx="35"/>'
-    + '<rect x="445" y="-660" width="70" height="345" rx="35"/>'
-    + '<rect x="635" y="-660" width="70" height="345" rx="35"/>',
+const STATION_PUNCH = Object.freeze({
+  markup: '<rect x="18" y="55" width="60" height="8" rx="4"/>'
+    + '<rect x="27" y="31" width="8" height="26" rx="4"/>'
+    + '<rect x="44" y="31" width="8" height="26" rx="4"/>'
+    + '<rect x="61" y="31" width="8" height="26" rx="4"/>',
+  box: VIEW,
+  fraction: 1,
 });
 
-/** @type {Map<string, string>} kind@px → data URI. */
+/**
+ * Every kind this module can draw, in legend order: the six vehicle kinds, then
+ * the dock.
+ *
+ * There is no separate e-moped. `vehicleKindFromType()` returns `moped` for
+ * `form_factor: 'moped'` whatever the propulsion, and since every French moped
+ * row is electric a split would discriminate nothing.
+ */
+export const SHARED_MOBILITY_GLYPH_KINDS = Object.freeze([
+  ...Object.keys(KIND_PUNCH),
+  'station',
+]);
+
+/** @type {Map<string, string>} kind@px+initial → data URI. */
 const _cache = new Map();
 
 const _b64 = (text) => (typeof btoa === 'function'
@@ -172,29 +250,72 @@ const _b64 = (text) => (typeof btoa === 'function'
   : Buffer.from(text, 'utf8').toString('base64'));
 
 /**
- * Every kind this module can draw, in legend order.
+ * Fit artwork authored in `box` units into this module's 96-unit space, filling
+ * `fraction` of it and centred on `cx`/`cy`.
  *
- * The five vehicle kinds, then the two locally-drawn bodies. There is no
- * separate e-moped: `vehicleKindFromType()` returns `moped` for
- * `form_factor: 'moped'` whatever the propulsion, and since every French moped
- * row is electric a split would discriminate nothing.
+ * A transform, never a rewrite: the vendored coordinates reach the SVG renderer
+ * untouched, which is the claim both CC0 notices make and the reason the
+ * artwork is still the artwork that was judged.
+ *
+ * @param {string} geometry `<path>` markup.
+ * @param {number} box Authoring box of that markup.
+ * @param {number} fraction Share of the 96-unit box the artwork should occupy.
+ * @param {number} [cx=CENTRE] Horizontal centre in box units.
+ * @param {number} [cy=CENTRE] Vertical centre in box units.
+ * @returns {string} The markup wrapped in a centring transform.
  */
-export const SHARED_MOBILITY_GLYPH_KINDS = Object.freeze([
-  ...Object.keys(KIND_SYMBOL),
-  ...Object.keys(LOCAL_BODIES),
-]);
+function fitted(geometry, box, fraction, cx = CENTRE, cy = CENTRE) {
+  const scale = (VIEW * fraction) / box;
+  const size = box * scale;
+  const x = cx - size / 2;
+  const y = cy - size / 2;
+  return `<g transform="translate(${x.toFixed(3)} ${y.toFixed(3)}) `
+    + `scale(${scale.toFixed(5)})">${geometry}</g>`;
+}
 
-/** The geometry one kind draws, whoever authored it. */
-function bodyFor(kind) {
-  const symbol = KIND_SYMBOL[kind];
-  if (symbol) return `<path d="${MATERIAL_SYMBOL_PATHS[symbol]}"/>`;
-  return LOCAL_BODIES[kind] || LOCAL_BODIES.other;
+/**
+ * Resolve one punch spec to markup already fitted into the 96-unit box.
+ *
+ * @param {Object} spec An entry of {@link KIND_PUNCH}, {@link STATION_PUNCH} or
+ *   {@link ELECTRIC_BOLT}.
+ * @returns {?string} SVG markup, or null when a vendored icon has gone missing.
+ */
+function fittedSpec(spec) {
+  if (spec.markup) return fitted(spec.markup, spec.box, spec.fraction, spec.cx, spec.cy);
+  if (spec.material) {
+    // Material authors in `0 -960 960 960` — the box sits ABOVE the origin, so
+    // it is translated down into a `0 0 960 960` space before being fitted.
+    // A translate, like every other placement here: no coordinate is rewritten.
+    const geometry = `<g transform="translate(0 ${MATERIAL_BOX})">`
+      + `<path d="${MATERIAL_SYMBOL_PATHS[spec.material]}"/></g>`;
+    return fitted(geometry, MATERIAL_BOX, spec.fraction, spec.cx, spec.cy);
+  }
+  const artwork = mapIconArtwork(...spec.borrow);
+  // A vendored icon that disappeared upstream must not silently become a bare
+  // plate: every kind here is pinned by `sharedMobilityIcons.test.mjs`.
+  if (!artwork) return null;
+  return fitted(artwork.geometry, artwork.box, spec.fraction, spec.cx, spec.cy);
+}
+
+/**
+ * The geometry one kind punches through its plate.
+ * @param {string} kind A key of {@link SHARED_MOBILITY_GLYPH_KINDS}.
+ * @returns {string} SVG markup — never empty for a known kind.
+ */
+function punchFor(kind) {
+  if (kind === 'station') return fittedSpec(STATION_PUNCH) || '';
+  const spec = KIND_PUNCH[kind] || KIND_PUNCH.other;
+  const body = fittedSpec(spec) || '';
+  if (!spec.electric) return body;
+  return body + (fittedSpec(ELECTRIC_BOLT) || '');
 }
 
 /**
  * Fold an arbitrary kind string onto a drawable glyph.
+ *
  * An unmapped kind falls to `other` — a disc — rather than borrowing another
  * kind's silhouette and asserting something the feed never said.
+ *
  * @param {string} kind Kind from `gbfsFeeds.vehicleKindFromType()`.
  * @returns {string} A key of {@link SHARED_MOBILITY_GLYPH_KINDS}.
  */
@@ -204,25 +325,45 @@ export function sharedMobilityGlyphKind(kind) {
 }
 
 /**
- * Data URI for a kind's silhouette, lazily built and cached per kind+size.
+ * The mark one object wears: an operator plate with its form factor punched
+ * through, and optionally the operator's monogram badged on it.
+ *
+ * The whole image is WHITE artwork over BLACK rings, so `billboard.color`
+ * carries the operator and the rings survive the multiply. Nothing here has a
+ * hue of its own.
  *
  * @param {string} kind Vehicle kind, or `station`.
- * @param {number} [px=GLYPH_RASTER_PX] Raster size.
+ * @param {Object} [options]
+ * @param {number} [options.px=GLYPH_RASTER_PX] Raster size.
+ * @param {?string} [options.initial=null] Operator monogram, one capital as
+ *   `interCapitals.interCapitalFor()` returns it. Null draws no badge — which
+ *   is what an operator whose label carries no Latin letter must get, rather
+ *   than a letter its name does not contain.
  * @returns {string} `data:image/svg+xml;base64,…`
  */
-export function sharedMobilityGlyph(kind, px = GLYPH_RASTER_PX) {
+export function sharedMobilityGlyph(kind, options = {}) {
+  const { px = GLYPH_RASTER_PX, initial = null } = options;
   const key = sharedMobilityGlyphKind(kind);
-  const cacheKey = `${key}@${px}`;
+  const letter = initial ? String(initial).slice(0, 1).toUpperCase() : '';
+  const cacheKey = `${key}@${px}:${letter}`;
   const cached = _cache.get(cacheKey);
   if (cached) return cached;
 
-  const geometry = bodyFor(key);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="${VIEW_BOX}">`
-    // Halo first: the SAME geometry, stroked wide and dark. Multiplying a tint
-    // into black leaves black, so this survives `billboard.color`.
-    + `<g fill="none" stroke="rgba(0,0,0,0.55)" stroke-width="${HALO_STROKE}"`
-    + ` stroke-linecap="round" stroke-linejoin="round">${geometry}</g>`
-    + `<g fill="#ffffff" stroke="none">${geometry}</g>`
+  const punch = punchFor(key);
+  // Mask ids are local to their own document and each glyph is its own data
+  // URI, so no two of these can collide however many are on screen.
+  const plateMask = '<mask id="p" maskUnits="userSpaceOnUse"'
+    + ` x="0" y="0" width="${VIEW}" height="${VIEW}">`
+    + `<circle cx="${CENTRE}" cy="${CENTRE}" r="${DISC_R}" fill="#ffffff"/>`
+    + `<g fill="#000000">${punch}</g></mask>`;
+
+  const badgeMarkup = letter ? badgeFor(letter) : '';
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}"`
+    + ` viewBox="0 0 ${VIEW} ${VIEW}">${plateMask}${badgeMarkup.mask || ''}`
+    + `<circle cx="${CENTRE}" cy="${CENTRE}" r="${DISC_R + RING_W / 2}" fill="${RING_COLOR}"/>`
+    + `<circle cx="${CENTRE}" cy="${CENTRE}" r="${DISC_R}" fill="#ffffff" mask="url(#p)"/>`
+    + (badgeMarkup.body || '')
     + '</svg>';
 
   const uri = `data:image/svg+xml;base64,${_b64(svg)}`;
@@ -230,12 +371,100 @@ export function sharedMobilityGlyph(kind, px = GLYPH_RASTER_PX) {
   return uri;
 }
 
-/** Raw geometry, for tests that assert the glyphs actually differ. */
-export function _sharedMobilityGlyphBodyForTest(kind) {
-  return bodyFor(sharedMobilityGlyphKind(kind));
+/**
+ * A plate carrying NOTHING BUT the operator's monogram, for the legend.
+ *
+ * The map plate badges its letter in a corner so the silhouette keeps the
+ * middle; a legend row has no silhouette to protect and is drawn at 32 px, so
+ * the letter takes the whole plate. Same two channels, same tint contract —
+ * `manager.js` masks this swatch and fills it with the row's colour, so the key
+ * shows the operator's hue AND the letter its plates carry up close.
+ *
+ * @param {?string} initial One capital, or null.
+ * @param {Object} [options]
+ * @param {number} [options.px=GLYPH_RASTER_PX] Raster size.
+ * @returns {?string} `data:image/svg+xml;base64,…`, or null when there is no
+ *   letter to draw — a row with no monogram must fall back to its plain colour
+ *   swatch rather than show an empty disc that looks like a kind.
+ */
+export function sharedMobilityMonogramGlyph(initial, { px = GLYPH_RASTER_PX } = {}) {
+  const letter = initial ? String(initial).slice(0, 1).toUpperCase() : '';
+  if (!letter) return null;
+  const cacheKey = `monogram@${px}:${letter}`;
+  const cached = _cache.get(cacheKey);
+  if (cached) return cached;
+
+  const outline = interCapitalMarkup(letter, {
+    capPx: LEGEND_MONOGRAM_CAP,
+    cx: CENTRE,
+    baseline: CENTRE + LEGEND_MONOGRAM_CAP / 2,
+  });
+  if (!outline) return null;
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}"`
+    + ` viewBox="0 0 ${VIEW} ${VIEW}">`
+    + '<mask id="m" maskUnits="userSpaceOnUse"'
+    + ` x="0" y="0" width="${VIEW}" height="${VIEW}">`
+    + `<circle cx="${CENTRE}" cy="${CENTRE}" r="${DISC_R}" fill="#ffffff"/>`
+    + `<g fill="#000000">${outline}</g></mask>`
+    + `<circle cx="${CENTRE}" cy="${CENTRE}" r="${DISC_R + RING_W / 2}" fill="${RING_COLOR}"/>`
+    + `<circle cx="${CENTRE}" cy="${CENTRE}" r="${DISC_R}" fill="#ffffff" mask="url(#m)"/>`
+    + '</svg>';
+
+  const uri = `data:image/svg+xml;base64,${_b64(svg)}`;
+  _cache.set(cacheKey, uri);
+  return uri;
 }
 
-/** The kind → Material symbol map, for the artwork-drift guard. */
-export function _sharedMobilityKindSymbolForTest() {
-  return { ...KIND_SYMBOL };
+/**
+ * The monogram badge, as a mask and the two circles that use it.
+ *
+ * THE LETTER IS A HOLE IN A HOLE. The badge plate is white — so the tint
+ * reaches it — and the capital is punched out of it, revealing the black badge
+ * ring drawn underneath. The letter therefore renders in the ring's black on
+ * the operator's hue, at every tint, with no second colour anywhere in the
+ * file. Painting the letter dark directly would have baked a hue that
+ * `billboard.color` then multiplied into something else.
+ *
+ * @param {string} letter One capital.
+ * @returns {{mask: string, body: string}} Empty strings for an unknown letter.
+ */
+function badgeFor(letter) {
+  const outline = interCapitalMarkupSafe(letter);
+  if (!outline) return { mask: '', body: '' };
+  const mask = '<mask id="b" maskUnits="userSpaceOnUse"'
+    + ` x="0" y="0" width="${VIEW}" height="${VIEW}">`
+    + `<circle cx="${BADGE_CX}" cy="${BADGE_CY}" r="${BADGE_R}" fill="#ffffff"/>`
+    + `<g fill="#000000">${outline}</g></mask>`;
+  const body = `<circle cx="${BADGE_CX}" cy="${BADGE_CY}" r="${BADGE_R + BADGE_RING_W / 2}" fill="${RING_COLOR}"/>`
+    + `<circle cx="${BADGE_CX}" cy="${BADGE_CY}" r="${BADGE_R}" fill="#ffffff" mask="url(#b)"/>`;
+  return { mask, body };
+}
+
+/** Placement of one capital in the badge, or null if it is not vendored. */
+function interCapitalMarkupSafe(letter) {
+  return interCapitalMarkup(letter, {
+    capPx: BADGE_CAP,
+    cx: BADGE_CX,
+    baseline: BADGE_BASELINE,
+  });
+}
+
+/** Raw geometry, for tests that assert the punches actually differ. */
+export function _sharedMobilityGlyphBodyForTest(kind) {
+  return punchFor(sharedMobilityGlyphKind(kind));
+}
+
+/** The kind → punch spec map, for the artwork-drift guard. */
+export function _sharedMobilityKindPunchForTest() {
+  return { ...KIND_PUNCH, station: STATION_PUNCH, _bolt: ELECTRIC_BOLT };
+}
+
+/** Plate geometry, for the tests that pin the tint and the box. */
+export function _sharedMobilityPlateForTest() {
+  return {
+    VIEW, CENTRE, DISC_R, RING_W, RING_COLOR,
+    BADGE_CX, BADGE_CY, BADGE_R, BADGE_RING_W, BADGE_CAP,
+    LEGEND_MONOGRAM_CAP, GLYPH_RASTER_PX,
+  };
 }

@@ -32,12 +32,22 @@
  *      row legend names every operator in view, and that naming, not the hue,
  *      is what settles which is which.
  *
+ * SINCE 2026-09-14 THE COLOUR IS NOT ALONE. 84 operators against 17 slots
+ * collide by construction, and a hue is hard to place at the 7-20 px a parked
+ * scooter is drawn at. Each operator therefore also carries an `initial` — the
+ * monogram `sharedMobilityIcons.js` punches into the plate at close range. It
+ * is the second, non-colour half of "who", and it is what replaced the idea of
+ * drawing the operators' own logos: that was measured on 2026-09-14 and failed
+ * on three counts at once, recorded in `sharedMobilityIcons.js`.
+ *
  * The registry is shared by `bikeshare.js` and `sharedMobilityFrance.js` on
  * purpose. They draw disjoint systems (the shared-mobility index excludes the
  * four the bikeshare layer already covers), and an operator that appears in
  * both — Paris shows Vélib' docks from one layer and Dott scooters from the
  * other — has to be the same colour in both or the channel means nothing.
  */
+
+import { interCapitalFor } from './interCapitals.js';
 
 /**
  * Operator hues, chosen for pairwise separability on a dark globe.
@@ -111,6 +121,38 @@ const CURATED_OPERATORS = Object.freeze([
 const GENERIC_LEAD_WORDS = new Set([
   'le', 'la', 'les', 'l', 'du', 'de', 'des', 'd', 'velo', 'velos', 'vls',
 ]);
+
+/**
+ * Monograms pinned by hand, where the first letter of the LABEL is not the
+ * letter the operator is known by.
+ *
+ * The default is the first letter of the label, and the four entries below are
+ * the curated operators where that letter is already taken by an operator they
+ * actually MEET: Citiz, Cityscoot and Clem' all begin with C, and Leo&Go shares
+ * Toulouse with Lime.
+ *
+ * WHAT IS NOT FIXED, AND WHY. Counted over the 165 catalogued systems, 33 of
+ * the 84 operators monogram to V — nearly all of them a municipal "Vélo…"
+ * network. They are not disambiguated, for two reasons. They are one per urban
+ * area, so two of them never share a viewport; and monogramming them on their
+ * distinctive word instead was tried and measured on the real catalogue, which
+ * moved V from 33 to 29 while turning "Le Marcel" into an M and "Vélo Fluo"
+ * into an F — a worse letter for a marginal gain. Voi is the one free-floating
+ * major that can meet a V network in the same street, and the row legend names
+ * both, which is the same contract the hue already carries for a hash
+ * collision.
+ */
+const CURATED_MONOGRAMS = Object.freeze({
+  // Citiz takes the C it shares with two others, being by far the largest of
+  // the three and a carsharing network the other two are not.
+  cityscoot: 'S',      // the SCOOT half, which is what is not Citiz
+  clem: 'M',           // Clem', past the C
+  'leo-and-go': 'G',   // the GO half; L belongs to Lime, which it meets in Toulouse
+  // A municipal bike network, monogrammed like every other one. Its own label
+  // starts with "Le", and an L would collide with Lime in Bordeaux, which is
+  // exactly the city it runs in.
+  'levelo-tbm': 'V',
+});
 
 /**
  * Fold a published title to comparable words: lowercase, unaccented,
@@ -210,9 +252,11 @@ const _resolved = new Map();
  *
  * @param {string} name Title as published — "Lime Paris", "Naolib Nantes
  *   Métropole", "Vélib' Métropole".
- * @returns {{id:string, label:string, color:string, curated:boolean}}
+ * @returns {{id:string, label:string, color:string, initial:?string, curated:boolean}}
  *   `curated` is true when the operator was pinned by hand, false when the
- *   label and hue were derived from the title.
+ *   label and hue were derived from the title. `initial` is the monogram the
+ *   map plate punches, or null for a label with no Latin letter in it at all —
+ *   in which case the caller must draw NO badge rather than invent one.
  */
 export function resolveMobilityOperator(name) {
   const raw = String(name ?? '');
@@ -226,6 +270,9 @@ export function resolveMobilityOperator(name) {
       id: 'unknown',
       label: 'Unknown operator',
       color: MOBILITY_OPERATOR_UNKNOWN_COLOR,
+      // No title, so no letter. The plate draws bare rather than badging a
+      // capital the catalogue never published.
+      initial: null,
       curated: false,
     };
   } else {
@@ -235,6 +282,7 @@ export function resolveMobilityOperator(name) {
         id: curated.id,
         label: curated.label,
         color: MOBILITY_OPERATOR_PALETTE[curated.slot],
+        initial: CURATED_MONOGRAMS[curated.id] || interCapitalFor(curated.label),
         curated: true,
       };
     } else {
@@ -244,6 +292,7 @@ export function resolveMobilityOperator(name) {
         id: `derived:${key}`,
         label: brand?.label || raw,
         color: MOBILITY_OPERATOR_PALETTE[hashKey(key) % MOBILITY_OPERATOR_PALETTE.length],
+        initial: interCapitalFor(brand?.label || raw),
         curated: false,
       };
     }
@@ -280,5 +329,16 @@ export function curatedMobilityOperators() {
     id: operator.id,
     label: operator.label,
     color: MOBILITY_OPERATOR_PALETTE[operator.slot],
+    initial: CURATED_MONOGRAMS[operator.id] || interCapitalFor(operator.label),
   }));
+}
+
+/**
+ * The monogram a published title is drawn with, or null when its label carries
+ * no Latin letter.
+ * @param {string} name Title as published.
+ * @returns {?string} One capital.
+ */
+export function mobilityOperatorMonogram(name) {
+  return resolveMobilityOperator(name).initial;
 }

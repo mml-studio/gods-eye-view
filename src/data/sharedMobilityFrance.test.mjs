@@ -30,6 +30,8 @@ import sharedMobilityFranceLayer, {
   _selectSharedMobilityObjectForTest,
   _setSharedMobilityPayloadForTest,
   _setSharedMobilityStateForTest,
+  _setSharedMobilityAltitudeForTest,
+  _sharedMobilityMonogramCeilingForTest,
   SHARED_MOBILITY_KIND_FILTERS,
   SHARED_MOBILITY_FR_OVERLAY_SOURCE_ID,
   SHARED_MOBILITY_FR_OVERLAY_SOURCE_OPTIONS,
@@ -37,7 +39,7 @@ import sharedMobilityFranceLayer, {
 import { reportMeshFloorCell, setMeshFloorPreferred } from './groundFloor.js';
 import { GBFS_MAX_BOX_DEG } from './gbfsFeeds.js';
 import { resolveMobilityOperator } from './mobilityOperators.js';
-import { sharedMobilityGlyph } from './sharedMobilityIcons.js';
+import { sharedMobilityGlyph, sharedMobilityMonogramGlyph } from './sharedMobilityIcons.js';
 
 function viewerWithView(degrees) {
   return {
@@ -337,14 +339,22 @@ test('the row legend carries both channels — shapes, then the operators in vie
   const kindRows = legend.slice(0, 3);
   assert.equal(new Set(kindRows.map((item) => item.glyph)).size, 3);
   assert.equal(new Set(kindRows.map((item) => item.color)).size, 1);
-  assert.equal(kindRows.find((item) => item.label === 'Trottinette').glyph, sharedMobilityGlyph('scooter', 32));
+  assert.equal(kindRows.find((item) => item.label === 'Trottinette').glyph, sharedMobilityGlyph('scooter', { px: 32 }));
+  // No kind row badges a letter: a monogram would claim an operator.
+  assert.ok(kindRows.every((item) => !item.glyph.includes(sharedMobilityMonogramGlyph('L'))));
 
-  // The operator rows carry the exact colour their objects are drawn in, and
-  // no glyph — they answer "who".
+  // The operator rows carry the exact colour their objects are drawn in, PLUS
+  // the monogram their plates punch up close — two channels on one row, so the
+  // key can explain a mark the reader may only have seen as a bare disc.
   const operatorRows = legend.slice(3);
   assert.equal(operatorRows.find((item) => item.label === 'Lime').color, resolveMobilityOperator('Lime Paris').color);
-  assert.ok(operatorRows.every((item) => item.glyph === undefined));
+  assert.equal(operatorRows.find((item) => item.label === 'Lime').glyph, sharedMobilityMonogramGlyph('L', { px: 32 }));
+  assert.equal(operatorRows.find((item) => item.label === 'Naolib').glyph, sharedMobilityMonogramGlyph('N', { px: 32 }));
   assert.equal(new Set(operatorRows.map((item) => item.color)).size, 3, 'three operators, three hues');
+  // A monogram swatch is a plate and only a plate — never a vehicle, or the
+  // operator row would start answering "what".
+  assert.equal(new Set(operatorRows.map((item) => item.glyph))
+    .size, 3, 'three operators, three letters');
 
   // The two caveats a colour cannot carry.
   assert.match(legend.find((item) => item.label === 'Stations').blurb, /places municipales que tous republient/);
@@ -358,7 +368,7 @@ test('the row legend carries both channels — shapes, then the operators in vie
   // Each entry names the CHANNEL it answers, so two counts of the same 84
   // objects cannot be read as 168.
   assert.deepEqual([...new Set(kindRows.map((item) => item.channel))], ['forme = quoi']);
-  assert.deepEqual([...new Set(operatorRows.map((item) => item.channel))], ['couleur = qui']);
+  assert.deepEqual([...new Set(operatorRows.map((item) => item.channel))], ['couleur + lettre = qui']);
 
   _setSharedMobilityStateForTest({ viewer: null, records: [] });
   assert.deepEqual(sharedMobilityFranceLayer.getRowControls().legend, []);
@@ -375,13 +385,17 @@ test('a crowded viewport names six operators and declares the tail it did not na
       (unused, copy) => vehicleRecord({ object: { id: `${index}:${copy}` }, system: { name } }),
     )),
   });
+  // Discriminated by CHANNEL, not by the presence of a glyph: since 2026-09-14
+  // an operator row carries its monogram, so both halves of the key have one.
   const operatorRows = sharedMobilityFranceLayer.getRowControls().legend
-    .filter((item) => item.glyph === undefined);
+    .filter((item) => item.channel === 'couleur + lettre = qui');
   assert.equal(operatorRows.length, 7, 'six named operators plus one tail row');
   assert.deepEqual(operatorRows.slice(0, 6).map((item) => item.label),
     ['Lime', 'Dott', 'Voi', 'Pony', 'Bird', 'Citiz']);
   const tail = operatorRows[6];
   assert.equal(tail.label, '+2 exploitants');
+  // The tail stands for several operators and badges none of them.
+  assert.equal(tail.glyph, null);
   assert.equal(tail.count, 2 + 1, 'the tail counts the objects it stands for');
   assert.match(tail.blurb, /Cityscoot/);
   assert.match(tail.blurb, /YEGO/);
@@ -509,5 +523,82 @@ test('a point placed before its floor landed is re-placed, not left on the ellip
   assert.equal(_reanchorSharedMobilityForTest(), 0);
 
   setMeshFloorPreferred(false);
+  _setSharedMobilityStateForTest({ viewer: null, records: [] });
+});
+
+
+// --- The monogram, and the zoom that decides it ------------------------------
+
+test('the monogram switch is computed the way Cesium actually scales, not linearly', () => {
+  // `czm_nearFarScalar` interpolates on SQUARED distance and then takes
+  // `pow(t, 0.2)`. Assuming a straight line between the two ends puts the
+  // switch altitude out by a factor of five, which is exactly the bug this
+  // pins: the layer would badge a letter onto a 16 px plate and call it 22.
+  const { ceilingM, glyphPx, scale, minDrawnPx, drawnPxAt } = _sharedMobilityMonogramCeilingForTest();
+
+  // Reimplemented here from the shader source, independently of the module.
+  const cesium = (distance) => {
+    const span = scale.far ** 2 - scale.near ** 2;
+    const t = Math.min(1, Math.max(0, (distance ** 2 - scale.near ** 2) / span)) ** 0.2;
+    return glyphPx * (scale.nearValue + t * (scale.farValue - scale.nearValue));
+  };
+  for (const distance of [0, 500, 1200, 2000, 5000, 20_000, 45_000, 90_000]) {
+    assert.ok(Math.abs(drawnPxAt(distance) - cesium(distance)) < 1e-9, `${distance} m`);
+  }
+
+  // The switch is where the plate stops being big enough to carry a letter.
+  assert.ok(drawnPxAt(ceilingM) >= minDrawnPx - 1e-6, 'a badged plate is never under the threshold');
+  assert.ok(drawnPxAt(ceilingM * 1.05) < minDrawnPx, 'and just above it, the letter is refused');
+  // A LINEAR reading of the same ramp would have answered ~5.8 km. Pinned so
+  // the mistake cannot come back as a "simplification".
+  assert.ok(ceilingM < 2_000, `the switch must be street-level, got ${Math.round(ceilingM)} m`);
+
+  // The far end is a rendering budget: up to 6,000 objects share the screen.
+  assert.ok(drawnPxAt(scale.far) <= 7, 'the wide view stays a speck');
+});
+
+test('a zoom rewrites every plate exactly once, and only when the answer changed', () => {
+  const records = [
+    vehicleRecord({ object: { id: 'a', kind: 'ebike' }, system: { name: 'Lime Paris' } }),
+    vehicleRecord({ object: { id: 'b', kind: 'scooter' }, system: { name: 'Dott Paris' } }),
+  ].map((record) => ({ ...record, billboard: { image: null } }));
+  _setSharedMobilityStateForTest({ viewer: viewerWithView(null), records });
+  const { ceilingM } = _sharedMobilityMonogramCeilingForTest();
+
+  // Wide: colour alone. A letter here would be noise on a 12 px disc.
+  const wide = _setSharedMobilityAltitudeForTest(ceilingM * 4);
+  assert.equal(wide.on, false);
+  assert.equal(wide.flipped, false, 'the layer starts wide, so nothing flipped');
+
+  // Down to the street: both plates take their operator's letter.
+  const close = _setSharedMobilityAltitudeForTest(ceilingM / 2);
+  assert.equal(close.on, true);
+  assert.equal(close.flipped, true);
+  assert.equal(close.rewritten, 2);
+  assert.equal(records[0].billboard.image, sharedMobilityGlyph('ebike', { initial: 'L' }));
+  assert.equal(records[1].billboard.image, sharedMobilityGlyph('scooter', { initial: 'D' }));
+
+  // Panning at the same zoom must not walk 6,000 billboards for nothing.
+  const again = _setSharedMobilityAltitudeForTest(ceilingM / 3);
+  assert.equal(again.flipped, false);
+  assert.equal(again.rewritten, 0);
+
+  // Back out: the letters come off rather than lingering as unreadable grit.
+  const out = _setSharedMobilityAltitudeForTest(ceilingM * 4);
+  assert.equal(out.rewritten, 2);
+  assert.equal(records[0].billboard.image, sharedMobilityGlyph('ebike'));
+
+  _setSharedMobilityStateForTest({ viewer: null, records: [] });
+});
+
+test('an operator with no letter is badged with nothing at all', () => {
+  // A GBFS title that carries no Latin letter must not be given a capital its
+  // name does not contain — the same rule the hue follows when it refuses to
+  // claim a livery no feed publishes.
+  const record = { ...vehicleRecord({ object: { id: 'z' }, system: { name: '' } }), billboard: { image: null } };
+  _setSharedMobilityStateForTest({ viewer: viewerWithView(null), records: [record] });
+  const { ceilingM } = _sharedMobilityMonogramCeilingForTest();
+  _setSharedMobilityAltitudeForTest(ceilingM / 2);
+  assert.equal(record.billboard.image, sharedMobilityGlyph(record.object.kind));
   _setSharedMobilityStateForTest({ viewer: null, records: [] });
 });
