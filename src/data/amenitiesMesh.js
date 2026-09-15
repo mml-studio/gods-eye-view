@@ -237,19 +237,31 @@ export function allocateAmenityBudget(inBox, budget) {
  *   thinned:boolean, cells:number, perFamily:Array<{family:string, inBox:number,
  *   kept:number}>}}
  */
-export function selectAmenitiesMesh(rows, { box, budget, cols, rows: rowCount } = {}) {
+export function selectAmenitiesMesh(rows, { box, budget, cols, rows: rowCount, families = null } = {}) {
   const empty = {
     picked: [], inBox: 0, budget: 0, thinned: false, cells: 0, perFamily: [],
   };
   if (!box) return empty;
   const cap = Number.isFinite(budget) ? budget : amenitiesMeshBudget(box.north - box.south);
 
+  // A filter APPLIED BEFORE THE ALLOCATOR, which is the whole point of taking
+  // it here rather than filtering the pick: `allocateAmenityBudget` splits the
+  // budget across the families it is shown, so a family the reader switched off
+  // must be invisible to it or it keeps its share of the view for nothing.
+  //
+  // `inBox` counts only the wanted families for the same reason: it is what the
+  // legend prints as "N in the view", and answering with families nobody asked
+  // for would make the sample look smaller than it is.
+  const wanted = families
+    ? new Set(families.map((name) => AMENITY_FAMILIES.indexOf(name)).filter((i) => i >= 0))
+    : null;
   const buckets = AMENITY_FAMILIES.map(() => []);
   let inBox = 0;
   for (const row of Array.isArray(rows) ? rows : []) {
     if (!meshRowInBox(row, box)) continue;
     const family = Number(row[MESH_FAMILY]);
     if (!Number.isFinite(family) || family < 0 || family >= buckets.length) continue;
+    if (wanted && !wanted.has(family)) continue;
     buckets[family].push(row);
     inBox += 1;
   }

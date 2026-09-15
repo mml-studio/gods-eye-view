@@ -6540,6 +6540,16 @@ function medecinsFranceProxy() {
             }
             : null,
           nonLocalisees: pack.nonLocalisees.length,
+          // THE WHOLE HOSPITAL TABLE, ON THE NATIONAL ROUTE, AND NOT ON A BOX.
+          //
+          // 2 211 tuples — 210 kB raw, 46 kB gzipped — against 64 232 practice
+          // addresses that had to be boxed. At that size a bbox route would
+          // cost a round trip to save nothing, and it would cost something
+          // real: the mesh regime thins practices to a budget, and a hospital
+          // is exactly the mark a reader wants left standing when the camera
+          // pulls back. Shipping the table once means the browser can draw
+          // every hospital in view in BOTH close regimes without asking again.
+          etablissements: pack.etablissements || [],
         }, { cacheKey: 'national' });
         return;
       }
@@ -10603,6 +10613,19 @@ function amenitiesFranceProxy() {
       }
 
       let box = null;
+      // A CLOSED ENUM, validated against the pack's own vocabulary. This value
+      // arrives from a share link, so an unknown name must be dropped rather
+      // than carried: a filter that matches nothing and a filter that was never
+      // asked for look identical on the wire and must not look identical here.
+      // An empty or exhaustive selection is `null`, which is "no filter".
+      let families = null;
+      if (route === '/sites') {
+        const asked = String(url.searchParams.get('familles') || '')
+          .split(',')
+          .map((name) => name.trim())
+          .filter((name) => AMENITY_FAMILIES.includes(name));
+        if (asked.length && asked.length < AMENITY_FAMILIES.length) families = new Set(asked);
+      }
       if (route === '/sites') {
         box = validBox({
           south: url.searchParams.get('south'),
@@ -10644,11 +10667,17 @@ function amenitiesFranceProxy() {
         // Four shards off the disk, not a scan of 445 380 national records: see
         // `amenitySitesInBox`. The whole reason the pack no longer lives in one
         // document is that this route is the only one that wants a record.
-        const inBox = await amenitySitesInBox(entry, box);
+        const found = await amenitySitesInBox(entry, box);
+        // THE FAMILY FILTER RUNS BEFORE THE CAP, and that ordering is the whole
+        // reason it is a query parameter rather than something the browser does
+        // to the answer. This route returns at most `AMENITIES_SITE_CAP` rows
+        // out of a box that can hold 53 121; filtering afterwards would hand
+        // back the survivors of a cap computed over families nobody asked for.
+        const inBox = families ? found.filter((record) => families.has(record.family)) : found;
         let rows = 0;
         for (const record of inBox) rows += record.count;
-        // Rarest family first, so the cap below drops médecins généralistes and
-        // never the hôpitaux a reader is most likely to be looking for.
+        // Rarest family first, so the cap below drops restaurants and never the
+        // gendarmeries a reader is most likely to be looking for.
         const ordered = orderAmenitySites(inBox);
         json(200, {
           sites: ordered.slice(0, AMENITIES_SITE_CAP).map(trimAmenityRecord),

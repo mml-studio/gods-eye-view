@@ -93,8 +93,19 @@ import {
   MEDECINS_FR_LAYER_ID,
   MEDECINS_MAX_BOX_DEG,
   MEDECINS_SOURCE,
+  ETAB_COMMUNE,
+  ETAB_FINESS,
+  ETAB_KINDS,
+  ETAB_LAT,
+  ETAB_LON,
+  ETAB_NAMES,
+  ETAB_PRACTITIONERS,
+  ETAB_PRECISION,
+  ETAB_UPDATED,
   MEDECIN_FAMILIES,
   MEDECIN_FAMILY_LABELS,
+  MEDECIN_PRACTICE_FAMILIES,
+  MEDECIN_PRECISION_LABELS,
   MESH_FAMILY,
   MESH_LAT,
   MESH_LON,
@@ -148,6 +159,17 @@ export const FAMILY_COLORS = Object.freeze({
   specialiste: '#38bdf8',
   chirurgie: '#fb923c',
   imagerie: '#facc15',
+  // The seventh, added 2026-09-15 with the hospitals. Measured against the six
+  // above rather than picked: its nearest neighbour is `femme-enfant` at
+  // ΔE 40,2, where the tightest pair already on this palette sits at 27,4.
+  //
+  // It is also within ΔE 6,2 of « Médecin généraliste » in « Équipements du
+  // quotidien », and that is safe by CONSTRUCTION rather than by luck: that
+  // family stands down whenever this layer draws positions
+  // (`layerJoins.js`, key `medecins/drawn`), and this layer only ever draws a
+  // hospital while it is drawing positions. The two marks cannot be on one
+  // screen.
+  hopital: '#f43f5e',
 });
 
 const SELECTED_COLOR = '#ffffff';
@@ -271,6 +293,64 @@ export function tariffLine(practitioners) {
  *
  * Exported for test: this is where the layer's honesty actually lives.
  */
+/**
+ * The card of one hospital.
+ *
+ * A different card from a practice's and not a variant of it, because the two
+ * answer different questions. A practice card answers "who consults here, at
+ * what price"; FINESS publishes no practitioner, no tariff and no timetable.
+ * What it publishes is WHAT THE PLACE IS — the category, and how many legal
+ * entities share the roof — so that is what this says.
+ *
+ * `praticiensSurPlace` is the one number that crosses the two registers, and
+ * the card is careful about what it claims: the build counted liberal practice
+ * addresses within 50 m of this coordinate, which is not the hospital's staff.
+ * A salaried hospital doctor is not in the CNAM's liberal register at all. So
+ * the line says « libéraux à cette adresse » and never « médecins de
+ * l'hôpital ».
+ *
+ * @param {Array} etab One `etablissements[]` tuple.
+ * @param {object} [context] `{ precision }` from the national payload.
+ * @returns {string} Title on the first line, details on the rest.
+ */
+export function buildHospitalCard(etab, context = {}) {
+  const names = String(etab[ETAB_NAMES] || '').split('+').filter(Boolean);
+  const kinds = String(etab[ETAB_KINDS] || '').split('+').filter(Boolean);
+  const finess = String(etab[ETAB_FINESS] || '').split('+').filter(Boolean);
+  const title = names[0] || kinds[0] || 'Établissement hospitalier';
+  const details = [];
+
+  if (etab[ETAB_COMMUNE]) details.push(String(etab[ETAB_COMMUNE]));
+  // The category FIRST, because it is the fact a reader came for: a CHU and a
+  // « centre hospitalier, ex hôpital local » are not the same errand.
+  for (const kind of kinds.slice(0, 3)) details.push(`· ${kind}`);
+  if (kinds.length > 3) details.push(`· et ${kinds.length - 3} autres catégories`);
+
+  // A campus folded onto one coordinate. Said plainly, because the plate the
+  // reader clicked stands for more than one registered establishment.
+  if (names.length > 1) {
+    details.push(`${fr(names.length)} entités sur ce site : ${names.slice(1, 4).join(', ')}${names.length > 4 ? '…' : ''}`);
+  }
+
+  const liberals = Number(etab[ETAB_PRACTITIONERS]) || 0;
+  if (liberals > 0) {
+    details.push(`${fr(liberals)} praticien${liberals > 1 ? 's' : ''} libéra${liberals > 1 ? 'ux' : 'l'} à cette adresse`);
+    details.push('· le registre conventionné ne compte pas les salariés de l’hôpital');
+  }
+
+  if (finess.length) details.push(`FINESS ${finess.slice(0, 2).join(', ')}${finess.length > 2 ? `, +${finess.length - 2}` : ''}`);
+
+  const precision = context.precision?.[etab[ETAB_PRECISION]];
+  if (precision && precision !== 'numero') {
+    details.push(precision === 'commune'
+      ? '⚠ position au centre de la commune, pas à l’établissement'
+      : `position : ${MEDECIN_PRECISION_LABELS[precision] ?? precision}`);
+  }
+  if (etab[ETAB_UPDATED]) details.push(`Géolocalisation FINESS mise à jour le ${etab[ETAB_UPDATED]}`);
+
+  return [title, ...details].join('\n');
+}
+
 export function buildSiteCard(site, practitioners, context = {}) {
   const { specialites = {}, apl = null } = context;
   const title = site[SITE_VILLE] ? `${site[SITE_VOIE] || site[SITE_VILLE]}` : 'Cabinet';
@@ -354,6 +434,14 @@ export function buildDepartementCard(code, name, row, aplRow, stats) {
     details.push(`${fr(row[0])} médecins · ${fr(row[1])} adresses`);
   }
   return [name || code, ...details].join('\n');
+}
+
+/** Metres between two WGS-84 points, flat-earth and fine over one viewport. */
+function metresApart(aLat, aLon, bLat, bLon) {
+  const rad = (d) => (d * Math.PI) / 180;
+  const dLat = rad(bLat - aLat);
+  const dLon = rad(bLon - aLon) * Math.cos(rad((aLat + bLat) / 2));
+  return Math.hypot(dLat, dLon) * 6371000;
 }
 
 function overlayEntry(id, position, copy, accent = SELECTED_COLOR) {
@@ -868,6 +956,23 @@ export function createMedecinsLayer({
     const record = _records.get(id);
     if (!record) return;
     _selectedId = id;
+    // A hospital has no `/praticiens` index to fetch and no names to fill in:
+    // FINESS publishes establishments, not people. Its card is complete the
+    // moment it is painted.
+    if (record.etab) {
+      overlayHost.setEntries(
+        OVERLAY_SOURCE_ID,
+        [overlayEntry(
+          `${id}:card`,
+          record.position,
+          buildHospitalCard(record.etab, { precision: _national?.precision }),
+          FAMILY_COLORS.hopital ?? SELECTED_COLOR,
+        )],
+        OVERLAY_SOURCE_OPTIONS,
+      );
+      governorRequestRender('medecins-fr-select');
+      return;
+    }
     const cached = _practitionerCache.get(record.index);
     paintSiteCard(id, record, cached ?? null);
     if (cached || record.index === undefined) return;
@@ -928,6 +1033,73 @@ export function createMedecinsLayer({
     return glyph;
   }
 
+  /**
+   * Plate side for a hospital, in CSS pixels.
+   *
+   * FIXED, where a practice's side comes from its practitioner count — and the
+   * difference is a statement rather than an oversight. A practice's size means
+   * "how many doctors"; FINESS publishes no bed count, no staff and no
+   * catchment, so a hospital has no magnitude to draw. What it has is a claim
+   * on the reader's attention that a single consulting room does not, so it
+   * takes the top of the practice ramp and stays there.
+   */
+  const HOSPITAL_MARK_PX = MARK_MAX_PX;
+
+  /**
+   * How close a practice has to be to a hospital to be drawn as part of it.
+   *
+   * The same 50 m the build used, and the reason it is repeated here rather
+   * than imported is that these are two different jobs: the build COUNTS the
+   * practitioners at the address, this HIDES the plate that would stack on top
+   * of the hospital's. 1 113 of the 2 211 hospitals have at least one, at a
+   * median distance of 0 m — they are the same coordinate — so without this the
+   * move would have added 1 113 hospitals and buried 1 113 practices.
+   */
+  const HOSPITAL_ABSORB_M = 50;
+  const HOSPITAL_ABSORB_DEG = HOSPITAL_ABSORB_M / 111_320;
+
+  /** Hospitals inside the current view, as `repaintMarks` rows. */
+  function hospitalRows(box) {
+    const table = _national?.etablissements;
+    if (!Array.isArray(table) || !table.length) return [];
+    const rows = [];
+    for (let index = 0; index < table.length; index += 1) {
+      const etab = table[index];
+      const lat = etab[ETAB_LAT];
+      const lon = etab[ETAB_LON];
+      if (lat < box.south || lat > box.north || lon < box.west || lon > box.east) continue;
+      rows.push({
+        key: `etab:${index}`,
+        lat,
+        lon,
+        // Read by `medecinMarkPixelSize` nowhere — `repaintMarks` asks
+        // `markPixelSize` below, which branches on the family.
+        practitioners: Number(etab[ETAB_PRACTITIONERS]) || 0,
+        family: 'hopital',
+        site: null,
+        etab,
+      });
+    }
+    return rows;
+  }
+
+  /**
+   * Drop the practice plates a hospital plate would sit on top of.
+   *
+   * Cheap on purpose: the hospitals in view are at most a few dozen, so this is
+   * a linear scan per practice against a small array rather than a second
+   * spatial index. A degree box first, the metric distance only for the
+   * handful that survive it.
+   */
+  function absorbedByHospital(rows, hospitals) {
+    if (!hospitals.length) return rows;
+    return rows.filter((row) => !hospitals.some((etab) => (
+      Math.abs(etab.lat - row.lat) <= HOSPITAL_ABSORB_DEG
+      && Math.abs(etab.lon - row.lon) <= HOSPITAL_ABSORB_DEG / Math.max(0.2, Math.cos(row.lat * Math.PI / 180))
+      && metresApart(etab.lat, etab.lon, row.lat, row.lon) <= HOSPITAL_ABSORB_M
+    )));
+  }
+
   function repaintMarks(rows) {
     if (!_marks) return;
     _marks.removeAll();
@@ -936,7 +1108,11 @@ export function createMedecinsLayer({
     for (const row of rows) {
       const id = renderId(row.key);
       const position = markerPosition(row.lat, row.lon);
-      const side = medecinMarkPixelSize(row.practitioners);
+      // A hospital has no magnitude to draw; a practice does. See
+      // `HOSPITAL_MARK_PX` for why that is a statement and not a default.
+      const side = row.family === 'hopital'
+        ? HOSPITAL_MARK_PX
+        : medecinMarkPixelSize(row.practitioners);
       const mark = _marks.add({
         id,
         position,
@@ -969,15 +1145,23 @@ export function createMedecinsLayer({
     // § 3.5 — see `profileCountBudget`. Coverage first, density second.
     const budget = profileCountBudget(medecinsMeshBudget(box.north - box.south));
     const { picked } = selectMedecinsMesh(payload.sites, { box, budget });
-    repaintMarks(picked.map((row, index) => ({
+    // OUTSIDE THE BUDGET, DELIBERATELY. The thinner exists so 64 232 practices
+    // do not become a mat, and a hospital is exactly the mark that must survive
+    // the camera pulling back: there are at most a few dozen in any box this
+    // regime draws, and they are what a reader is looking for at that height.
+    const hospitals = hospitalRows(box);
+    const practices = absorbedByHospital(picked.map((row, index) => ({
       key: `mesh:${index}:${row[MESH_LAT]}:${row[MESH_LON]}`,
       lat: row[MESH_LAT],
       lon: row[MESH_LON],
       practitioners: row[MESH_PRACTITIONERS],
-      family: MEDECIN_FAMILIES[row[MESH_FAMILY]] ?? 'specialiste',
+      family: MEDECIN_PRACTICE_FAMILIES[row[MESH_FAMILY]] ?? 'specialiste',
       site: null,
       praticiens: null,
-    })));
+    })), hospitals);
+    // Hospitals LAST so they are added last and sit on top of what they absorb
+    // the neighbours of — `spriteOrder.js` orders collections, not marks.
+    repaintMarks([...practices, ...hospitals]);
   }
 
   async function renderSites(box) {
@@ -1002,7 +1186,8 @@ export function createMedecinsLayer({
     _sites = payload.sites;
     _sitesTruncated = Boolean(payload.truncated);
     _sitesBox = box;
-    repaintMarks(payload.sites.map((entry) => ({
+    const hospitals = hospitalRows(box);
+    const practices = absorbedByHospital(payload.sites.map((entry) => ({
       key: `site:${entry.index}`,
       index: entry.index,
       lat: entry.site[SITE_LAT],
@@ -1010,7 +1195,8 @@ export function createMedecinsLayer({
       practitioners: entry.site[SITE_PRACTITIONERS],
       family: sitePrimaryFamily(entry.site),
       site: entry.site,
-    })));
+    })), hospitals);
+    repaintMarks([...practices, ...hospitals]);
   }
 
   /** The one place the three regimes are chosen between. */

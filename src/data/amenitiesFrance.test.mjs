@@ -32,7 +32,7 @@ import amenitiesFranceLayer, {
   amenityCalloutText,
   amenityFamilyColor,
   amenityFamilyLabel,
-  amenityHasOutline,
+  amenityPositionVouched,
   amenityPointSize,
   amenityPrecisionAlpha,
   buildAmenitiesDepartementLabel,
@@ -52,7 +52,9 @@ import amenitiesFranceLayer, {
   _selectAmenityForTest,
   _setAmenitiesStateForTest,
 } from './amenitiesFrance.js';
+import * as Cesium from 'cesium';
 import { AMENITY_FAMILIES } from './amenitiesFeed.js';
+import { AMENITY_GLYPH_RASTER_PX, amenityFamilyGlyph } from './amenityFamilyIcons.js';
 import { SCHOOL_LEVELS } from './schoolsFeed.js';
 import { schoolLevelColor } from './schoolsFrance.js';
 import { SUP_KINDS } from './supFeed.js';
@@ -119,7 +121,7 @@ const record = ({ site: siteOver, ...over } = {}) => {
     baseColor: amenityFamilyColor(built.family) || AMENITY_COLORS.medecin,
     baseAlpha: 1,
     baseSize: AMENITY_POINT_PX[built.family] || AMENITY_POINT_PX.medecin,
-    point: { color: null, pixelSize: 0, show: true },
+    point: { color: null, width: 0, height: 0, show: true },
     ...over,
   };
 };
@@ -192,14 +194,14 @@ test('the precision channel is real: worse-located dots are softer and lose the 
   assert.ok(amenityPrecisionAlpha('numero') > amenityPrecisionAlpha('voie'));
   assert.ok(amenityPrecisionAlpha('voie') > amenityPrecisionAlpha('approchee'));
   assert.ok(amenityPrecisionAlpha('approchee') > amenityPrecisionAlpha('indeterminee'));
-  assert.equal(amenityHasOutline('numero'), true);
-  assert.equal(amenityHasOutline('voie'), true);
-  assert.equal(amenityHasOutline('approchee'), false);
-  assert.equal(amenityHasOutline('indeterminee'), false);
+  assert.equal(amenityPositionVouched('numero'), true);
+  assert.equal(amenityPositionVouched('voie'), true);
+  assert.equal(amenityPositionVouched('approchee'), false);
+  assert.equal(amenityPositionVouched('indeterminee'), false);
   // An absent band must not default to the best one.
   assert.equal(amenityPrecisionAlpha(undefined), AMENITY_PRECISION_ALPHA.indeterminee);
   assert.equal(amenityPrecisionAlpha(null), AMENITY_PRECISION_ALPHA.indeterminee);
-  assert.equal(amenityHasOutline(undefined), false);
+  assert.equal(amenityPositionVouched(undefined), false);
 });
 
 test('a choropleth bin that is not an integer bin gets no colour at all', () => {
@@ -418,19 +420,82 @@ test('the maillage legend prints kept-against-in-view per family, because the mi
     regime: 'maillage',
     records: new Map([
       ['a', record({ id: 'a' })],
-      ['b', record({ id: 'b', site: { family: 'hopital' } })],
+      ['b', record({ id: 'b', site: { family: 'piscine' } })],
     ]),
     meshPick: {
       picked: [], inBox: 92748, thinned: true,
       perFamily: [
         { family: 'medecin', inBox: 29000, kept: 331 },
-        { family: 'hopital', inBox: 2100, kept: 39 },
+        { family: 'piscine', inBox: 2100, kept: 39 },
       ],
     },
   });
   const { legend } = _amenitiesRowControlsForTest();
-  const hopital = legend.find((row) => row.label === 'Hôpital');
-  assert.match(norm(hopital.blurb), /Échantillon : 1 tracé sur 2 100 dans la vue/);
+  const piscine = legend.find((row) => row.label === 'Bassin de natation');
+  assert.match(norm(piscine.blurb), /Échantillon : 1 tracé sur 2 100 dans la vue/);
+});
+
+test('every family the layer draws has a key row, whether or not it is in view', () => {
+  // The key is the CONTROL now: each row is that family's switch, so a row that
+  // disappeared because the view holds none of it would be a switch a reader
+  // cannot press back on.
+  _setAmenitiesStateForTest({
+    regime: 'sites',
+    records: new Map([['a', record({ id: 'a' })]]),
+  });
+  const { legend } = _amenitiesRowControlsForTest();
+  const families = legend.filter((row) => row.toggle);
+  assert.equal(families.length, 13, 'thirteen drawn families, thirteen switches');
+  assert.equal(families.filter((row) => row.count === 0).length, 12);
+  for (const row of families) {
+    assert.equal(row.toggle.param, 'basculer');
+    assert.match(row.glyph, /^data:image\/svg\+xml;base64,/, `${row.label} has no mark`);
+  }
+  // And the hospital is named as gone rather than silently absent.
+  const withdrawn = legend.find((row) => /Hôpitaux/.test(row.label));
+  assert.equal(withdrawn.color, null);
+  assert.match(withdrawn.blurb, /Santé & secours/);
+});
+
+test('switching a family off re-asks the view, and a share link can restore it', () => {
+  _setAmenitiesStateForTest({
+    regime: 'sites', enabled: false, records: new Map([['a', record({ id: 'a' })]]),
+  });
+  assert.deepEqual(amenitiesFranceLayer.getParams(), { familles: '' });
+
+  // `basculer` flips one family against the current set, which starts "all on".
+  assert.equal(amenitiesFranceLayer.setParams({ basculer: 'piscine' }), true);
+  const off = amenitiesFranceLayer.getParams().familles.split(',');
+  assert.equal(off.includes('piscine'), false);
+  assert.equal(off.length, 12);
+
+  // Pressing the same row again puts it back, and "everything" normalises to ''
+  // so the link cannot carry two spellings of "no filter".
+  assert.equal(amenitiesFranceLayer.setParams({ basculer: 'piscine' }), true);
+  assert.deepEqual(amenitiesFranceLayer.getParams(), { familles: '' });
+
+  // `familles` ASSIGNS, and one name is a selection of one — never a toggle.
+  // Overloading the two is what made a share link carrying a single family
+  // reopen showing the other twelve.
+  assert.equal(amenitiesFranceLayer.setParams({ familles: 'boulangerie' }), true);
+  assert.deepEqual(amenitiesFranceLayer.getParams(), { familles: 'boulangerie' });
+
+  // A whole selection, which is the shape a share link restores.
+  assert.equal(amenitiesFranceLayer.setParams({ familles: 'piscine,pharmacie' }), true);
+  assert.deepEqual(amenitiesFranceLayer.getParams(), { familles: 'pharmacie,piscine' });
+  const { legend, chips } = _amenitiesRowControlsForTest();
+  assert.equal(legend.filter((row) => row.off).length, 11);
+  assert.equal(chips.length, 1, 'a filtered key offers the way back');
+  assert.deepEqual(chips[0].params, { familles: '' });
+
+  // A family this layer does not draw is refused rather than stored.
+  assert.equal(amenitiesFranceLayer.setParams({ basculer: 'hopital' }), false);
+  assert.equal(amenitiesFranceLayer.setParams({ paint: 'apl' }), false);
+  // And an unknown name in an ASSIGNMENT is dropped, leaving "no filter" —
+  // never a filter that matches nothing.
+  assert.equal(amenitiesFranceLayer.setParams({ familles: 'ecole' }), true);
+  assert.deepEqual(amenitiesFranceLayer.getParams(), { familles: '' });
+  amenitiesFranceLayer.setParams({ familles: '' });
 });
 
 test('the national legend is the percentage ramp and names the ratio’s blind spot', () => {
@@ -466,17 +531,19 @@ test('a viewport payload draws one point per record, styled by family and precis
   _amenitiesReconcileForTest({
     sites: [
       site(),
-      site({ id: 'a:6:48.8,2.3', family: 'hopital', lat: 48.8, lon: 2.3, precision: 'approchee' }),
+      site({ id: 'a:6:48.8,2.3', family: 'piscine', lat: 48.8, lon: 2.3, precision: 'approchee' }),
       // A family the palette does not know is dropped, not drawn grey.
       site({ id: 'a:9:48.7,2.2', family: 'ecole', lat: 48.7, lon: 2.2 }),
     ],
   });
   assert.equal(points.added.length, 2);
-  assert.equal(points.added[0].pixelSize, AMENITY_POINT_PX.medecin);
-  assert.equal(points.added[0].outlineWidth, 1);
-  // 'approchee' loses the halo.
-  assert.equal(points.added[1].pixelSize, AMENITY_POINT_PX.hopital);
-  assert.equal(points.added[1].outlineWidth, 0);
+  // A PLATE, not a dot: the side is square and the family is in the image.
+  assert.equal(points.added[0].width, AMENITY_POINT_PX.medecin);
+  assert.equal(points.added[0].height, AMENITY_POINT_PX.medecin);
+  assert.equal(points.added[0].image, amenityFamilyGlyph('medecin', { px: AMENITY_GLYPH_RASTER_PX }));
+  assert.equal(points.added[1].image, amenityFamilyGlyph('piscine', { px: AMENITY_GLYPH_RASTER_PX }));
+  // Precision rides in the alpha now that every plate carries the same ring.
+  assert.ok(points.added[1].color.alpha < points.added[0].color.alpha);
   assert.equal(_amenitiesStatsForTest().count, 2);
   assert.equal(_amenitiesTruncatedForTest(), 1);
 });
@@ -485,7 +552,7 @@ test('the maillage draws the tuples the thinning kept and marks every record as 
   const points = fakePoints();
   const rows = [
     [45.0, 3.0, 3, AMENITY_FAMILIES.indexOf('medecin')],
-    [45.5, 3.5, 0, AMENITY_FAMILIES.indexOf('hopital')],
+    [45.5, 3.5, 0, AMENITY_FAMILIES.indexOf('piscine')],
   ];
   _setAmenitiesStateForTest({
     regime: 'maillage', enabled: true, points, records: new Map(), mesh: { rows, rowCount: 2 },
@@ -497,9 +564,9 @@ test('the maillage draws the tuples the thinning kept and marks every record as 
   assert.equal(summary.shown, 2);
   assert.equal(summary.nationalRows, 2);
   assert.equal(summary.perFamily.length, 2);
-  // The 'indeterminee' tuple gets no halo, exactly as in the exact regime.
-  const soft = points.added.find((point) => point.outlineWidth === 0);
-  assert.ok(soft, 'a tuple with no published precision must lose the halo');
+  // The 'indeterminee' tuple is drawn softer, exactly as in the exact regime.
+  const alphas = points.added.map((point) => point.color.alpha).sort((x, y) => x - y);
+  assert.ok(alphas[0] < alphas[1], 'a tuple with no published precision must be drawn softer');
 });
 
 test('selecting a dot publishes a protected card and restores the dot on clear', () => {
@@ -517,10 +584,15 @@ test('selecting a dot publishes a protected card and restores the dot on clear',
   assert.equal(published[0].protected, true);
   assert.equal(published[0].selected, true);
   assert.match(published[0].title, /NADJIBA GALOUL/);
-  assert.equal(entry.point.pixelSize, 18);
+  // Cesium MULTIPLIES a billboard's colour, so the selected plate goes white —
+  // any tint would repaint the artwork and lose the family. The card carries
+  // the family colour instead.
+  assert.equal(entry.point.width, 30);
+  assert.equal(published[0].accent, AMENITY_COLORS.medecin);
+  assert.equal(entry.point.color, Cesium.Color.WHITE);
   _clearAmenitiesSelectionForTest();
   assert.equal(_amenitiesSelectedIdForTest(), null);
-  assert.equal(entry.point.pixelSize, AMENITY_POINT_PX.medecin);
+  assert.equal(entry.point.width, AMENITY_POINT_PX.medecin);
   assert.ok(host.calls.cleared.includes(AMENITIES_FR_OVERLAY_SOURCE_ID));
 });
 

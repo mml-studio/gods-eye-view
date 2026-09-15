@@ -423,7 +423,8 @@ export const LAYER_MANIFEST = Object.freeze([
     name: 'Équipements du quotidien (FR)',
     icon: '🏪',
     source: 'BPE 2025 — Insee · FINESS — ARS/ANS',
-    capabilities: Object.freeze(['destroy', 'getStats']),
+    capabilities: Object.freeze(['destroy', 'getStats', 'setParams', 'getParams']),
+    defaultParams: Object.freeze({ familles: '' }),
     load: () => import('./amenitiesFrance.js').then((module) => module.default),
   }),
   Object.freeze({

@@ -104,6 +104,10 @@ dépassent 5 % sont des trouvailles (Flamanville 2 660 contre 4 280 — l'EPR).
 
 ### 2. Un cabinet, un point
 
+*Chiffré le 2026-09-15, six jours après : voir le point 5 ci-dessous. Le
+doublon était réel — 74,6 % des points BPE ont une adresse conventionnée à
+moins de 50 m — et le retrait coûte 8,5 % de cabinets que seule la BPE voit.*
+
 `amenities-fr` dessine la BPE D265 et `medecins-fr` le registre conventionné :
 le même cabinet, deux fois. L'obstacle annoncé était réel mais mal placé :
 `AMENITY_FAMILIES` **est** une clé de cache, et en retirer un élément renomme
@@ -186,6 +190,51 @@ D'où un **second seau**, plafond 600 et recharge 100, et un rendement mesuré :
 30 indicatifs sur 40 donnent une route.
 
 ---
+
+## Troisième passe — 2026-09-15
+
+### Un hôpital n'est pas une course, et la mesure qui l'a montré
+
+*2026-09-15.* Le point n° 2 ci-dessus avait réglé le doublon des médecins par un
+retrait conditionnel, sans jamais mesurer ce que ce retrait coûtait. Trois
+croisements ont été faits d'un coup, sur les paquets réellement livrés, avant de
+toucher à quoi que ce soit — appariement au plus proche voisin, seuils 50 / 100 /
+200 m, index de 0,005° :
+
+| croisement | apparié à 50 m | à 200 m | distance médiane |
+|---|---|---|---|
+| `medecin` BPE D265 (30 213) ↔ `medecins-fr` (64 232) | **74,6 %** | 91,5 % | 10 m |
+| `hopital` FINESS (2 211) ↔ `medecins-fr` | **50,3 %** | — | **0 m** |
+| `pharmacie` FINESS (19 216) ↔ `medecins-fr` | **27,1 %** | — | 21 m |
+
+Trois décisions en sont sorties, et aucune n'aurait été prise de la même façon
+sans les chiffres.
+
+**Le retrait des médecins est confirmé, et son prix est écrit.** Les deux
+registres décrivent bien une population unique — 10 m de médiane là où ils
+s'apparient, ce n'est pas une coïncidence. Restent 8,5 % de points BPE que la
+CNAM ne porte à aucune distance. C'est le prix de la règle « un registre par
+famille », et il est maintenant annoncé dans l'en-tête du module au lieu d'être
+supposé nul.
+
+**L'hôpital déménage.** 50,3 % contre 27,1 % : un hôpital partage une adresse
+avec un cabinet une fois sur deux, une pharmacie une fois sur quatre. C'est
+l'écart entre un service d'un campus médical et une boutique de rue, et il dit
+lequel des deux appartient à la ligne « Santé & secours » — les 2 211
+établissements FINESS y sont passés, lus par `build-medecins-fr.mjs` avec le
+lecteur FINESS du paquet des équipements plutôt qu'avec une seconde
+implémentation.
+
+**Et la médiane de 0 m a écrit le code.** Les 1 113 hôpitaux co-localisés sont à
+la MÊME coordonnée qu'un cabinet, parce qu'un consultant déclare l'hôpital où il
+consulte. Dessinés naïvement, c'étaient 1 113 pastilles posées exactement sur
+1 113 autres — un bug qu'on aurait découvert à l'écran, après coup, sans savoir
+d'où il venait. Le paquet compte donc les praticiens dans les 50 m à la
+fabrication (`praticiensSurPlace`), une seule marque est dessinée, et sa fiche
+porte le compte. La jointure est faite une fois hors ligne, pas 2 211 fois par
+vue dans le navigateur.
+
+**La pharmacie reste.** On va à la pharmacie comme à la boulangerie.
 
 ## Ce que la seconde passe a trouvé en chemin
 

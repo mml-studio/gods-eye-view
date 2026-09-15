@@ -117,9 +117,11 @@ export const MAP_ICON_HALO_COLOR = 'rgba(0,0,0,0.62)';
 
 /**
  * Maki — https://github.com/mapbox/maki (CC0 1.0).
- * Retrieved 2026-09-02 (aerialway, harbor) and 2026-09-14 (bicycle, scooter,
- * car, charging-station, communications-tower, doctor, hospital) at commit
- * 28e2a3602e4b from `icons/<name>.svg` — the same upstream HEAD on both dates.
+ * Retrieved 2026-09-02 (aerialway, harbor), 2026-09-14 (bicycle, scooter,
+ * car, charging-station, communications-tower, doctor, hospital) and 2026-09-15
+ * (restaurant, bakery, bank, fitness-centre, library, grocery, pharmacy, post,
+ * fuel, police, swimming) at commit 28e2a3602e4b from `icons/<name>.svg` — the
+ * same upstream HEAD on all three dates.
  *
  * @see licenses/maki/NOTICE
  */
@@ -209,6 +211,96 @@ export const MAKI_PATHS = Object.freeze({
   // a 12 px plate intact, which is what that family's share of the register
   // (24 of 46 mapped specialty codes) makes it worth.
   hospital: 'M7,1C6.4,1,6,1.4,6,2v4H2C1.4,6,1,6.4,1,7v1 c0,0.6,0.4,1,1,1h4v4c0,0.6,0.4,1,1,1h1c0.6,0,1-0.4,1-1V9h4c0.6,0,1-0.4,1-1V7c0-0.6-0.4-1-1-1H9V2c0-0.6-0.4-1-1-1H7z',
+  // A fork and a knife, upright and apart. Maki's own icon for
+  // `amenity=restaurant`, punched by `amenityFamilyIcons.js` for the biggest
+  // family this project draws — 186 288 rows, 42 % of the whole layer.
+  //
+  // Chosen over Material's `restaurant`, which draws the same pair: on the
+  // contact sheet the two are separated by a single measurable difference, and
+  // it is the one that matters at 12 px. Maki leaves more ground between the
+  // two implements, so they stay TWO masses; Material's close to a single
+  // vertical block at that size, which is also what the fuel pump and the
+  // library spine look like once they collapse.
+  restaurant: 'M3.5,0l-1,5.5c-0.1464,0.805,1.7815,1.181,1.75,2L4,14c-0.0384,0.9993,1,1,1,1s1.0384-0.0007,1-1L5.75,7.5 c-0.0314-0.8176,1.7334-1.1808,1.75-2L6.5,0H6l0.25,4L5.5,4.5L5.25,0h-0.5L4.5,4.5L3.75,4L4,0H3.5z M12,0 c-0.7364,0-1.9642,0.6549-2.4551,1.6367C9.1358,2.3731,9,4.0182,9,5v2.5c0,0.8182,1.0909,1,1.5,1L10,14c-0.0905,0.9959,1,1,1,1 s1,0,1-1V0z',
+  // Three loaves, side by side, scored on top. Maki publishes it for
+  // `shop=bakery` — literally BPE B207, which is a French proximity landmark
+  // with a register code of its own.
+  //
+  // Chosen over Material's `bakery_dining` (a fanned croissant) on the
+  // contact sheet: at 12 px the three loaves are still three masses, while the
+  // croissant's fan closes into a shell that could be any rounded object. The
+  // rule is this repository's own — a silhouette keeps its COUNTER-FORMS or it
+  // stops being a silhouette.
+  bakery: 'M5.294,4.382,6,9.5a.979.979,0,0,0,1,1H8a.979.979,0,0,0,1-1l.706-5.118C9.706,3,7.5,3,7.5,3S5.291,3,5.294,4.382ZM3.5,5C2,5,2,6,2,6l1,4H4.5a.793.793,0,0,0,.794-.765L4.5,5Zm-2,2.5a1.533,1.533,0,0,0-1.059.412A1.366,1.366,0,0,0,0,8.794V11H.882A1.02,1.02,0,0,0,2,10ZM11.5,5C13,5,13,6,13,6l-1,4H10.5a.793.793,0,0,1-.794-.765L10.5,5Zm2,2.5a1.533,1.533,0,0,1,1.059.412A1.366,1.366,0,0,1,15,8.794V11h-.882A1.02,1.02,0,0,1,13,10Z',
+  // A note lying flat with a coin over it, inside the frame of a counter.
+  // Maki's icon for `amenity=bank`, punched for BPE A203 — 23 986 branches
+  // RECEIVING THE PUBLIC, which is the distinction this family is drawn on: an
+  // ATM is not a branch and the register does not list one.
+  bank: 'M1,3C0.446,3,0,3.446,0,4v7c0,0.554,0.446,1,1,1h13c0.554,0,1-0.446,1-1V4c0-0.554-0.446-1-1-1H1z M1,4h1.5 C2.7761,4,3,4.2239,3,4.5S2.7761,5,2.5,5S2,4.7761,2,4.5L1.5,5C1.7761,5,2,5.2239,2,5.5S1.7761,6,1.5,6S1,5.7761,1,5.5V4z M7.5,4 C8.8807,4,10,5.567,10,7.5l0,0C10,9.433,8.8807,11,7.5,11S5,9.433,5,7.5S6.1193,4,7.5,4z M12.5,4H14v1.5C14,5.7761,13.7761,6,13.5,6 S13,5.7761,13,5.5S13.2239,5,13.5,5L13,4.5C13,4.7761,12.7761,5,12.5,5S12,4.7761,12,4.5S12.2239,4,12.5,4z M7.5,5.5 c-0.323,0-0.5336,0.1088-0.6816,0.25h1.3633C8.0336,5.6088,7.823,5.5,7.5,5.5z M6.625,6C6.5795,6.091,6.5633,6.1711,6.5449,6.25 h1.9102C8.4367,6.1711,8.4205,6.091,8.375,6H6.625z M6.5,6.5v0.25h2V6.5H6.5z M6.5,7v0.25h2V7H6.5z M6.5,7.5v0.25h2V7.5H6.5z M6.5,8 L6.25,8.25h2L8.5,8H6.5z M6,8.5c0,0,0.0353,0.1024,0.1016,0.25H8.375L8,8.5H6z M1.5,9C1.7761,9,2,9.2239,2,9.5S1.7761,10,1.5,10 L2,10.5C2,10.2239,2.2239,10,2.5,10S3,10.2239,3,10.5S2.7761,11,2.5,11H1V9.5C1,9.2239,1.2239,9,1.5,9z M6.2383,9 C6.2842,9.0856,6.3144,9.159,6.375,9.25h2.2676C8.7092,9.1121,8.75,9,8.75,9H6.2383z M13.5,9C13.7761,9,14,9.2239,14,9.5V11h-1.5 c-0.2761,0-0.5-0.2239-0.5-0.5s0.2239-0.5,0.5-0.5s0.5,0.2239,0.5,0.5l0.5-0.5C13.2239,10,13,9.7761,13,9.5S13.2239,9,13.5,9z M6.5664,9.5c0.0786,0.0912,0.1647,0.1763,0.2598,0.25h1.4199C8.3462,9.6727,8.4338,9.5883,8.5,9.5H6.5664z',
+  // A dumbbell seen from the side, bar and two plates. Maki's icon for
+  // `leisure=fitness_centre`, punched for the gyms and the multisport halls
+  // (BPE F120 + F121).
+  //
+  // The strongest horizontal in this set, which is why it takes a larger share
+  // of its plate than the rest: a bar is a line, and a line loses less to the
+  // punch than a mass does.
+  'fitness-centre': 'M14.5,7V8h-1v2h-1v1H11V8H4v3H2.5V10h-1V8H.5V7h1V5h1V4H4V7h7V4h1.5V5h1V7Z',
+  // An open book, two leaves and the spine between them. Maki's icon for
+  // `amenity=library`, and this family's honest name rather than its
+  // catch-all: 15 676 of the 21 179 rows of « lieu culturel » are libraries
+  // (74 %), against 1 969 cinemas and 1 389 performance venues.
+  //
+  // A film reel or a masked pair would have named the 16 %. This project has
+  // made that choice once before, in `medecinFamilyIcons.js`, where the
+  // radiology trefoil names 90.8 % of its family rather than the flask naming
+  // the rest — same rule, same reason.
+  library: 'M1.0819,9.9388C0.9871,9.867,1.0007,9.7479,1.0007,9.7479L1.5259,3.5c0,0,0.0082-0.0688,0.0388-0.104 C1.584,3.374,1.6084,3.342,1.6544,3.3232C2.1826,3.1072,5.0537,1.5519,6.5,3c0.2397,0.2777,0.4999,0.6876,0.4999,1v5.2879 c0,0,0.0062,0.1122-0.0953,0.1801c-0.0239,0.016-0.124,0.0616-0.242,0.0026c-2.2253-1.1134-4.711,0.1546-5.3381,0.4871 C1.1987,10.0244,1.1006,9.9531,1.0819,9.9388z M13.6754,9.9577c-0.6271-0.3325-3.1128-1.6005-5.3381-0.4871 c-0.118,0.059-0.2181,0.0134-0.242-0.0026C7.9939,9.4001,8.0001,9.2879,8.0001,9.2879V4c0-0.3124,0.2602-0.7223,0.4999-1 c1.4463-1.4481,4.2991,0.1071,4.8273,0.3232c0.046,0.0188,0.0704,0.0508,0.0897,0.0728C13.4476,3.4312,13.4558,3.5,13.4558,3.5 l0.5435,6.2479c0,0,0.0136,0.1191-0.0812,0.1909C13.8994,9.9531,13.8013,10.0244,13.6754,9.9577z M8.8647,12.6863 c0.0352-0.0085,0.0964-0.0443,0.1179-0.0775c0.0236-0.0364,0.0378-0.0617,0.0423-0.1088c0.0495-0.9379,1.6245-1.8119,4.6477-0.0298 c0.0775,0.0441,0.1666,0.0396,0.2425-0.0155C14.0014,12.392,14,12.2859,14,12.2859v-0.5542c0,0,0.0003-0.0764-0.0272-0.1184 c-0.0205-0.0312-0.0476-0.0643-0.0926-0.0858c-2.0254-1.3145-4.5858-1.8972-5.8854-0.1592 c-0.0181,0.0423-0.0353,0.0613-0.0728,0.0905C7.8654,11.5028,7.7964,11.5,7.7964,11.5H7.2109c0,0-0.069,0.0028-0.1256-0.0412 c-0.0375-0.0292-0.0547-0.0482-0.0728-0.0905c-1.2996-1.738-3.86-1.1828-5.8854,0.1317c-0.045,0.0215-0.0721,0.0546-0.0926,0.0858 c-0.0275,0.042-0.0272,0.1184-0.0272,0.1184v0.5542c0,0-0.0014,0.1061,0.0849,0.1688c0.0759,0.0551,0.165,0.0596,0.2425,0.0155 c3.0232-1.7821,4.5982-0.8806,4.6477,0.0573c0.0045,0.0471,0.0187,0.0724,0.0423,0.1088c0.0215,0.0332,0.0827,0.069,0.1179,0.0775 C6.8645,12.8656,7.9112,12.9363,8.8647,12.6863z',
+  // A shopping trolley in three-quarter view. Maki's icon for
+  // `shop=supermarket`, punched for « faire ses courses » — BPE B104 + B105 +
+  // B201, the hypermarkets, supermarkets and convenience stores.
+  //
+  // The trolley and NOT a basket, because the basket is what separates this
+  // family from `commerce` next door: one is where a household's week comes
+  // from, the other is the counter you cross the road for. Two objects, two
+  // marks, and the difference survives to 12 px.
+  grocery: 'M 13.199219 1.5 C 13.199219 1.5 11.808806 1.4588 11.253906 2 C 10.720406 2.5202 10.5 2.9177 10.5 4 L 1.1992188 4 L 2.59375 8.8144531 C 2.59725 8.8217531 2.6036219 8.8287375 2.6074219 8.8359375 C 2.8418219 9.4932375 3.4545469 9.9666406 4.1855469 9.9941406 C 4.1885469 9.9954406 4.1992187 10 4.1992188 10 L 10.699219 10 L 10.699219 10.199219 C 10.699219 10.199219 10.7 10.500391 10.5 10.900391 C 10.3 11.300391 10.200391 11.5 9.4003906 11.5 L 2.9003906 11.5 C 1.9003906 11.5 1.9003906 13 2.9003906 13 L 4.0996094 13 L 4.1992188 13 L 9.0996094 13 L 9.1992188 13 L 9.3007812 13 C 10.500781 13 11.399219 12.299609 11.699219 11.599609 C 11.999219 10.899609 12 10.300781 12 10.300781 L 12 10 L 12 4 C 12 3.4764 12.228619 3 12.699219 3 L 13.25 3 C 13.6642 3 14 2.6642 14 2.25 C 14 1.8358 13.6642 1.5 13.25 1.5 L 13.199219 1.5 z M 9.1992188 13 C 8.5992188 13 8.1992188 13.4 8.1992188 14 C 8.1992188 14.6 8.5992187 15 9.1992188 15 C 9.7992187 15 10.199219 14.6 10.199219 14 C 10.199219 13.4 9.7992188 13 9.1992188 13 z M 4.1992188 13 C 3.5992188 13 3.1992188 13.4 3.1992188 14 C 3.1992188 14.6 3.5992187 15 4.1992188 15 C 4.7992188 15 5.1992188 14.6 5.1992188 14 C 5.1992188 13.4 4.7992187 13 4.1992188 13 z',
+  // A mortar with a pestle standing in it, cross on the bowl. Maki's icon
+  // for `amenity=pharmacy`, punched for the 19 216 FINESS officines.
+  //
+  // Chosen over Material's `local_pharmacy`, which reads BETTER at 12 px and
+  // was still refused: Material draws a cross in a rounded box, and this globe
+  // already spends a bare cross on hospitals and used to spend one on the
+  // catch-all medical family. A third cross would have made the hue the only
+  // thing separating three subjects — which is exactly the failure the plates
+  // were introduced to end. A mortar is muddy at 12 px and unambiguous at
+  // every size above it, and 12 px is this ramp's FLOOR, not its working size.
+  pharmacy: 'M9.5,4l1.07-1.54c0.0599,0.0046,0.1201,0.0046,0.18,0c0.6904-0.0004,1.2497-0.5603,1.2494-1.2506 C11.999,0.519,11.4391-0.0404,10.7487-0.04C10.0584-0.0396,9.499,0.5203,9.4994,1.2106c0,0.0131,0.0002,0.0262,0.0006,0.0394 c0,0,0,0.07,0,0.1L7,4H9.5z M12,6V5H3v1l1.5,3.5L3,13v1h9v-1l-1-3.5L12,6z M10,10H8v2H7v-2H5V9h2V7h1v2h2V10z',
+  // A sealed envelope, flap down. Maki's icon for `amenity=post_office`,
+  // punched for the three shapes of French postal counter the BPE separates and
+  // this layer does not (A206 bureau, A208 agence communale, A207 relais).
+  //
+  // The cleanest small mark in this batch: a rectangle with one chevron in it
+  // holds its structure all the way to 12 px, where most of its neighbours are
+  // already trading detail for mass.
+  post: 'M13.5 3.65139C13.5 3.86918 13.3912 4.07257 13.2099 4.19338L7.5 8L1.79006 4.19338C1.60885 4.07257 1.5 3.86918 1.5 3.65139C1.5 3.29164 1.79164 3 2.15139 3L12.8486 3C13.2084 3 13.5 3.29164 13.5 3.65139Z M13.5 5.96713V11C13.5 11.5523 13.0523 12 12.5 12H2.5C1.94772 12 1.5 11.5523 1.5 11L1.5 5.96713C1.5 5.76746 1.72254 5.64836 1.88868 5.75912L7.5 9.5L13.1113 5.75912C13.2775 5.64836 13.5 5.76746 13.5 5.96713Z',
+  // A pump with its hose, standing beside the forecourt column. Maki's
+  // icon for `amenity=fuel`, punched for BPE B316 — and the pump is the point:
+  // the CHARGE points are refused by this layer and drawn live by `irve-fr`,
+  // so the mark has to say petrol rather than energy.
+  fuel: 'm14 6v5.5c0 .2761-.2239.5-.5.5s-.5-.2239-.5-.5v-2c0-.8284-.6716-1.5-1.5-1.5h-1.5v-6c0-.5523-.4477-1-1-1h-6c-.5523 0-1 .4477-1 1v11c0 .5523.4477 1 1 1h6c.5523 0 1-.4477 1-1v-4h1.5c.2761 0 .5.2239.5.5v2c0 .8284.6716 1.5 1.5 1.5s1.5-.6716 1.5-1.5v-6.5c0-.5523-.4477-1-1-1v-1.51c-.0054-.2722-.2277-.4901-.5-.49-.2816.0047-.5062.2367-.5015.5184.0002.0105.0007.0211.0015.0316v2.45c0 .5523.4477 1 1 1s1-.4477 1-1-.4477-1-1-1zm-5 .5c0 .2761-.2239.5-.5.5h-5c-.2761 0-.5-.2239-.5-.5v-3c0-.2761.2239-.5.5-.5h5c.2761 0 .5.2239.5.5z',
+  // A shield with a badge struck through it. Maki's icon for
+  // `amenity=police`, punched for the gendarmerie brigades and the
+  // commissariats the BPE lists as RECEIVING THE PUBLIC (A104 + A140) — never
+  // the operational network, which no open register publishes.
+  police: 'M5.5,1L6,2h5l0.5-1H5.5z M6,2.5v1.25c0,0,0,2.75,2.5,2.75S11,3.75,11,3.75V2.5H6z M1.9844,3.9863 C1.4329,3.9949,0.9924,4.4485,1,5v4c-0.0001,0.6398,0.5922,1.1152,1.2168,0.9766L5,9.3574V14l5.8789-6.9297 C10.7391,7.0294,10.5947,7,10.4414,7H6.5L3,7.7539V5C3.0077,4.4362,2.5481,3.9775,1.9844,3.9863z M11.748,7.7109L6.4121,14H12 V8.5586C12,8.2451,11.9061,7.9548,11.748,7.7109z',
+  // A swimmer at the surface with a wave band under them. Maki's icon for
+  // `leisure=swimming_pool`, punched for the 3 625 basins of the sports
+  // census.
+  //
+  // The wave band is what carries it small: by 12 px the swimmer has become a
+  // mass, but the two horizontal ripples under it are still two ripples, and
+  // nothing else in this set has them.
+  swimming: 'M10.1113,2C9.9989,2,9.6758,2.1465,9.6758,2.1465L6.3535,3.8262 C5.9111,4.0024,5.7358,4.7081,6.002,5.0605l0.9707,1.4082L3.002,8.498L5,9.998l2.502-1.5l2.5,1.5l1.002-1.002l-3-4l2.5566-1.5293 c0.5286-0.2662,0.4434-0.7045,0.4434-0.9707C10.9999,2.2861,10.6437,2,10.1113,2z M12.252,5C11.2847,5,10.5,5.7827,10.5,6.75 s0.7847,1.752,1.752,1.752s1.75-0.7847,1.75-1.752S13.2192,5,12.252,5z M2.5,10L0,11.5V13l2.5-1.5L5,13l2.502-1.5l2.5,1.5L12,11.5 l3,1.5v-1.5L12,10l-1.998,1.5l-2.5-1.5L5,11.5L2.5,10z',
 });
 
 /**

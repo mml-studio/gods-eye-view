@@ -6760,6 +6760,51 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   gap: 7px;
 }
 
+/* A key line that is also its own switch. It keeps the geometry of a plain
+   entry — a key whose rows moved when one of them became pressable would read
+   as two different lists — and gains only what a control needs: a cursor, a
+   hover, and a resting state that says "off". */
+.map-legend-entry.is-toggle {
+  /* The button defaults undone: a key row is not a form control and must not
+     inherit a button's font, box or alignment. */
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+  border: 0;
+  margin: 0;
+  padding: 1px 3px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  width: calc(100% + 6px);
+  margin-left: -3px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background-color 120ms ease, opacity 120ms ease;
+}
+
+.map-legend-entry.is-toggle:hover,
+.map-legend-entry.is-toggle:focus-visible {
+  background: rgba(125, 211, 252, 0.13);
+}
+
+.map-legend-entry.is-toggle:focus-visible {
+  outline: 1px solid rgba(125, 211, 252, 0.6);
+  outline-offset: -1px;
+}
+
+/* OFF is drawn by dimming, and the swatch dims with it — a bright mark beside
+   grey text would read as "drawn, and unlabelled". The row stays legible
+   enough to be found and pressed again, which is the only thing it is for. */
+.map-legend-entry.is-toggle.is-off {
+  opacity: 0.42;
+}
+
+.map-legend-entry.is-toggle.is-off:hover,
+.map-legend-entry.is-toggle.is-off:focus-visible {
+  opacity: 0.8;
+}
+
 .map-legend-swatch {
   width: 8px;
   height: 8px;

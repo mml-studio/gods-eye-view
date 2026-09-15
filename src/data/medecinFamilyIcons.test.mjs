@@ -79,14 +79,14 @@ test('Material artwork is placed from its own y origin, not from zero', () => {
   // `0 → box`. Fitting it from zero draws the glyph one full box BELOW the
   // plate, which renders as an empty pastille rather than as an error — so the
   // three Material families must carry a y translate the two Maki ones do not.
-  const material = ['femme-enfant', 'sante-mentale', 'chirurgie'];
+  const material = ['femme-enfant', 'sante-mentale', 'chirurgie', 'specialiste'];
   for (const family of material) {
     const [, x, y] = decode(medecinFamilyGlyph(family))
       .match(/translate\((-?[\d.]+) (-?[\d.]+)\)/);
     assert.notEqual(x, y, `${family} was fitted as if Material started at y=0`);
     assert.ok(Number(y) > Number(x), `${family}: the y offset must lift the glyph into the box`);
   }
-  for (const family of ['generaliste', 'specialiste', 'imagerie']) {
+  for (const family of ['generaliste', 'imagerie', 'hopital']) {
     const [, x, y] = decode(medecinFamilyGlyph(family))
       .match(/translate\((-?[\d.]+) (-?[\d.]+)\)/);
     assert.equal(x, y, `${family} is authored from the origin and must be centred squarely`);
@@ -130,25 +130,35 @@ test('the key variant is the map mark minus its ring, and nothing else', () => {
 
 test('the CC0 sets are borrowed through their public door, never re-vendored', () => {
   const source = fs.readFileSync(new URL('./medecinFamilyIcons.js', import.meta.url), 'utf8');
-  // Exactly three vendored path literals live here — the Material Symbols, which
+  // Exactly four vendored path literals live here — the Material Symbols, which
   // have no shared pack of their own in this repository and are held per module
   // the way `plantFiliereIcons.js` and `irveMarkIcons.js` hold theirs. Anything
   // else long enough to be a silhouette is a second copy of CC0 artwork.
   const literals = [...source.matchAll(/M[\d\s,.\-A-Za-z]{200,}/g)];
-  assert.equal(literals.length, 3, 'a fourth vendored outline appeared in this module');
+  assert.equal(literals.length, 4, 'a fifth vendored outline appeared in this module');
 
   // And what it borrows from the CC0 pack is that pack's path, verbatim.
   assert.ok(decode(medecinFamilyGlyph('generaliste'))
     .includes(mapIconArtwork('maki', 'doctor').geometry));
-  assert.ok(decode(medecinFamilyGlyph('specialiste'))
+  // The cross moved from `specialiste` to `hopital` on 2026-09-15 — a bare
+  // cross is the sign for a hospital, and two crosses on one panel row would
+  // have separated by hue alone. Asserted on BOTH families so the swap cannot
+  // be half-undone: the institution has it, the catch-all does not.
+  assert.ok(decode(medecinFamilyGlyph('hopital'))
+    .includes(mapIconArtwork('maki', 'hospital').geometry));
+  assert.ok(!decode(medecinFamilyGlyph('specialiste'))
     .includes(mapIconArtwork('maki', 'hospital').geometry));
   assert.ok(decode(medecinFamilyGlyph('imagerie'))
     .includes(mapIconArtwork('temaki', 'radiation').geometry));
 });
 
-test('the three Material paths are vendored whole, counters and all', () => {
+test('the four Material paths are vendored whole, counters and all', () => {
   const paths = _medecinSymbolPathsForTest();
-  assert.deepEqual(Object.keys(paths).sort(), ['escalator_warning', 'psychology', 'surgical']);
+  assert.deepEqual(Object.keys(paths).sort(),
+    ['escalator_warning', 'medical_services', 'psychology', 'surgical']);
+  // Handle, body, cross: three masses, and a catch-all that collapsed to one
+  // would read as a box rather than as a doctor's bag.
+  assert.ok((paths.medical_services.match(/[Mm]/g) || []).length >= 3, 'the bag lost its handle');
   // The cog inside the head is a counter-wound subpath: merged away, the head is
   // a featureless lozenge and the family loses the only thing that names it.
   assert.ok((paths.psychology.match(/[Mm]/g) || []).length >= 3, 'psychology lost its counters');
@@ -157,10 +167,10 @@ test('the three Material paths are vendored whole, counters and all', () => {
   assert.ok((paths.escalator_warning.match(/[Mm]/g) || []).length >= 3, 'the pair became one figure');
 });
 
-test('the six punches are six different shapes', () => {
+test('the seven punches are seven different shapes', () => {
   const punches = _medecinPunchesForTest();
-  assert.equal(Object.keys(punches).length, 6);
-  assert.equal(new Set(Object.values(punches)).size, 6, 'two families share one shape');
+  assert.equal(Object.keys(punches).length, 7);
+  assert.equal(new Set(Object.values(punches)).size, 7, 'two families share one shape');
 });
 
 test('rasters are cached per family, per size and per variant', () => {

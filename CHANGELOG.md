@@ -3,7 +3,84 @@
 This changelog records public product changes. For the authoritative description
 of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md).
 
-## [Unreleased] — 2026-09-14
+## [Unreleased] — 2026-09-15
+
+### Changed
+- **Treize familles d'équipements se distinguaient par la seule couleur, et
+  quatre paires sur les quatre-vingt-onze étaient indiscernables.** Mesuré : la
+  palette portait quatre paires sous ΔE 20 — `pharmacie`/`banque` à **15,9**,
+  `restaurant`/`commerce` à 18,0, `boulangerie`/`sport` à 18,8,
+  `courses`/`sport` à 19,0 — et ses quatorze teintes tenaient toutes entre
+  L\* 32,8 et L\* 63,9. C'est la bande qui ne se détache ni d'une forêt, ni d'un
+  champ, ni d'une toiture d'ardoise, c'est-à-dire de la France vue de 30 km.
+  Un point de 5 px dans cette bande n'est pas peu lisible : il est introuvable.
+
+  **Chaque famille porte maintenant sa silhouette**, découpée dans une pastille
+  teintée — onze pictogrammes Maki (CC0) et un Material Symbols, aucun dessiné
+  à la main, tous choisis sur une planche de contact rendue à 30 / 24 / 19 / 15
+  / 12 px sur une vraie capture de l'application, multiplication Cesium
+  simulée. Trois d'entre eux battent un candidat Material sur cette planche, et
+  la raison est toujours la même : une silhouette garde ses contre-formes ou
+  elle cesse d'être une silhouette. Trois pièces de bois restent trois masses à
+  12 px là où l'éventail d'un croissant se referme.
+
+  La palette a été refaite sur la même contrainte, en maximisant sa PIRE paire
+  au lieu de sa moyenne : **ΔE minimal 39,3**, soit 2,5× l'ancien pire cas, et
+  toutes les clartés à L\* 55,7 ou au-dessus. Le restaurant — 186 288 points,
+  42 % de la couche — est la seule famille délibérément désaturée : à cette
+  part, une couleur vive n'est pas une identité, c'est un lavis.
+
+- **La légende est devenue la commande.** Chaque ligne de la clé est
+  l'interrupteur de sa famille : on clique le pictogramme qu'on cherche, et la
+  carte ne montre plus que celui-là. Treize pastilles auraient pris cinq lignes
+  sur un panneau de 300 px pour redire ce que la clé disait déjà ; une puce
+  « Tout » suffit à tout rallumer, et n'apparaît que quand elle sert.
+
+  La sélection part dans la QUESTION et non sur la réponse, et ce n'est pas de
+  la propreté. Mesuré sur le grand Paris : la boîte contient 46 422 points, la
+  route `/sites` en rend 12 000 en commençant par les familles les plus rares,
+  et **aucune** des 4 076 boulangeries ne survit à ce plafond. Demandées par
+  `familles=boulangerie`, les 4 076 arrivent. Un filtre appliqué après le
+  plafond aurait répondu « il n'y a pas de boulangerie à Paris ». Même règle un
+  étage plus bas : le maillage alloue son budget par famille, donc une famille
+  seule reçoit tout le budget de la vue.
+
+  Le lien de partage porte la sélection, un caractère par famille.
+
+- **L'hôpital a quitté « Équipements du quotidien » pour « Santé & secours ».**
+  2 211 établissements FINESS, lus par `npm run medecins:registry` avec le même
+  lecteur que le paquet des équipements. Un hôpital n'est pas une course du
+  quotidien : qui en cherche un pose une question de santé, et les 64 232
+  adresses de praticiens, l'indicateur d'accès de la DREES et les
+  défibrillateurs sont déjà sur cette ligne-là.
+
+  Le croisement qui a tranché, fait avant le déplacement : **50,3 % des
+  hôpitaux ont une adresse de praticien libéral à moins de 50 m, à une distance
+  MÉDIANE de 0 m** — la même coordonnée, parce qu'un consultant déclare
+  l'hôpital où il consulte. Dessinés naïvement, c'étaient 1 113 pastilles
+  posées exactement sur 1 113 autres. Le paquet compte donc les praticiens sur
+  place à la fabrication, et une seule marque est dessinée : celle de
+  l'établissement, avec le compte sur sa fiche.
+
+  La croix change de main au passage. Une croix nue est le signe international
+  d'un hôpital ; « Spécialité médicale » la portait et prend la trousse de
+  Material, parce que deux croix sur une même ligne de panneau ne se séparent
+  plus que par la teinte — exactement la panne que les pastilles suppriment.
+
+  **La pharmacie reste où elle est** : on va à la pharmacie comme à la
+  boulangerie. Le même croisement le dit — 27,1 % des officines ont un cabinet
+  à moins de 50 m, contre 50,3 % des hôpitaux, soit l'écart entre une boutique
+  de rue et un service d'un campus médical.
+
+- **Le médecin généraliste de la BPE, lui, ne bouge pas — et le prix de son
+  retrait est désormais chiffré.** La famille se retire déjà quand « Santé &
+  secours » dessine des positions. Mesuré : **74,6 % des 30 213 points BPE ont
+  une adresse conventionnée à moins de 50 m, 91,5 % à moins de 200 m**, à une
+  distance médiane de 10 m quand ils s'apparient. Les deux registres décrivent
+  bien une seule population ; les 8,5 % que la CNAM ne porte pas sont le prix
+  annoncé de la règle « un registre par famille », pas un oubli.
+
+## 2026-09-14
 
 ### Changed
 - **Le panneau Data Layers demandait 39 arbitrages avant de montrer la France,

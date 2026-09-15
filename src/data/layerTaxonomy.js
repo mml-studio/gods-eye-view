@@ -930,9 +930,19 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   // waiting for it — and 186 118 wall boxes were never going to earn a row of
   // their own beside the prices and the PLU.
   //
-  // The pharmacies and the hospitals are NOT here. They are two of the fourteen
-  // families of `amenities-fr`, they are drawn by that pack, and moving them
-  // would mean rebuilding it to leave a hole in « Équipements du quotidien ».
+  // THE HOSPITALS ARE HERE since 2026-09-15, and the pharmacies are not.
+  //
+  // Both used to be families of `amenities-fr`. The hospitals moved because a
+  // hospital is not an everyday errand — a reader looking for one is asking a
+  // health question, and the practices, the DREES accessibility indicator and
+  // the defibrillators are all already on this row. The pharmacies stayed
+  // because you go to a pharmacy the way you go to a bakery.
+  //
+  // The cross-check that separated them ran the day of the move: 50.3 % of the
+  // 2 211 hospitals have a liberal practice address within 50 m, against 27.1 %
+  // of the 19 216 pharmacies — the difference between a department of a medical
+  // campus and a shop on a high street. `build-medecins-fr.mjs` reads them out
+  // of FINESS with the same reader the amenity pack uses.
   Object.freeze({
     id: 'medecins-fr',
     category: 'built-environment',
@@ -956,6 +966,11 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   // same buildings from a worse source, and it is excluded. Putting the row next
   // to the two registers it defers to is how the panel shows that decision
   // instead of hiding it.
+  //
+  // Thirteen families since 2026-09-15, not fourteen: the hôpitaux went to
+  // « Santé & secours » above. And the key on this row is a CONTROL rather than
+  // a caption — each family's line is its own switch — which is why it is the
+  // one row in this file whose legend does more than explain a colour.
   Object.freeze({
     id: 'amenities-fr',
     category: 'built-environment',

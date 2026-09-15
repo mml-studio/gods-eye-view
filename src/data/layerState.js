@@ -169,6 +169,53 @@ function enumOption(key, token, defaultValue, values, codes) {
   });
 }
 
+/**
+ * A SET of enum members, encoded as one compact token string.
+ *
+ * Written for « Équipements du quotidien », whose reader can switch any of
+ * thirteen families on or off. The obvious encodings both fail: a comma list of
+ * names is 90 characters in a field with a 512-character ceiling shared by
+ * every layer, and a bitmask is unreadable and breaks the moment the vocabulary
+ * gains a member.
+ *
+ * So each member gets a one-character code and the set is their concatenation —
+ * `familles=boulangerie,pharmacie` travels as `bp`. The codes are FROZEN from
+ * the moment the first link carrying one is copied, which is why they are
+ * declared here beside every other frozen token rather than derived from the
+ * family names.
+ *
+ * The default is the EMPTY set, meaning "no filter, draw everything". A link
+ * therefore carries this field only when a reader actually filtered something,
+ * and a full selection normalises back to empty so the two ways of saying "all"
+ * cannot produce two different links.
+ */
+function enumSetOption(key, token, values, codes) {
+  const reverse = Object.fromEntries(Object.entries(codes).map(([name, code]) => [code, name]));
+  const canonical = (names) => values.filter((value) => names.includes(value));
+  return Object.freeze({
+    key,
+    token,
+    defaultValue: '',
+    normalize: (value) => {
+      if (value === null || value === undefined) return null;
+      const names = (Array.isArray(value) ? value : String(value).split(','))
+        .map((name) => String(name).trim().toLowerCase())
+        .filter((name) => values.includes(name));
+      const picked = canonical(names);
+      // Everything selected IS no filter. Folding the two together here means
+      // `getParams()` and the link can never disagree about which state a
+      // fully-lit key is in.
+      return picked.length === values.length ? '' : picked.join(',');
+    },
+    encode: (value) => canonical(String(value).split(',')).map((name) => codes[name]).join(''),
+    decode: (value) => {
+      const names = String(value).split('').map((code) => reverse[code]).filter(Boolean);
+      const picked = canonical(names);
+      return picked.length && picked.length < values.length ? picked.join(',') : null;
+    },
+  });
+}
+
 function integerOption(key, token, defaultValue) {
   return Object.freeze({
     key,
@@ -288,6 +335,33 @@ const OPTION_GROUPS = Object.freeze({
   // "the hour of the week it currently is", so a link shared on a Tuesday
   // morning opens on a Tuesday morning for its reader too, whenever they read
   // it. Only `week` and `peak` are absolute states, and both encode.
+  // The thirteen families the key can switch. One character each, frozen:
+  // `r`estaurant, `b`oulangerie, `c`ommerce, `m`édecin, ban`q`ue, `s`port,
+  // c`u`lture, c`o`urses, `p`harmacie, pos`t`e, carbura`n`t, `g`endarmerie,
+  // p`i`scine. `hopital` has no code because this layer does not draw it — see
+  // `AMENITIES_WITHDRAWN_FAMILIES` — and giving a withdrawn family a share
+  // token would let an old link ask for a mark that can never appear.
+  'amenities-fr': Object.freeze([
+    enumSetOption('familles', 'f', [
+      'restaurant', 'boulangerie', 'commerce', 'medecin', 'banque', 'sport',
+      'culture', 'courses', 'pharmacie', 'poste', 'carburant', 'gendarmerie',
+      'piscine',
+    ], {
+      restaurant: 'r',
+      boulangerie: 'b',
+      commerce: 'c',
+      medecin: 'm',
+      banque: 'q',
+      sport: 's',
+      culture: 'u',
+      courses: 'o',
+      pharmacie: 'p',
+      poste: 't',
+      carburant: 'n',
+      gendarmerie: 'g',
+      piscine: 'i',
+    }),
+  ]),
   'velo-pulse-fr': Object.freeze([
     enumOption('mode', 'm', 'now', ['now', 'week', 'peak'], { now: 'n', week: 'w', peak: 'p' }),
   ]),
@@ -398,7 +472,10 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // a duplicate here is a BOOT failure, not a review nit.
   // `bq` for base des équipements. `b` is bikeshare, `bz` is bruit-fr, and `be`
   // reads like a word; `bq` is unmistakable and unused.
-  Object.freeze({ id: 'amenities-fr', token: 'bq', disposition: 'enabled-only' }),
+  // `enabled+options` since 2026-09-15: the thirteen families are switchable
+  // from the key, and a link that dropped the selection would reopen showing
+  // twelve families the sender had turned off.
+  Object.freeze({ id: 'amenities-fr', token: 'bq', disposition: 'enabled+options', optionOwner: 'amenities-fr' }),
   // `an` for ANFR. The agency's own initials; `a` is airports. The `radio`
   // layer next door is radio-browser.info AUDIO streams and shares nothing with
   // this but a word, which is exactly why the token had to be unmistakable.
