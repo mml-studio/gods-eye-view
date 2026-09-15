@@ -53,6 +53,7 @@
     "qa:ign-opaque-boxes": "node scripts/qa-ign-opaque-boxes.mjs",
     "qa:ign-opaque-boxes:check": "node scripts/qa-ign-opaque-boxes.mjs --check",
     "qa:transit-fr": "node scripts/qa-transit-fr.mjs",
+    "qa:transit-floor": "node scripts/qa-transit-floor.mjs",
     "qa:idfm-network": "node scripts/qa-idfm-network.mjs",
     "qa:camera-settle": "node scripts/qa-camera-settle.mjs",
     "qa:card-dismissal": "node scripts/qa-card-dismissal.mjs",

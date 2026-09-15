@@ -637,6 +637,7 @@ import {
   stopsAhead,
   summarizeSchedule,
 } from './src/data/transitSchedule.js';
+import { correctTripDelays, feedDelayOffsetSec } from './src/data/transitDelayOffset.js';
 import {
   filterFreshObservations,
   parseNdbcLatestObservations,
@@ -13437,11 +13438,33 @@ async function flushPanBounds(force = false) {
 }
 
 /**
+ * Decode a trip-update body and undo a whole-hour clock offset in its delays.
+ *
+ * Done HERE, at decode, and never later: the arrays below are cached and
+ * shared, and `correctTripDelays` mutates, so a correction applied at read
+ * time would be applied again on every cache hit. See
+ * `src/data/transitDelayOffset.js` for the measurement that made this
+ * necessary — one of the 150 national feeds publishes every deviation two
+ * hours out, which reached the card as "118 min early" on a parked coach.
+ *
+ * @param {Uint8Array} bytes Raw `FeedMessage`.
+ * @returns {{trips: Array<Object>, headerTimestampMs: ?number,
+ *   entityCount: number, delayOffsetSec: number}}
+ */
+function decodePanTripUpdates(bytes) {
+  const decoded = tripUpdatesFromBytes(bytes);
+  const delayOffsetSec = feedDelayOffsetSec(decoded.trips);
+  if (delayOffsetSec) correctTripDelays(decoded.trips, delayOffsetSec);
+  return { ...decoded, delayOffsetSec };
+}
+
+/**
  * Fetch and decode ONE feed, with a shared body cache, a failure backoff and a
  * bounded serve-stale window.
  *
  * @param {Object} feed Index entry.
- * @returns {Promise<{vehicles: Array<Object>, at: number, error: ?string, stale: boolean}>}
+ * @returns {Promise<{vehicles: Array<Object>, at: number, error: ?string,
+ *   stale: boolean, delayOffsetSec: number}>}
  */
 async function panFeedVehicles(feed) {
   const now = Date.now();
@@ -13449,6 +13472,7 @@ async function panFeedVehicles(feed) {
   if (cached && now - cached.at <= PAN_FEED_CACHE_MS) {
     return {
       vehicles: cached.vehicles, trips: cached.trips, alerts: cached.alerts,
+      delayOffsetSec: cached.delayOffsetSec || 0,
       at: cached.at, error: cached.error, stale: false,
     };
   }
@@ -13460,6 +13484,7 @@ async function panFeedVehicles(feed) {
       vehicles: stale ? cached.vehicles : [],
       trips: stale ? cached.trips : null,
       alerts: stale ? cached.alerts : null,
+      delayOffsetSec: stale ? (cached.delayOffsetSec || 0) : 0,
       at: cached.at,
       error: cached.error,
       stale: stale && cached.vehicles.length > 0,
@@ -13490,7 +13515,8 @@ async function panFeedVehicles(feed) {
       // `FeedMessage` under one resource id. For those the delay of every bus
       // on screen is already in hand — the same bytes read a second way, at no
       // extra request. `sameResource` was measured by the index builder.
-      const trips = feed.tripUpdates?.sameResource ? tripUpdatesFromBytes(bytes).trips : null;
+      const decodedTrips = feed.tripUpdates?.sameResource ? decodePanTripUpdates(bytes) : null;
+      const trips = decodedTrips?.trips || null;
       const alerts = feed.alerts?.sameResource ? alertsFromBytes(bytes).alerts : null;
       // Learn the footprint from what actually arrived. Bounds only grow, and
       // junk fixes are fenced out before they can widen a city into a country.
@@ -13500,11 +13526,19 @@ async function panFeedVehicles(feed) {
         feed.bbox = merged;
         _panBoundsDirty = true;
       }
-      const entry = { at: Date.now(), vehicles, trips, alerts, error: null, failedAt: null };
+      const entry = {
+        at: Date.now(),
+        vehicles,
+        trips,
+        alerts,
+        delayOffsetSec: decodedTrips?.delayOffsetSec || 0,
+        error: null,
+        failedAt: null,
+      };
       _panFeedCache.set(feed.id, entry);
       return {
         vehicles: entry.vehicles, trips: entry.trips, alerts: entry.alerts,
-        at: entry.at, error: null, stale: false,
+        delayOffsetSec: entry.delayOffsetSec, at: entry.at, error: null, stale: false,
       };
     } catch (error) {
       const message = error?.name === 'AbortError' ? 'timeout' : (error?.message || String(error));
@@ -13515,6 +13549,9 @@ async function panFeedVehicles(feed) {
         vehicles: keepStale ? previous.vehicles : [],
         trips: keepStale ? previous.trips : null,
         alerts: keepStale ? previous.alerts : null,
+        // The offset travels with the body it was measured on: a stale serve
+        // hands back corrected trips, so it must hand back the reason too.
+        delayOffsetSec: keepStale ? (previous.delayOffsetSec || 0) : 0,
         error: message,
         failedAt: Date.now(),
       };
@@ -13523,6 +13560,7 @@ async function panFeedVehicles(feed) {
         vehicles: entry.vehicles,
         trips: entry.trips,
         alerts: entry.alerts,
+        delayOffsetSec: entry.delayOffsetSec,
         at: entry.at,
         error: message,
         stale: keepStale && entry.vehicles.length > 0,
@@ -13560,10 +13598,22 @@ async function panCompanionBody(url, kind, cacheMs) {
     // order and a plain `get` does not move it.
     _panCompanionCache.delete(key);
     _panCompanionCache.set(key, cached);
-    return { value: cached.value, at: cached.at, headerMs: cached.headerMs, error: cached.error };
+    return {
+      value: cached.value,
+      at: cached.at,
+      headerMs: cached.headerMs,
+      delayOffsetSec: cached.delayOffsetSec || 0,
+      error: cached.error,
+    };
   }
   if (cached?.failedAt && now - cached.failedAt < PAN_COMPANION_BACKOFF_MS) {
-    return { value: cached.value || [], at: cached.at, headerMs: cached.headerMs, error: cached.error };
+    return {
+      value: cached.value || [],
+      at: cached.at,
+      headerMs: cached.headerMs,
+      delayOffsetSec: cached.delayOffsetSec || 0,
+      error: cached.error,
+    };
   }
 
   const request = coalesceProxyRequest(_panCompanionInFlight, key, async () => {
@@ -13585,17 +13635,28 @@ async function panCompanionBody(url, kind, cacheMs) {
       }
       const bytes = new Uint8Array(await response.arrayBuffer());
       if (bytes.byteLength > PAN_COMPANION_MAX_BYTES) throw new Error('companion body too large');
-      const decoded = kind === 'trips' ? tripUpdatesFromBytes(bytes) : alertsFromBytes(bytes);
+      const decoded = kind === 'trips' ? decodePanTripUpdates(bytes) : alertsFromBytes(bytes);
       const value = kind === 'trips' ? decoded.trips : decoded.alerts;
       // The publisher's own stamp on the body, which the click endpoint reports
       // beside the stop times so a viewer can see how old the prediction is.
       const entry = {
-        at: Date.now(), value, headerMs: decoded.headerTimestampMs || null, error: null, failedAt: null,
+        at: Date.now(),
+        value,
+        headerMs: decoded.headerTimestampMs || null,
+        delayOffsetSec: decoded.delayOffsetSec || 0,
+        error: null,
+        failedAt: null,
       };
       _panCompanionCache.delete(key);
       _panCompanionCache.set(key, entry);
       trimPanCompanionCache();
-      return { value: entry.value, at: entry.at, headerMs: entry.headerMs, error: null };
+      return {
+        value: entry.value,
+        at: entry.at,
+        headerMs: entry.headerMs,
+        delayOffsetSec: entry.delayOffsetSec,
+        error: null,
+      };
     } catch (error) {
       const message = error?.name === 'AbortError' ? 'timeout' : (error?.message || String(error));
       // Keep the last good body rather than blanking it: a prediction 90 s old
@@ -13606,11 +13667,18 @@ async function panCompanionBody(url, kind, cacheMs) {
         at: previous?.at || Date.now(),
         value: previous?.value || [],
         headerMs: previous?.headerMs || null,
+        delayOffsetSec: previous?.delayOffsetSec || 0,
         error: message,
         failedAt: Date.now(),
       });
       trimPanCompanionCache();
-      return { value: previous?.value || [], at: previous?.at || Date.now(), headerMs: previous?.headerMs || null, error: message };
+      return {
+        value: previous?.value || [],
+        at: previous?.at || Date.now(),
+        headerMs: previous?.headerMs || null,
+        delayOffsetSec: previous?.delayOffsetSec || 0,
+        error: message,
+      };
     } finally {
       clearTimeout(timer);
     }
@@ -13635,10 +13703,14 @@ async function panFeedSchedule(feed, outcome) {
   const nowMs = Date.now();
   let trips = outcome?.trips || null;
   let tripsError = null;
+  // Whole hours this feed's own deviations were shifted by before they were
+  // believed — 0 for all but one of the 150. See `transitDelayOffset.js`.
+  let delayOffsetSec = outcome?.delayOffsetSec || 0;
   if (!trips && feed.tripUpdates?.url) {
     const body = await panCompanionBody(feed.tripUpdates.url, 'trips', PAN_TRIP_CACHE_MS);
     trips = body.value;
     tripsError = body.error;
+    delayOffsetSec = body.delayOffsetSec || 0;
   }
 
   let alerts = outcome?.alerts || null;
@@ -13651,6 +13723,7 @@ async function panFeedSchedule(feed, outcome) {
 
   return {
     nowMs,
+    delayOffsetSec,
     tripIndex: trips?.length ? indexTripUpdates(trips) : null,
     tripCount: trips?.length || 0,
     // Where this network's stops ARE, when a previous click has already had
@@ -13761,6 +13834,10 @@ function panWireVehicle(vehicle, feed, schedule = null) {
     if (Number.isFinite(state.delaySec)) {
       wire.delaySec = state.delaySec;
       wire.delayFrom = state.delayFrom;
+      // Only on the deviation this actually moved, and only from the one feed
+      // that needs it: the card says so rather than presenting a number this
+      // proxy changed as the operator's own.
+      if (schedule?.delayOffsetSec) wire.delayOffsetSec = schedule.delayOffsetSec;
     }
     if (state.awaitingDeparture) {
       wire.awaitingDeparture = true;
@@ -13850,6 +13927,10 @@ async function refreshPanViewport(box, key) {
       alertsPublished: schedule?.alertsPublished || 0,
       alertsActive: schedule?.alertIndex?.count || 0,
       scheduleError: schedule?.error || null,
+      // Reported rather than corrected in silence: subtracting whole hours
+      // from an operator's own published deviations is a claim, and the panel
+      // is where it gets to be read. 0 for every feed but the one.
+      delayOffsetSec: schedule?.delayOffsetSec || 0,
     });
   }
 

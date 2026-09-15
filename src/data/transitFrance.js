@@ -79,7 +79,18 @@ import {
   unregisterSpriteCollection,
 } from './spriteOrder.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
-import { cachedGroundFloor, warmGroundFloor } from './groundFloor.js';
+import {
+  cachedGroundFloor,
+  coarseFloorCoord,
+  neighborFloorM,
+  warmGroundFloor,
+} from './groundFloor.js';
+import {
+  provisionalFloor,
+  provisionalFloorRetryDelayMs,
+  sampleProvisionalFloors,
+} from './provisionalFloor.js';
+import { photorealSurface, surfaceSamplingArmed } from './renderedSurface.js';
 import { cameraPoseSignature, horizonOccluder, screenProjectedRotation } from './iconOrientation.js';
 import {
   clearOverlaySource,
@@ -176,6 +187,32 @@ const MAX_FIX_AGE_MS = 10 * 60 * 1000;
 const MAX_RENDERED_VEHICLES = 4_000;
 /** Metres above the resolved ground floor the glyph sits. */
 const GLYPH_LIFT_M = 4;
+/**
+ * How far a cell the probe budget did not reach may borrow a floor from, km.
+ *
+ * A viewport of this layer is a city and its ring of suburbs, and a bus stands
+ * on the same basin as the bus 10 km away far more surely than on the
+ * ellipsoid. The same figure `sharedMobilityFrance.js` uses, for the same
+ * reason and over the same ground.
+ */
+const FLOOR_FILL_KM = 10;
+/**
+ * Rendered-surface probes bought per seating pass.
+ *
+ * Twelve, not `provisionalFloor.js`'s default of forty. MEASURED headless on
+ * 2026-09-15: a probe costs 23.9 ms here (a synchronous offscreen pick render,
+ * matching the traffic layer's own 24.0 ms), so forty is 955 ms spent in one
+ * blocking call on the path that handles a viewport answer. Twelve is ~290 ms
+ * headless and ~75 ms on a real GPU.
+ *
+ * Twelve is enough because these readings are a BRIDGE, not the destination:
+ * `fillFromNearest` lends each one to every cell within {@link FLOOR_FILL_KM},
+ * so one pass already places the whole fleet, and the DEM warm posted at the
+ * end of the same reconcile takes ownership of the cells about a second later.
+ */
+const FLOOR_SAMPLE_BUDGET = 12;
+/** Vehicles whose DEM cell is warmed per reconcile. */
+const MAX_FLOOR_WARM = 600;
 /**
  * How often the selected vehicle's RUN is re-read, ms.
  *
@@ -342,6 +379,11 @@ let _moveEndRemover = null;
 let _retryTimer = null;
 let _retryDelayMs = 0;
 let _retryDueAt = 0;
+/** Pending deferred floor pass, and how many of its budget have been spent. */
+let _floorRetryTimer = null;
+let _floorRetries = 0;
+/** Cells the last pass could still do better on — reported by `getStats`. */
+let _floorPending = 0;
 
 /** Colour for a service mode, falling back to the urban tint. */
 export function transitModeColor(mode) {
@@ -484,11 +526,237 @@ function updateAltitudeGate(viewer) {
   return _altitudeGateOpen;
 }
 
-/** World position for a vehicle, on the shared coarse ground floor when warm. */
+/**
+ * The floor under one coordinate: the shared DEM cell when it is warm, the
+ * PROVISIONAL rendered-surface read when it is not, null when neither answers.
+ *
+ * WHY THE SECOND SOURCE EXISTS. `cachedGroundFloor` answers over the NETWORK,
+ * and `warmGroundFloor` is only posted at the END of a reconcile — so the first
+ * poll of every viewport takes its positions from a cold cache, and this used
+ * to fall back to 0: the WGS84 ellipsoid, which under a French city is tens to
+ * hundreds of metres below the street. MEASURED in the app over Tours
+ * (47.3906, 0.6929, camera 900 m at −35°, 2026-09-15) with the mesh drained:
+ * every glyph in view was drawn a MEDIAN 98.4 m below the floor its own cell
+ * would report seconds later, worst 147.3 m, and the fleet only lifted onto the
+ * surface ~20 s in, when the second poll re-read the warmed cells.
+ *
+ * The glyphs draw with `disableDepthTestDistance: Infinity` so a bus is never
+ * swallowed by the kerb it stands on, so a buried one is painted anyway and its
+ * screen position becomes a function of the CAMERA POSE: 131 px from the street
+ * at the 90th percentile, sliding across rooftops and tree canopies as the view
+ * turns. That is the reported symptom, and it is the same one
+ * `sharedMobilityFrance.js` and `fireAnchors.js` already answer this way.
+ *
+ * @param {number} lat @param {number} lon
+ * @returns {?number} Ellipsoidal floor in metres, or null.
+ */
+function vehicleFloorM(lat, lon) {
+  const floor = cachedGroundFloor(lat, lon);
+  if (Number.isFinite(floor)) return floor;
+  const provisional = provisionalFloor(lat, lon);
+  if (Number.isFinite(provisional)) return provisional;
+  // THE NEIGHBOUR BORROW, and on this layer it is not an edge case: a bus at
+  // 8 m/s leaves its ~111 m cell every fourteen seconds, so on a fleet that is
+  // re-read every fifteen it is the ordinary state to have just arrived
+  // somewhere nothing has been asked about. Without this, a moving glyph would
+  // wink out each time it crossed a cell edge and come back when the warm
+  // landed. `neighborFloorM` needs two resolved neighbours and leans to the
+  // LOWEST of them — the direction `groundFloor.js` bought with a field test:
+  // too low is inert, too high invents a position and a parked contact holds
+  // it.
+  const borrowed = neighborFloorM(coarseFloorCoord(lat, lon));
+  return Number.isFinite(borrowed) ? borrowed : null;
+}
+
+/**
+ * World position for a vehicle, on the best floor now known under it.
+ *
+ * The `?? 0` is reached only when NOTHING can answer — no DEM cell, no
+ * rendered-surface probe — and a glyph that reaches it is hidden rather than
+ * drawn (see `record.floorKnown`), so the ellipsoid is never a place a bus is
+ * shown standing on.
+ */
 function vehiclePosition(vehicle) {
-  const floor = cachedGroundFloor(vehicle.lat, vehicle.lon);
-  const height = (Number.isFinite(floor) ? floor : 0) + GLYPH_LIFT_M;
+  const height = (vehicleFloorM(vehicle.lat, vehicle.lon) ?? 0) + GLYPH_LIFT_M;
   return Cesium.Cartesian3.fromDegrees(vehicle.lon, vehicle.lat, height);
+}
+
+/** True when some surface can say where the ground under this vehicle is. */
+function vehicleFloorKnown(vehicle) {
+  return vehicleFloorM(vehicle?.lat, vehicle?.lon) !== null;
+}
+
+/** True while any vehicle in the fleet stands on no measured floor at all. */
+function hasColdFloor() {
+  for (const record of _records.values()) {
+    if (!vehicleFloorKnown(record.vehicle)) return true;
+  }
+  return false;
+}
+
+/** Scratch for {@link reseatCartesian} — one per module, never per glyph. */
+const _reseatCarto = new Cesium.Cartographic();
+
+/**
+ * Rewrite one drawn Cartesian's HEIGHT onto the floor now known under it.
+ *
+ * Takes the coordinate off the position itself rather than off the vehicle's
+ * fix, because what needs to sit on the street is what is DRAWN: a glyph
+ * mid-glide, or one the projection has carried a few hundred metres along its
+ * run, is nowhere near the fix it came from.
+ *
+ * Mutates in place, so the tween endpoints a later frame interpolates between
+ * are corrected too — re-seating only `renderPosition` would be undone by the
+ * very next `Cartesian3.lerp`.
+ *
+ * @param {Cesium.Cartesian3} cartesian
+ * @returns {boolean} True when it moved.
+ */
+function reseatCartesian(cartesian) {
+  if (!cartesian) return false;
+  const carto = Cesium.Cartographic.fromCartesian(cartesian, Cesium.Ellipsoid.WGS84, _reseatCarto);
+  if (!carto) return false;
+  const floor = vehicleFloorM(
+    Cesium.Math.toDegrees(carto.latitude),
+    Cesium.Math.toDegrees(carto.longitude),
+  );
+  if (floor === null) return false;
+  const height = floor + GLYPH_LIFT_M;
+  // 5 cm: below this the move is not a pixel anywhere, and rewriting the
+  // primitive would only cost the collection a dirty flag.
+  if (Math.abs(height - carto.height) <= 0.05) return false;
+  Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, height, undefined, cartesian);
+  return true;
+}
+
+/**
+ * Re-place every rendered glyph on the best floor now known under it.
+ *
+ * A position is baked into a billboard once, so a floor that lands after the
+ * reconcile changes nothing until something walks the fleet. A glyph that is
+ * MOVING would be re-placed by its own glide — but a bus parked at a terminus,
+ * or one whose feed has gone quiet, never re-reads anything, and those are
+ * exactly the ones a viewer stares at. (The same lesson the traffic layer's
+ * `reseatDotPositions` records: re-seating the geometry is not enough, what
+ * does not move has to be re-seated too.)
+ *
+ * @returns {number} How many glyphs actually moved.
+ */
+function reseatFleet() {
+  let moved = 0;
+  let revealed = 0;
+  for (const record of _records.values()) {
+    const known = vehicleFloorKnown(record.vehicle);
+    if (known !== record.floorKnown) {
+      record.floorKnown = known;
+      revealed += 1;
+    }
+    let touched = false;
+    if (reseatCartesian(record.renderPosition)) touched = true;
+    if (reseatCartesian(record.from)) touched = true;
+    if (reseatCartesian(record.to)) touched = true;
+    if (reseatCartesian(record.target)) touched = true;
+    if (!touched) continue;
+    record.billboard.position = record.renderPosition;
+    if (record.pointer) record.pointer.position = record.renderPosition;
+    moved += 1;
+  }
+  // A glyph that has just earned a floor has to be let back on screen, and the
+  // per-frame pass only recomputes visibility when the CAMERA moved. Same
+  // invalidation a brand-new record uses, so the horizon occluder — not this
+  // function — still gets the last word on what is visible.
+  if (revealed) _lastCameraPoseSignature = '';
+  return moved + revealed;
+}
+
+/**
+ * Buy rendered-surface readings for the fleet, with the fleet's own glyphs
+ * hidden.
+ *
+ * `scene.sampleHeight` picks against everything drawn, and these glyphs are
+ * pickable billboards standing on the very cells being probed. An unhidden
+ * pass therefore reads a BUS and records its current height as the ground —
+ * which, while the fleet is still buried, latches the burial as a measurement
+ * and lends it to every neighbouring cell. (The traffic layer met the same
+ * trap from the harness side: an unexcluded probe reported a perfect 0.0 m
+ * gap.) Hiding two collections around a synchronous call is cheaper than
+ * building an exclusion list of 4 000 billboards per probe, and no frame can
+ * be presented in between.
+ *
+ * @param {Array<{lat: number, lon: number}>} points
+ * @returns {{probes: number, pending: number}}
+ */
+function sampleFleetFloors(points) {
+  const scene = _viewer?.scene;
+  if (!scene) return { probes: 0, pending: 0 };
+  // The DRAIN GATE, and it is not optional here. `sampleProvisionalFloors` is
+  // deliberately soft-gated — for a fire detection a mid-stream read still
+  // beats the ellipsoid by two orders of magnitude. For a bus it does not:
+  // MEASURED over Tours on 2026-09-15, probing while the tileset streamed put
+  // the whole fleet at 338…382 m ellipsoidal over ground that is really
+  // 93…155 m, which is the same defect mirrored — 240 m in the air instead of
+  // 100 m underground, and painted just as unconditionally. The plausibility
+  // band cannot catch it: 340 m is a perfectly ordinary height in France.
+  // So this layer takes the traffic layer's stricter trade instead: a refusal
+  // is a refusal, and a glyph with no reading is not drawn at all.
+  const armed = !photorealSurface(scene) || surfaceSamplingArmed(scene);
+  if (!armed) return { probes: 0, pending: points?.length || 0 };
+  const glyphsShown = _billboards?.show;
+  const pointersShown = _pointers?.show;
+  try {
+    if (_billboards) _billboards.show = false;
+    if (_pointers) _pointers.show = false;
+    return sampleProvisionalFloors(scene, points, {
+      fillKm: FLOOR_FILL_KM,
+      maxProbes: FLOOR_SAMPLE_BUDGET,
+    });
+  } finally {
+    if (_billboards) _billboards.show = glyphsShown;
+    if (_pointers) _pointers.show = pointersShown;
+  }
+}
+
+/**
+ * One deferred floor pass: sample again, re-place, and decide whether to come
+ * back. Never fetches — the DEM warm runs on its own underneath.
+ */
+function refreshFloors() {
+  if (!_enabled || !_viewer || !_records.size) return;
+  const points = [];
+  for (const record of _records.values()) points.push(record.vehicle);
+  const { pending } = sampleFleetFloors(points);
+  _floorPending = pending;
+  if (reseatFleet()) governorRequestRender('transit-fr-reseat');
+  if (pending || hasColdFloor()) scheduleFloorRetry();
+}
+
+/**
+ * Come back for the vehicles the surface could not place yet.
+ *
+ * A probe misses when the tiles under a bus have not streamed — the ordinary
+ * state for the second or two after arriving somewhere — and the DEM warm is
+ * fire-and-forget, so nothing would ask again between two fifteen-second polls.
+ * Bounded on purpose: five doubling wakeups (~37 s in total, see
+ * `provisionalFloor.js`), refilled whenever the situation is new.
+ */
+function scheduleFloorRetry() {
+  if (_floorRetryTimer != null) return;
+  const delay = provisionalFloorRetryDelayMs(_floorRetries);
+  if (delay == null) return; // budget spent — wait for the camera or the poll
+  _floorRetries += 1;
+  _floorRetryTimer = setTimeout(() => {
+    _floorRetryTimer = null;
+    refreshFloors();
+  }, delay);
+}
+
+/** Drops a pending pass and refills its budget (a new situation gets a new one). */
+function resetFloorRetries() {
+  if (_floorRetryTimer != null) {
+    clearTimeout(_floorRetryTimer);
+    _floorRetryTimer = null;
+  }
+  _floorRetries = 0;
 }
 
 /**
@@ -550,8 +818,18 @@ export function transitScheduleReadout(vehicle) {
   }
   const text = formatDelay(vehicle.delaySec);
   if (text) {
+    const parts = [text];
     const qualifier = DELAY_SOURCE_QUALIFIER[vehicle.delayFrom];
-    return qualifier ? `🕘 ${text} · ${qualifier}` : `🕘 ${text}`;
+    if (qualifier) parts.push(qualifier);
+    // This number is not the one the operator published: its feed computes its
+    // deviations in the wrong time frame and the proxy took the whole hours
+    // back out. Saying so is the price of correcting it at all — see
+    // `transitDelayOffset.js`.
+    const offsetHours = Number(vehicle.delayOffsetSec) / 3600;
+    if (Number.isFinite(offsetHours) && offsetHours !== 0) {
+      parts.push(`feed clock corrected ${Math.abs(offsetHours)} h`);
+    }
+    return `🕘 ${parts.join(' · ')}`;
   }
   if (vehicle.tripMatch) return '🕘 run tracked · no delay published';
   return null;
@@ -985,20 +1263,34 @@ function projectFleet(nowMs) {
       record.projected = false;
       continue;
     }
+    // The floor under the PROJECTED point, falling back to the one under the
+    // FIX — read live, never latched. The cells are coarse enough that a few
+    // hundred metres along a street is usually the same one, and the fix's own
+    // cell is warm for any glyph that is being drawn at all.
+    //
+    // A run with nowhere to stand is NOT projected. Both this and the old
+    // latched `record.floorM` used to end in `?? 0`, and that survived the
+    // reconcile fix: measured over Tours on a cold dev server, glyphs seated
+    // correctly at 96 m were then chased down to 4 m by a projection target
+    // computed on a miss, and stayed VISIBLE because the fix they were hidden
+    // or shown by was warm. A vehicle drawn where it reported is a smaller
+    // error than a vehicle drawn on the ellipsoid.
+    const floor = vehicleFloorM(out.lat, out.lon)
+      ?? vehicleFloorM(record.vehicle?.lat, record.vehicle?.lon);
+    if (floor === null) {
+      record.projected = false;
+      continue;
+    }
+
     projected += 1;
     record.projected = true;
     record.advanceM = out.advanceM;
     // Stops gone by, counted here rather than in the card builder: the card is
     // rebuilt every frame and this walks the run's whole stop list.
     record.advanceStops = stopsPassed(record.run, out.alongM);
-    // The floor under the PROJECTED point, falling back to the one under the
-    // fix. The cells are coarse enough that a few hundred metres along a
-    // street is usually the same cell; a miss would otherwise drop the glyph
-    // to the ellipsoid, which in Rouen is 40 m underground.
-    const floor = cachedGroundFloor(out.lat, out.lon);
-    if (Number.isFinite(floor)) record.floorM = floor;
-    const height = (Number.isFinite(record.floorM) ? record.floorM : 0) + GLYPH_LIFT_M;
-    Cesium.Cartesian3.fromDegrees(out.lon, out.lat, height, undefined, record.target);
+    Cesium.Cartesian3.fromDegrees(
+      out.lon, out.lat, floor + GLYPH_LIFT_M, undefined, record.target,
+    );
   }
   return projected;
 }
@@ -1063,7 +1355,9 @@ function onPreRender() {
     }
 
     if (occluder) {
-      billboard.show = occluder.isPointVisible(record.renderPosition);
+      // Two reasons a glyph is not drawn, and they compose: nothing has said
+      // where its ground is, or it is round the back of the planet.
+      billboard.show = record.floorKnown && occluder.isPointVisible(record.renderPosition);
       if (pointer) pointer.show = billboard.show;
     }
     if (!billboard.show) continue;
@@ -1148,6 +1442,14 @@ function reconcile(vehicles, feedsById, nowMs) {
   let rendered = 0;
   _renderTruncated = false;
 
+  // Ground the cold cells against the surface actually being DRAWN before a
+  // single position below is taken. Synchronous, no network of ours, ≤40
+  // probes and nothing at all above 25 km of camera (`provisionalFloor.js`).
+  // This is what stops a fresh viewport from drawing its whole fleet ~100 m
+  // under the street for the fifteen seconds until the DEM warm lands.
+  const { pending } = sampleFleetFloors(vehicles);
+  _floorPending = pending;
+
   for (const vehicle of vehicles) {
     if (rendered >= MAX_RENDERED_VEHICLES) {
       // The proxy answered with more than this client will draw. Say so rather
@@ -1162,6 +1464,9 @@ function reconcile(vehicles, feedsById, nowMs) {
     rendered += 1;
 
     const position = vehiclePosition(vehicle);
+    // Whether that position stands on anything measured. A glyph that does not
+    // is kept OFF the globe until it does — see {@link vehiclePosition}.
+    const floorKnown = vehicleFloorKnown(vehicle);
     const feed = feedsById.get(vehicle.feed) || {};
     let record = _records.get(id);
 
@@ -1169,6 +1474,7 @@ function reconcile(vehicles, feedsById, nowMs) {
       const image = transitVehicleGlyphUri(vehicle);
       const billboard = _billboards.add({
         id,
+        show: floorKnown,
         position,
         image,
         width: GLYPH_PX,
@@ -1186,6 +1492,8 @@ function reconcile(vehicles, feedsById, nowMs) {
         vehicle,
         feed,
         image,
+        /** Whether some surface has said where the ground under it is. */
+        floorKnown,
         from: position.clone(),
         to: position.clone(),
         renderPosition: position.clone(),
@@ -1202,7 +1510,6 @@ function reconcile(vehicles, feedsById, nowMs) {
         projected: false,
         advanceM: 0,
         advanceStops: 0,
-        floorM: null,
       };
       _records.set(id, record);
       syncHeadingPointer(record, POINTER_PX);
@@ -1220,6 +1527,12 @@ function reconcile(vehicles, feedsById, nowMs) {
     const nextFixMs = Number.isFinite(vehicle.timestampMs) ? vehicle.timestampMs : null;
     record.vehicle = vehicle;
     record.feed = feed;
+    if (record.floorKnown !== floorKnown) {
+      record.floorKnown = floorKnown;
+      // Visibility is decided per frame and only on a camera move; invalidate
+      // the pose so the next frame reconsiders this glyph.
+      _lastCameraPoseSignature = '';
+    }
     // The icon tracks the CLASS, which can resolve on a later poll — compared
     // against the URI actually set, so a class change is never silently missed.
     const image = transitVehicleGlyphUri(vehicle);
@@ -1276,7 +1589,12 @@ function reconcile(vehicles, feedsById, nowMs) {
   _count = _records.size;
   // Warm the shared ground-floor cells for what is on screen; the next poll
   // reads them synchronously and the fleet settles onto the real surface.
-  warmGroundFloor(vehicles.slice(0, 600));
+  warmGroundFloor(vehicles.slice(0, MAX_FLOOR_WARM));
+  // Two reasons to come back, and neither of them produces a frame on its own:
+  // the tiles under a cell may not have streamed yet, and the DEM warm above
+  // is fire-and-forget — nothing re-places what it resolves.
+  resetFloorRetries();
+  if (pending || hasColdFloor()) scheduleFloorRetry();
   governorRequestRender('transit-fr-reconcile');
 }
 
@@ -1287,6 +1605,9 @@ function clearFleet() {
   if (_pointers) _pointers.removeAll();
   _records.clear();
   _count = 0;
+  // The pending floor pass was booked for glyphs that no longer exist.
+  resetFloorRetries();
+  _floorPending = 0;
   // The tally belongs to the records that are gone; leaving it would put a
   // "12 projected" on a panel row describing an empty viewport.
   _projectedCount = 0;
@@ -1519,6 +1840,13 @@ function buildLoadingLabel() {
   }
   const networks = _feedSummaries.filter((feed) => feed.inView > 0).length;
   const parts = [`${networks} network${networks === 1 ? '' : 's'}`];
+  // A vehicle whose ground nothing can speak for yet is withheld rather than
+  // drawn on the ellipsoid, so the row has to account for the difference
+  // between what it counted and what is on the globe. Ordinarily this is
+  // true for about a second after arriving somewhere new; if it persists, it
+  // is saying that neither the DEM nor the drawn surface will answer here,
+  // which is a fact about the session and not a fleet that failed to load.
+  if (hasColdFloor()) parts.push('placing on the ground');
   // The one number worth a row of the control panel: how much of what is on
   // screen is running behind. Only ever shown when a network in view actually
   // published deviations — a silent "0 late" over a fleet that never said
@@ -1593,6 +1921,8 @@ const transitFranceLayer = {
     _projectedCount = 0;
     _lastProjectionTick = 0;
     _lastFrameMs = 0;
+    resetFloorRetries();
+    _floorPending = 0;
 
     _overlayHost.setVisible(TRANSIT_FR_OVERLAY_SOURCE_ID, false);
     // The drawn run belongs to the selected vehicle and shares its lifecycle.
@@ -1642,6 +1972,7 @@ const transitFranceLayer = {
     clearTimeout(_cameraDebounceTimer);
     _cameraDebounceTimer = null;
     cancelRetry();
+    resetFloorRetries();
     _inFlight?.abort?.();
     _inFlight = null;
 
@@ -1732,6 +2063,11 @@ const transitFranceLayer = {
     if (_retryTimer) {
       stats.retryInSec = Math.max(1, Math.round((_retryDueAt - Date.now()) / 1000));
     }
+    // Seating state, for `scripts/qa-transit-floor.mjs`. A harness that waits a
+    // FIXED time after the mesh drains measures machine load, not this layer;
+    // these two are the layer's own signal that it has finished placing itself.
+    stats.floorPending = _floorPending;
+    stats.floorCold = hasColdFloor();
     return stats;
   },
 
