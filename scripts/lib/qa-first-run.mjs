@@ -48,6 +48,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FIRST_RUN_SESSION_KEY, FIRST_RUN_STORAGE_KEY } from '../../src/firstRunExperience.js';
+import { PHOTOREAL_DISABLE_GLOBAL } from '../../src/photorealTileset.js';
 
 const SCRIPTS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -73,6 +74,42 @@ export async function suppressFirstRun(page, { durable = false } = {}) {
       try { window.localStorage.setItem(keys.durable, 'suppressed'); } catch { /* no storage */ }
     }
   }, { session: FIRST_RUN_SESSION_KEY, durable: durable ? FIRST_RUN_STORAGE_KEY : null });
+  return page;
+}
+
+/**
+ * Close the Google Photorealistic 3D Tiles door for this page and every
+ * navigation it makes.
+ *
+ * WHY A HARNESS SHOULD: ion bills that tileset per "root tile", and one root
+ * tile is one successful endpoint request — so **one harness run is one billed
+ * session**, whether or not the run ever looks at the ground. `scripts/` holds
+ * 113 harnesses that boot the app, run from a dozen workspaces against ONE
+ * shared token, and on 2026-09-15 they carried the free tier to 1 001 of its
+ * 1 000 monthly sessions by the fifteenth. The same invoice showed 15 Bing
+ * imagery sessions, because Bing only loads when something clicks its chip —
+ * that gap is the whole diagnosis.
+ *
+ * WHY A WINDOW FLAG AND NOT `?photoreal=0`: the app reads both, but a harness
+ * cannot rely on the URL. Harnesses assert on, rebuild and compose URLs mid-run
+ * (share links, `?map=`, deep links), so a query param falls off exactly when a
+ * run navigates — and that would not merely lose the saving, it would flip the
+ * surface regime underneath a height assertion halfway through a run. This is
+ * the same reasoning that keeps the first-run card off `?welcome=0`.
+ *
+ * WHAT IT CHANGES ON SCREEN: the app boots onto OSM instead of the photoreal
+ * globe, and the `photoreal` chip reads "off for this session". A harness that
+ * measures anything against Google's 3D surface — ground clamping, seating,
+ * mesh floors, the map-source tray itself — must therefore opt back in with
+ * `newQaPage(browser, { photoreal: true })` and pay the root tile on purpose.
+ *
+ * @param {import('puppeteer').Page} page
+ * @returns {Promise<import('puppeteer').Page>} the same page, for chaining.
+ */
+export async function disablePhotoreal(page) {
+  await page.evaluateOnNewDocument((flag) => {
+    window[flag] = true;
+  }, PHOTOREAL_DISABLE_GLOBAL);
   return page;
 }
 
@@ -117,12 +154,22 @@ export const QA_WAIT_POLLING_MS = 50;
  * alternative was editing the 79 files that call `waitForFunction`, and the
  * 80th would have been written with the broken default anyway.
  *
+ * It also closes the photoreal door by default — see {@link disablePhotoreal}
+ * for the billing reason, and pass `{ photoreal: true }` from any harness that
+ * measures something against Google's 3D surface.
+ *
  * @param {import('puppeteer').Browser} browser
- * @param {{durable?: boolean}} [options] passed to {@link suppressFirstRun}.
+ * @param {{durable?: boolean, photoreal?: boolean}} [options] `durable` is
+ *   passed to {@link suppressFirstRun}; `photoreal: true` opts this run back
+ *   into the 3D globe, at the cost of one billed ion root tile.
  * @returns {Promise<import('puppeteer').Page>}
  */
 export async function newQaPage(browser, options = {}) {
   const page = await browser.newPage();
+  // Opt-OUT, not opt-in: the 85 harnesses that never mention the 3D globe are
+  // exactly the ones that would never have thought to ask, and they are where
+  // the quota went.
+  if (options.photoreal !== true) await disablePhotoreal(page);
   // Guarded, not assumed: the suppression tests hand this function a page
   // double with only the two methods they assert on, and a wrapper that
   // insisted on a real puppeteer surface would fail them for the wrong reason.

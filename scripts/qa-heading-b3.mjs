@@ -466,7 +466,7 @@ async function main() {
   const consoleErrors = [];
   const failedResponses = [];
   try {
-    const page = await newQaPage(browser);
+    const page = await newQaPage(browser, { photoreal: true });
     await page.setViewport({ width: 1280, height: 800 });
     page.on('console', (msg) => {
       if (msg.type() === 'error') {

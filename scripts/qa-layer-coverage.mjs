@@ -251,7 +251,7 @@ async function main() {
   });
 
   try {
-    const page = await newQaPage(browser);
+    const page = await newQaPage(browser, { photoreal: true });
     // A refused flight and a thrown briefing both report themselves through
     // `console.warn` and nowhere else. Without this the harness sees only the
     // consequence — a camera that did not move — and has to guess the cause.

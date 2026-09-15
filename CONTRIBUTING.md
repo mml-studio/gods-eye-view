@@ -87,6 +87,31 @@ exemption, because the card is its subject.
 `http://localhost:4173/?welcome=0` — same suppression, nothing to click away.
 (`?welcome=1` forces the card back when you do want to see it.)
 
+### The 3D globe costs money per boot
+
+Google Photorealistic 3D Tiles reach this app through Cesium ion, which bills
+them by **root tile** — and one root tile is one successful request to the ion
+endpoint. So **every boot of the app spends one**, whether or not the run ever
+looks at the ground. The free tier allows 1 000 a month, `scripts/` holds 113
+harnesses that boot the app, and they share one token across every workspace:
+in September 2026 they passed 1 000 by the fifteenth.
+
+`newQaPage()` therefore boots **without** the 3D globe. The app lands on OSM and
+the `photoreal` chip reads *"off for this session"* — which is a switch, not a
+failure, and the tray says so.
+
+```js
+const page = await newQaPage(browser);                        // OSM, costs nothing
+const page = await newQaPage(browser, { photoreal: true });   // 3D globe, one root tile
+```
+
+Opt back in whenever the harness measures something **against Google's 3D
+surface** — ground clamping, seating, mesh floors, altitude, or the map-source
+tray itself. If a run suddenly disagrees about a height, this is the first
+thing to check.
+
+By hand, the same switch is `http://localhost:4173/?photoreal=0`.
+
 ## Coding style
 
 - ES modules, **2-space indent, single quotes, semicolons.**

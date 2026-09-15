@@ -239,7 +239,7 @@ const browser = await puppeteer.launch({
 // so the `goto` below is on us. It installs the first-run suppression before
 // any page script runs, which is why every harness here opens its page through
 // it rather than through puppeteer's own constructor.
-const page = await newQaPage(browser);
+const page = await newQaPage(browser, { photoreal: true });
 await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
 page.on('pageerror', (error) => console.log(`  [page error] ${error.message}`));
 

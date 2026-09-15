@@ -62,7 +62,7 @@ const browser = await puppeteer.launch({
 });
 
 try {
-  const page = await newQaPage(browser);
+  const page = await newQaPage(browser, { photoreal: true });
   await page.setViewport({ width: 1440, height: 860 });
 
   const consoleErrors = [];

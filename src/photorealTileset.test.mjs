@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 
 import {
   GOOGLE_PHOTOREAL_ION_ASSET_ID,
+  PHOTOREAL_DISABLE_GLOBAL,
   describePhotorealFailure,
   loadPhotorealTileset,
+  photorealDisabled,
   photorealTilesetOptions,
 } from './photorealTileset.js';
 
@@ -124,4 +126,40 @@ test('the attempt callback reports the door before it is tried', async () => {
     onAttempt: (source) => seen.push(source),
   });
   assert.deepEqual(seen, ['google-key', 'ion']);
+});
+
+// ---------------------------------------------------------------------------
+// The off switch. ion bills one "root tile" per successful endpoint request,
+// so every boot of the app costs a session whether or not anyone looks at the
+// 3D globe — which is how 113 harnesses took a 1 000/month tier to 1 001 by
+// the fifteenth of the month.
+// ---------------------------------------------------------------------------
+
+test('photoreal is on by default, and off for ?photoreal=0', () => {
+  assert.equal(photorealDisabled({ location: { search: '' } }), false);
+  assert.equal(photorealDisabled({ location: { search: '?photoreal=0' } }), true);
+  assert.equal(photorealDisabled({ location: { search: '?lat=48&photoreal=0&lon=2' } }), true);
+});
+
+test('only an explicit 0 disables it', () => {
+  // A typo must not silently cost the app its default basemap, so every value
+  // that is not `0` — including the ones that LOOK falsy — leaves it on.
+  for (const search of ['?photoreal=1', '?photoreal=', '?photoreal', '?photoreal=false', '?photoreal=00']) {
+    assert.equal(photorealDisabled({ location: { search } }), false, search);
+  }
+});
+
+test('the window flag disables it without touching the URL', () => {
+  // The door the QA fleet uses: a query param falls off the moment a harness
+  // composes its own URL mid-run, and that would flip the surface regime under
+  // a height assertion rather than merely losing the saving.
+  assert.equal(photorealDisabled({ [PHOTOREAL_DISABLE_GLOBAL]: true, location: { search: '' } }), true);
+  // Truthy is not enough: only the boolean, so a stray string on `window`
+  // cannot switch the globe off.
+  assert.equal(photorealDisabled({ [PHOTOREAL_DISABLE_GLOBAL]: 'yes', location: { search: '' } }), false);
+});
+
+test('a scope with no location does not throw', () => {
+  assert.equal(photorealDisabled({}), false);
+  assert.equal(photorealDisabled(null), false);
 });

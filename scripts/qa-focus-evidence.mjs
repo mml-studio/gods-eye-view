@@ -661,7 +661,7 @@ async function main() {
       `--window-size=${VIEWPORT.width},${VIEWPORT.height}`,
     ],
   });
-  const page = await newQaPage(browser);
+  const page = await newQaPage(browser, { photoreal: true });
   await page.setViewport(VIEWPORT);
   const consoleMessages = [];
   page.on('console', (message) => {

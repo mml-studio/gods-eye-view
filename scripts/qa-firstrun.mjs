@@ -22,6 +22,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
+import { disablePhotoreal } from './lib/qa-first-run.mjs';
 
 const args = process.argv.slice(2);
 const getOpt = (flag, fallback) => {
@@ -479,6 +480,10 @@ async function main() {
   const consoleErrors = [];
   try {
     const page = await browser.newPage();
+    // This harness deliberately skips `newQaPage()` — it is the one that PROVES
+    // the launcher card appears — but it has no use for the 3D globe, and an
+    // ion root tile is billed per boot. See `disablePhotoreal`.
+    await disablePhotoreal(page);
     await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
     page.on('console', (message) => {
       if (message.type() !== 'error') return;

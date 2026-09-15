@@ -40,6 +40,49 @@
 export const GOOGLE_PHOTOREAL_ION_ASSET_ID = 2275207;
 
 /**
+ * Window flag that closes the photoreal door for a whole browser session.
+ *
+ * WHY A SWITCH EXISTS AT ALL. ion meters this tileset by "root tiles", and its
+ * definition of one is a single successful `GET /v1/assets/<id>/endpoint` —
+ * so **one boot of this app is one billed session**, whatever the reader then
+ * does or doesn't look at. The free Community tier allows 1 000 a month;
+ * `scripts/` holds 113 harnesses that each boot the app, across a dozen
+ * workspaces sharing one token, and on 2026-09-15 they took the account to
+ * 1 001 of 1 000 by the fifteenth of the month. The contrast that proved it
+ * was in the same invoice: Bing imagery, which only loads when somebody CLICKS
+ * its chip, stood at 15.
+ *
+ * TWO DOORS, DELIBERATELY. `?photoreal=0` is the one a human types; the window
+ * flag is the one `scripts/lib/qa-first-run.mjs` installs with
+ * `evaluateOnNewDocument`. The harness fleet cannot use the URL, for the same
+ * reason the first-run card is not suppressed with `?welcome=0`: harnesses
+ * assert on, rebuild and compose URLs mid-run (share links, `?map=`, deep
+ * links), so a query param silently falls off exactly when a run navigates —
+ * and here that would not just lose the saving, it would flip the surface
+ * regime under a height assertion halfway through.
+ *
+ * NOT A FALLBACK, AND NOT A FAILURE. A build that boots with this set has no
+ * tileset, so the photoreal chip is unavailable — but it did not fail, it was
+ * never asked. `MapStackController` is told separately (`photorealDisabled`)
+ * so the chip says that rather than blaming the credentials.
+ */
+export const PHOTOREAL_DISABLE_GLOBAL = '__GEV_DISABLE_PHOTOREAL__';
+
+/**
+ * Whether this session must not spend an ion root tile on the 3D globe.
+ *
+ * @param {object} [scope] - Global to read; injected so this is testable.
+ * @returns {boolean}
+ */
+export function photorealDisabled(scope = globalThis) {
+  if (scope?.[PHOTOREAL_DISABLE_GLOBAL] === true) return true;
+  // Only the explicit `0`. `?photoreal=1` and a missing param both mean "load
+  // it" — an unrecognised value must not quietly disable the app's own default
+  // basemap, which is the one thing a typo here could cost.
+  return new URLSearchParams(scope?.location?.search || '').get('photoreal') === '0';
+}
+
+/**
  * Tileset options, mirroring the ones CesiumJS applies in
  * `createGooglePhotorealistic3DTileset()`. Returned fresh each call because
  * Cesium writes its own defaults into the object it is handed.

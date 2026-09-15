@@ -21,7 +21,7 @@ import { registerDataCredits } from './data/dataCredits.js';
 import { modelAssetUrl } from './data/modelAssets.js';
 import { installLazyVoice } from './voice/lazyVoice.js';
 import { MapStackController } from './mapStackController.js';
-import { describePhotorealFailure, loadPhotorealTileset } from './photorealTileset.js';
+import { describePhotorealFailure, loadPhotorealTileset, photorealDisabled } from './photorealTileset.js';
 import { ignTerrainFlagEnabled } from './data/ignBilTerrain.js';
 import { initLogoGaze } from './logoGaze.js';
 import { installStarfield } from './starfield.js';
@@ -251,7 +251,14 @@ async function init() {
     // anyone driving the app from the console needs to be able to tell them
     // apart without reading the network panel.
     let tilesetSource = null;
-    if (!googleApiKey && !cesiumToken) {
+    // `?photoreal=0`, or the flag the QA fleet installs. Read BEFORE the
+    // credential check because the whole point is to not make the call: ion
+    // bills one "root tile" per successful endpoint request, so a boot that
+    // never reaches `loadPhotorealTileset()` is a boot that costs nothing.
+    const photorealOff = photorealDisabled();
+    if (photorealOff) {
+      loaderStatus.textContent = 'Google 3D Tiles off for this session — starting on the globe...';
+    } else if (!googleApiKey && !cesiumToken) {
       // Deliberately NOT "call it and catch": with neither credential there is
       // nothing to try, and an attempt would spend a doomed round-trip and then
       // report a network error the loader would print as if something had gone
@@ -317,13 +324,24 @@ async function init() {
     // The keyless build lands on OSM only when it has no ion token either:
     // with one, `tileset` is the ion-served photoreal globe and this lands on
     // it, key or no key.
-    const startupStack = tileset
-      ? 'photoreal'
-      : (keylessMode ? 'osm' : 'google-roadmap');
+    //
+    // `?photoreal=0` lands on OSM even on a keyed build, and that is the rule
+    // rather than an exception to it: the flag means "this boot must not spend
+    // a metered basemap", and Google's 2D cartography is metered too (100 000
+    // tiles a month, ~90 to a view) and needs the server session broker. OSM
+    // is the only stack that costs the account nothing, which also makes it
+    // the deterministic one for a harness.
+    const startupStack = photorealOff
+      ? 'osm'
+      : (tileset ? 'photoreal' : (keylessMode ? 'osm' : 'google-roadmap'));
 
     const mapStackController = new MapStackController(viewer, {
       googleTileset: tileset,
       cesiumToken,
+      // Not a failure and not a missing credential — nobody asked for the
+      // tileset. Without this the chip would blame the key or the network for
+      // a door the session closed on purpose.
+      photorealDisabled: photorealOff,
       // Lets the controller say WHY photoreal is unavailable: no key at all
       // (keyless build) reads differently from a keyed build whose tiles
       // failed, and both arrive here as `googleTileset: null`.

@@ -64,7 +64,7 @@ const browser = await puppeteer.launch({
   args: ['--use-gl=angle', `--use-angle=${ANGLE}`, '--enable-webgl',
     '--ignore-gpu-blocklist', '--no-sandbox'],
 });
-const page = await newQaPage(browser);
+const page = await newQaPage(browser, { photoreal: true });
 await page.setViewport({ width: 1400, height: 900 });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 
