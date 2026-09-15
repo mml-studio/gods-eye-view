@@ -1,8 +1,8 @@
 /** HIERARCHIE & LISIBILITE — clean pass: no request interception, PNG decoded in Node. */
 import fs from 'node:fs';
-import sharp from '/Users/memel/conductor/workspaces/gods-eye-view/manila-v1/node_modules/sharp/lib/index.js';
+import sharp from 'sharp';
 import puppeteer from 'puppeteer';
-import { newQaPage } from '/Users/memel/conductor/workspaces/gods-eye-view/manila-v1/scripts/lib/qa-first-run.mjs';
+import { newQaPage } from '../../../scripts/lib/qa-first-run.mjs';
 
 const URL = 'http://localhost:4290/?welcome=0';
 const OUT = '/tmp/ui-hierarchie';

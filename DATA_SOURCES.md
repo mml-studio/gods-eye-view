@@ -1,6 +1,6 @@
 # Data Sources & Attribution
 
-God's Eye View's **code** is [MIT](LICENSE)-licensed. **The MIT grant covers the source code only — it does NOT extend to third-party data or visual assets.** Every third-party source keeps its own license and terms. This file documents the live and bundled data sources; bundled 3D-model provenance is recorded in [`public/models/README.md`](public/models/README.md).
+Déclassifié's **code** is [MIT](LICENSE)-licensed. **The MIT grant covers the source code only — it does NOT extend to third-party data or visual assets.** Every third-party source keeps its own license and terms. This file documents the live and bundled data sources; bundled 3D-model provenance is recorded in [`public/models/README.md`](public/models/README.md).
 
 How to read this:
 
@@ -546,7 +546,7 @@ API, not only as a file. So:
 
 ## Bundled snapshots (committed under `src/data/local_data/`)
 
-Static datasets shipped in the repo for an out-of-the-box experience. **None are MIT** — each keeps its own license (see the carve-out in [LICENSE](LICENSE)). Each folder also has its own provenance README.
+Static datasets shipped in the repo for an out-of-the-box experience. **None are MIT** — each keeps its own license (see the carve-out in [NOTICE.md](NOTICE.md)). Each folder also has its own provenance README.
 
 | Dataset | Folder | License | Commercial use? | Attribution |
 |---------|--------|---------|-----------------|-------------|
@@ -568,7 +568,7 @@ Static datasets shipped in the repo for an out-of-the-box experience. **None are
 
 The submarine-cable GeoJSON is **CC BY-NC-SA 3.0** (Attribution-**NonCommercial**-**ShareAlike**). It is bundled so the cables layer works out of the box, but it is **not covered by this project's MIT license**. CC BY-NC-SA permits redistribution with attribution and share-alike — which is exactly how it ships here — but the **NonCommercial** clause means:
 
-> If you use God's Eye View commercially, delete `src/data/local_data/telegeography_submarine_cables/` (or obtain a commercial license from TeleGeography). It is one self-contained folder; the rest of the app runs without it.
+> If you use Déclassifié commercially, delete `src/data/local_data/telegeography_submarine_cables/` (or obtain a commercial license from TeleGeography). It is one self-contained folder; the rest of the app runs without it.
 
 The richer structured dataset is licensed separately/commercially by TeleGeography.
 
@@ -864,7 +864,7 @@ Nothing plugged is bundled: the rows are fetched at runtime, directly from the p
 
 ## Commercial use — what would have to change
 
-**This section is a checklist, not a warning.** God's Eye View is MIT-licensed
+**This section is a checklist, not a warning.** Déclassifié is MIT-licensed
 and distributed free, and every source below is used within its terms *for that
 use*. Several of them stop being usable the moment someone charges for a product
 built on this repo. They are listed here so that decision is made with the facts

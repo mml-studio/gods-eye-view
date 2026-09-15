@@ -1,5 +1,5 @@
 [Unit]
-Description=God's Eye View — deploy the branch staging should be showing
+Description=Déclassifié — deploy the branch staging should be showing
 After=docker.service
 Requires=docker.service
 

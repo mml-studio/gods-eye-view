@@ -3108,7 +3108,7 @@ function clearDots() {
 // ─── Data Layer Interface ──────────────────────────────────
 
 /**
- * Traffic data layer — conforms to the God's Eye View data-layer interface.
+ * Traffic data layer — conforms to the Déclassifié data-layer interface.
  *
  * Lifecycle: init -> enable -> (animate loop + camera-driven loads) -> disable -> destroy.
  * The layer is self-updating: no external tick is needed (`updateInterval: 0`).

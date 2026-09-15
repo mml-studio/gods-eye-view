@@ -59,7 +59,7 @@ async function fetchOnce(url, target, label) {
   await fsp.mkdir(path.dirname(target), { recursive: true });
   process.stderr.write(`  [get]   ${label} …\n`);
   const res = await fetch(url, {
-    headers: { 'user-agent': 'gods-eye-view-grid-audit/1.0 (OSM coverage check)' },
+    headers: { 'user-agent': 'declassifie-grid-audit/1.0 (OSM coverage check)' },
     signal: AbortSignal.timeout(600_000),
   });
   if (!res.ok) throw new Error(`${label}: HTTP ${res.status}`);

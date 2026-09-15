@@ -1,6 +1,6 @@
 // Triage des défauts « hors lentille » de la revue UI. Lecture seule.
 import puppeteer from 'puppeteer';
-import { newQaPage } from '/Users/memel/conductor/workspaces/gods-eye-view/manila-v1/scripts/lib/qa-first-run.mjs';
+import { newQaPage } from '../../../scripts/lib/qa-first-run.mjs';
 
 const URL = 'http://localhost:4290/';
 const out = {};

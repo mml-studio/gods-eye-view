@@ -1,5 +1,5 @@
 [Unit]
-Description=Probe the God's Eye View public URL every five minutes
+Description=Probe the Déclassifié public URL every five minutes
 
 [Timer]
 OnBootSec=3min

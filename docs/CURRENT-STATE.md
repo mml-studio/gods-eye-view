@@ -1,4 +1,4 @@
-# God's Eye View Current State
+# Déclassifié Current State
 
 Updated: September 8, 2026
 
@@ -1853,9 +1853,13 @@ Historical planning documents may not match runtime behavior.
 
 ## Current Baseline
 
-- Repository metadata and public URLs use the `bilawalsidhu/gods-eye-view`
-  project identity. Runtime behavior is defined by this document and the current
-  source tree rather than historical branch notes.
+- The project is **Déclassifié** (`mml-studio/declassifie`), a French fork of
+  `bilawalsidhu/gods-eye-view`. Repository metadata, public URLs and the
+  User-Agent strings sent to data operators carry that identity. The
+  `godsEyeView.*` localStorage namespace does NOT: renaming it would wipe every
+  existing reader's panel positions, CCTV calibration and saved dossiers, so it
+  is deliberately frozen under the old spelling. Runtime behavior is defined by
+  this document and the current source tree rather than historical branch notes.
 
 ## Runtime Stack
 

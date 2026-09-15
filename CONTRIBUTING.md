@@ -1,14 +1,14 @@
-# Contributing to God's Eye View
+# Contributing to Déclassifié
 
-Thanks for being here. God's Eye View is an open foundation for live spatial intelligence in the browser, and it gets better when more people run it, break it, and extend it.
+Thanks for being here. Déclassifié is an open foundation for live spatial intelligence in the browser, and it gets better when more people run it, break it, and extend it.
 
 ## Getting set up
 
 Use Node.js 24.14.x or 26.x (also enforced by `package.json`).
 
 ```bash
-git clone https://github.com/bilawalsidhu/gods-eye-view.git
-cd gods-eye-view
+git clone https://github.com/mml-studio/declassifie.git
+cd declassifie
 nvm install 24.14.0
 nvm use 24.14.0
 npm install

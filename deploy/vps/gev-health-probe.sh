@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# God's Eye View — availability probe.
+# Déclassifié — availability probe.
 #
 # Answers one question the deploy timer cannot: is the page a reader would
 # open actually answering? `gev-deploy.sh` knows the container was built and

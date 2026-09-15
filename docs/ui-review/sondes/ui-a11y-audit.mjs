@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import puppeteer from 'puppeteer';
-import { newQaPage } from '/Users/memel/conductor/workspaces/gods-eye-view/manila-v1/scripts/lib/qa-first-run.mjs';
+import { newQaPage } from '../../../scripts/lib/qa-first-run.mjs';
 
 const URL = 'http://localhost:4290/?welcome=0';
 const VIEWPORT = { width: 1440, height: 900 };

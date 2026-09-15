@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# God's Eye View — paste an OpenAI API key, prove it, then install it.
+# Déclassifié — paste an OpenAI API key, prove it, then install it.
 #
 # WHY THIS EXISTS. Two reasons, and the second is the one that bites.
 #

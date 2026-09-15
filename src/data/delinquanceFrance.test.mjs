@@ -954,8 +954,8 @@ test('a commune card under the total prints the floor, the gap, and the authorsh
   assert.match(quoted, /pour 1 000 habitants/);
   // Whose total it is. The SSMSI publishes eighteen indicators and no total —
   // the one claim on this card that no compression may drop.
-  assert.match(copy, /Total CALCULÉ par God’s Eye View, non publié par le SSMSI/);
-  assert.match(quoted, /Total CALCULÉ par God’s Eye View, pas publié par le SSMSI/);
+  assert.match(copy, /Total CALCULÉ par Déclassifié, non publié par le SSMSI/);
+  assert.match(quoted, /Total CALCULÉ par Déclassifié, pas publié par le SSMSI/);
   assert.match(copy, /Usage stup\. \(AFD\) non recompté/);
   assert.match(quoted, /Usage de stupéfiants \(AFD\) » n’est pas recompté/);
   assert.equal(/entre 1 et 5/i.test(copy), false);
@@ -1015,7 +1015,7 @@ test('a département card under the total says the total is exact THERE and not 
   assert.match(copy, /Total exact ici : pas de secret statistique au département/);
   assert.match(quoted, /Total exact à cette échelle/);
   assert.match(quoted, /C’est en zoomant sur les communes qu’il apparaît/);
-  for (const text of [copy, quoted]) assert.match(text, /Total CALCULÉ par God’s Eye View/);
+  for (const text of [copy, quoted]) assert.match(text, /Total CALCULÉ par Déclassifié/);
   // The commune census that travels with it is the TOTAL's census, not an
   // indicator's: it counts communes with no publishable total at all.
   assert.equal(row.communes.suppressed, BASE.censusByDepartement['13'].tous[CELL_SUPPRESSED]);

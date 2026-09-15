@@ -1,5 +1,5 @@
 import puppeteer from 'puppeteer';
-import { newQaPage } from '/Users/memel/conductor/workspaces/gods-eye-view/manila-v1/scripts/lib/qa-first-run.mjs';
+import { newQaPage } from '../../../scripts/lib/qa-first-run.mjs';
 setTimeout(()=>{console.log('{"TIMEOUT":true}');process.exit(1);},120000);
 const b=await puppeteer.launch({headless:'new',protocolTimeout:110000,args:['--no-sandbox','--use-gl=swiftshader','--enable-unsafe-swiftshader']});
 const page=await newQaPage(b);

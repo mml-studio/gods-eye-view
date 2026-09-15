@@ -906,7 +906,7 @@ export function saveDossier(dossier, storage = globalThis.localStorage) {
 /** The dossier as the file a reader downloads. */
 export function exportDossierJson(dossier) {
   return JSON.stringify({
-    format: 'gods-eye-view/comparables',
+    format: 'declassifie/comparables',
     version: COMPARABLES_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     subject: dossier?.subject ?? null,
