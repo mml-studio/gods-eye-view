@@ -9,7 +9,8 @@
 // front of a reader.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -37,6 +38,51 @@ test('the subset carries nothing the sources stopped using', () => {
   const referenced = [...extractGlyphs(validNames, REPO_ROOT).keys()];
   const stale = manifest.glyphs.filter((glyph) => !referenced.includes(glyph));
   assert.deepEqual(stale, [], `stale glyphs in the subset: ${stale.join(', ')}`);
+});
+
+/** A throwaway tree shaped like the repo, so the extractor can be run on a fixture. */
+function treeWith(source) {
+  const root = mkdtempSync(path.join(tmpdir(), 'glyph-scan-'));
+  mkdirSync(path.join(root, 'src'));
+  writeFileSync(path.join(root, 'src', 'fixture.js'), source);
+  return root;
+}
+
+test('a ternary formatted over several lines still yields both glyphs', () => {
+  // The scan used to stop at the first newline, so this exact shape — the one
+  // a formatter produces the moment the line runs long — hid both glyphs. No
+  // source was written this way when the hole was found, which is why nothing
+  // caught it: the failure is silent, and the tree simply had not tripped it
+  // yet. This fixture keeps the widened scan honest.
+  const root = treeWith([
+    'const icon = document.createElement("span");',
+    'icon.textContent = expanded',
+    "  ? 'right_panel_close'",
+    "  : 'right_panel_open';",
+  ].join('\n'));
+  try {
+    assert.deepEqual(
+      [...extractGlyphs(validNames, root).keys()],
+      ['right_panel_close', 'right_panel_open'],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('what a ternary TESTS is not what it draws', () => {
+  // `status === 'error'` is a comparison. `error` is also a real icon name, so
+  // it entered the subset and was carried for nothing until the condition was
+  // dropped. Optional chaining is not a ternary and must not split the
+  // statement, or the condition comes back in.
+  const root = treeWith([
+    "el.textContent = payload?.status === 'error' ? 'radar' : 'flight';",
+  ].join('\n'));
+  try {
+    assert.deepEqual([...extractGlyphs(validNames, root).keys()], ['flight', 'radar']);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('the subset font is committed, and is a subset', () => {

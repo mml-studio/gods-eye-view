@@ -31,6 +31,17 @@
  * few hundred bytes per unnecessary glyph, and the validation against the
  * official codepoint list keeps ordinary English strings out of the list —
  * only words Google actually named an icon after can get in.
+ *
+ * B reads the whole statement, up to the `;`, ACROSS LINES: the same ternary
+ * formatted over three lines used to be read down to the first newline only,
+ * so the two glyphs it chooses between were never seen. Nothing in the tree
+ * was formatted that way when this was widened, which is the point — the hole
+ * was empty, not absent.
+ *
+ * What sits to the LEFT of a `?` is the condition, not the text being shown,
+ * so it is dropped: `status === 'error' ? …` enrolled `error`, a real icon
+ * name that no source ever draws, and the subset carried it for nothing.
+ * Optional chaining is neutralised first — `payload?.status` is not a ternary.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -60,7 +71,7 @@ export function sourceFiles(root = REPO_ROOT) {
 }
 
 const SPAN_TEXT = /class="[^"]*material-symbols-outlined[^"]*"[^>]*>\s*([a-z0-9_]+)\s*</g;
-const TEXT_ASSIGNMENT = /(?:textContent|innerText)\s*=\s*([^;\n]+)/g;
+const TEXT_ASSIGNMENT = /(?:textContent|innerText)\s*=\s*([^;]{0,400})/gs;
 const STRING_LITERAL = /['"`]([a-z0-9_]{2,})['"`]/g;
 
 /**
@@ -83,7 +94,13 @@ export function extractGlyphs(validNames, root = REPO_ROOT) {
     const text = readFileSync(file, 'utf8');
     for (const m of text.matchAll(SPAN_TEXT)) add(m[1], file);
     for (const m of text.matchAll(TEXT_ASSIGNMENT)) {
-      for (const s of m[1].matchAll(STRING_LITERAL)) add(s[1], file);
+      // Optional chaining first: `payload?.status` is not a ternary, and
+      // splitting on its `?` would keep the whole expression as if it were one.
+      const statement = m[1].replaceAll('?.', '.');
+      const assigned = statement.includes('?')
+        ? statement.slice(statement.indexOf('?') + 1)
+        : statement;
+      for (const s of assigned.matchAll(STRING_LITERAL)) add(s[1], file);
     }
   }
   return new Map([...found.entries()].sort(([a], [b]) => a.localeCompare(b)));
