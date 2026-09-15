@@ -44,7 +44,12 @@ test('every vendored path is intact and inside the box it declares', () => {
     assert.ok(paths.length > 0, `${set}/${name} has no paths`);
     const box = MAP_ICON_BOX[name] || MAP_ICON_DEFAULT_BOX;
     for (const d of paths) {
-      assert.match(d, /^M/, `${set}/${name} should start with a moveto`);
+      // `m` as well as `M`: a relative moveto is still a moveto, and Maki
+      // publishes `fuel` that way. Pinning the uppercase form would have been
+      // pinning one artist's habit rather than the invariant this line is for,
+      // which is that the string opens on a pen-up move and is therefore a
+      // whole path rather than a fragment of one.
+      assert.match(d, /^[Mm]/, `${set}/${name} should start with a moveto`);
       const coords = [...d.matchAll(/-?\d*\.?\d+/g)].map((m) => Math.abs(Number(m[0])));
       assert.ok(coords.length > 20, `${set}/${name} looks truncated`);
       assert.ok(Math.max(...coords) <= box, `${set}/${name} escapes its ${box}-unit box`);

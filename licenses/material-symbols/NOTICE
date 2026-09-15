@@ -11,7 +11,7 @@ Source: https://github.com/google/material-design-icons
         symbols/web/<name>/materialsymbolsrounded/<name>_fill1_24px.svg
         (Material Symbols Rounded, filled, weight 400)
 
-WHAT WAS TAKEN. Twenty-eight glyphs, across six modules.
+WHAT WAS TAKEN. Thirty glyphs, across seven modules.
 
 `src/data/transitVehicleIcons.js` draws live French transit vehicles by class
 (retrieved 2026-08-31): airport_shuttle, directions_boat, directions_bus,
@@ -67,12 +67,13 @@ its header refusing to conflate a barrage with the usine it feeds, and this
 project draws those structures as their own layer. A drop says water, which is
 the whole of what the filière's name claims.
 
-`src/data/medecinFamilyIcons.js` draws three of the six families of the French
-conventioned-doctors layer (retrieved 2026-09-14 at commit 40a7a292a79d):
-escalator_warning for « Femme et enfant », psychology for « Santé mentale »,
-surgical for « Chirurgie ». The other three families are CC0 cartographic
-glyphs and carry no claim under this notice — Maki's `doctor` and `hospital`,
-and Temaki's `radiation`.
+`src/data/medecinFamilyIcons.js` draws four of the seven families of the French
+conventioned-doctors layer (retrieved 2026-09-14 and, for the fourth,
+2026-09-15, both at commit 40a7a292a79d): escalator_warning for « Femme et
+enfant », psychology for « Santé mentale », surgical for « Chirurgie », and
+medical_services for « Spécialité médicale ». The other three families are CC0
+cartographic glyphs and carry no claim under this notice — Maki's `doctor` and
+`hospital`, and Temaki's `radiation`.
 
 Each of the three is there because neither CC0 set publishes the subject at all,
 and each beat a Material alternative on a contact sheet rendered over a real
@@ -98,6 +99,33 @@ Lyon capture at 30 / 24 / 19 / 15 / 12 px — the band that layer draws in:
                       One diagonal mass, which is the one thing that still
                       resolves at 12 px.
 
+  medical_services  — a doctor's bag with a cross on it, and it is here for a
+                      reason none of the three above share: not because no CC0
+                      set draws the subject, but because the glyph that DID
+                      draw it had to be given away. « Spécialité médicale » wore
+                      Maki's plain cross until 2026-09-15, when 2 211 FINESS
+                      hospitals joined the same layer. A bare cross is the
+                      international sign for a hospital; two crosses on one
+                      panel row separate by hue alone, which is the failure the
+                      plates exist to end. A bag says PRACTITIONER where a cross
+                      says institution, and it holds its own counter-forms to
+                      15 px.
+
+`src/data/amenityFamilyIcons.js` draws one of the thirteen families of the
+French everyday-equipment layer (retrieved 2026-09-15 at commit 40a7a292a79d):
+storefront for « Commerce de bouche ». The other twelve are Maki's and carry no
+claim under this notice.
+
+  storefront        — an awning over a banded shutter. 30 104 of that family's
+                      51 554 rows are épiceries and the rest are butchers,
+                      fishmongers and frozen-food shops, so the mark has to
+                      cover a counter trade without naming one of them. Chosen
+                      over Maki's `shop` (a carrier bag), which goes solid at
+                      12 px where the awning's bands are still bands — and over
+                      any second basket, because the trolley next door already
+                      means « faire ses courses » and the difference between the
+                      two families IS the difference between those two objects.
+
 `src/data/roadEventGlyphs.js` draws declared road events by category (retrieved
 2026-09-10): car_crash, traffic_jam, block, warning, rainy, construction, merge,
 alt_route, question_mark. Nine glyphs, added when the category left the hue
@@ -110,8 +138,9 @@ Only the single `d` path string of each glyph is vendored, verbatim and
 unmodified, into those modules — the surrounding SVG document is not, and the
 coordinates are NOT rescaled. `transitVehicleIcons.js` and `roadEventGlyphs.js`
 carry Material's own `0 -960 960 960` viewBox precisely so that this paragraph
-stays true; the four plate packs — `plantFiliereIcons.js`, `irveMarkIcons.js`,
-`sharedMobilityIcons.js` and `medecinFamilyIcons.js` — place that same 960-unit
+stays true; the five plate packs — `plantFiliereIcons.js`, `irveMarkIcons.js`,
+`sharedMobilityIcons.js`, `medecinFamilyIcons.js` and `amenityFamilyIcons.js` —
+place that same 960-unit
 box inside their own 96-unit plate with an SVG `transform`, which moves no
 coordinate and is what the paragraph above already claims for the punch.
 

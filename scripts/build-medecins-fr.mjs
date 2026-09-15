@@ -133,6 +133,17 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import zlib from 'node:zlib';
 import { listXlsxSheets, readXlsxSheet } from './lib/xlsx-sheet.mjs';
+// The FINESS reader, borrowed rather than rewritten. `amenitiesFeed.js` already
+// owns every trap in that file — the four projections its `sourcecoordet`
+// column can name, the 4 646 rows geocoded to a commune centroid, the 35-column
+// arity guard — and a second implementation here would be a second place for
+// those to rot. See `readHospitals` below for what this script does with it.
+import {
+  FINESS_CSV_URL,
+  csvHeaderIndex,
+  readFinessRow,
+  splitSemicolonRow,
+} from '../src/data/amenitiesFeed.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_OUT = path.join(ROOT, 'src', 'data', 'local_data', 'medecins_fr', 'medecins.json');
@@ -748,6 +759,162 @@ function parseCsv(text, delimiter) {
   return rows;
 }
 
+/**
+ * The hospitals, read out of FINESS.
+ *
+ * ── WHY THEY ARE HERE AND NOT NEXT DOOR ────────────────────────────────────
+ *
+ * They were a family of « Équipements du quotidien » until 2026-09-15, drawn
+ * from this same register by the amenity pack. A hospital is not an everyday
+ * errand: a reader looking for one is asking a health question, and every other
+ * answer to that question — 64 232 practice addresses, the DREES accessibility
+ * indicator, 186 118 defibrillators — is already on this row.
+ *
+ * ── WHAT THE MOVE COST, MEASURED BEFORE IT WAS MADE ────────────────────────
+ *
+ * 1 113 of the 2 211 hospitals have a liberal practice address within 50 m, and
+ * the MEDIAN of those distances is **0 m** — the same coordinate, because a
+ * consultant's registered address is the hospital they consult in. Drawn
+ * naively that is 1 113 plates stacked exactly on 1 113 other plates.
+ *
+ * So the pack publishes `praticiensSurPlace` per hospital: the practice rows
+ * within {@link HOSPITAL_MERGE_M} are counted here, at build time, and
+ * `medecinsFrance.js` draws ONE mark for the pair — the hospital's, because the
+ * institution is the larger fact — with the practitioner count on its card. The
+ * join is done once, offline, against the addresses this script has already
+ * geocoded, rather than 2 211 times per viewport in the browser.
+ *
+ * ── WHAT IS NOT TAKEN ───────────────────────────────────────────────────────
+ *
+ * Pharmacies. FINESS publishes 19 216 of them in the same file and they stay in
+ * « Équipements du quotidien », where they belong: you go to a pharmacy the way
+ * you go to a bakery. The cross-check that settled it ran on 2026-09-15 — only
+ * 27.1 % of pharmacies have a practice within 50 m against 50.3 % of hospitals,
+ * which is the difference between a shop on a high street and a department of a
+ * medical campus.
+ */
+const HOSPITAL_MERGE_M = 50;
+
+/** Metres between two WGS-84 points, flat-earth and fine at this scale. */
+function metresBetween(aLat, aLon, bLat, bLon) {
+  const rad = (d) => (d * Math.PI) / 180;
+  const dLat = rad(bLat - aLat);
+  const dLon = rad(bLon - aLon) * Math.cos(rad((aLat + bLat) / 2));
+  return Math.hypot(dLat, dLon) * 6371000;
+}
+
+/**
+ * Read FINESS and keep the hospitals, each folded onto its own coordinate.
+ *
+ * FINESS gives every establishment a stable national identifier, so unlike the
+ * BPE half of the amenity pack there is no tuple-of-position key to invent. The
+ * fold below is by POSITION all the same, because a hospital campus publishes
+ * one FINESS row per legal entity and a reader does not want four plates on one
+ * roof — the CHU that is also a CHR that is also a maternity is one building.
+ *
+ * @param {Array<object>} placed Geocoded practice sites, for the co-location count.
+ * @param {object} args Parsed CLI args (`refresh`).
+ * @returns {Promise<{rows: Array<object>, stats: object}>}
+ */
+async function readHospitals(placed, args) {
+  const file = await cachedDownload(FINESS_CSV_URL, 'finess_etablissements.csv', args);
+  const text = await fsp.readFile(file, 'utf8');
+  const lines = text.split('\n');
+  const index = csvHeaderIndex(lines[0]);
+
+  const refused = Object.create(null);
+  let read = 0;
+  const byPosition = new Map();
+  for (let i = 1; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (!line) continue;
+    const outcome = readFinessRow(splitSemicolonRow(line), index);
+    if (outcome.kind !== 'site' || outcome.family !== 'hopital') {
+      // Counted, never guessed at: a row FINESS places on its commune's single
+      // point is refused upstream and that refusal is this pack's to report.
+      if (outcome.kind === 'refused' && outcome.family === 'hopital') {
+        refused[outcome.reason] = (refused[outcome.reason] || 0) + 1;
+      }
+      continue;
+    }
+    read += 1;
+    const site = outcome.site;
+    const key = `${site.lat.toFixed(5)},${site.lon.toFixed(5)}`;
+    let entry = byPosition.get(key);
+    if (!entry) {
+      entry = {
+        lat: site.lat,
+        lon: site.lon,
+        precision: site.precision,
+        names: [],
+        kinds: [],
+        finess: [],
+        commune: site.commune,
+        updated: site.updated,
+      };
+      byPosition.set(key, entry);
+    }
+    // The BEST precision wins the fold: two rows on one roof, one placed at the
+    // street number and one only in the street, is a roof this register knows
+    // to the number. Taking the first would make the answer depend on the order
+    // the file happens to list them in.
+    if (site.precision === 'numero') entry.precision = 'numero';
+    if (site.name && !entry.names.includes(site.name)) entry.names.push(site.name);
+    if (site.kind && !entry.kinds.includes(site.kind)) entry.kinds.push(site.kind);
+    if (site.finess) entry.finess.push(site.finess);
+    if (site.updated > entry.updated) entry.updated = site.updated;
+  }
+
+  // The co-location count, against the addresses this build has already placed.
+  // A 0.005° grid (~500 m) so the nine cells around a hospital are the whole
+  // search — 2 211 × 9 bucket reads instead of 2 211 × 64 232 distances.
+  const CELL = 0.005;
+  const grid = new Map();
+  for (const site of placed) {
+    const key = `${Math.round(site.position.lat / CELL)}:${Math.round(site.position.lon / CELL)}`;
+    let bucket = grid.get(key);
+    if (!bucket) { bucket = []; grid.set(key, bucket); }
+    bucket.push(site);
+  }
+  let colocated = 0;
+  const rows = [...byPosition.values()];
+  for (const row of rows) {
+    const ci = Math.round(row.lat / CELL);
+    const cj = Math.round(row.lon / CELL);
+    let practitioners = 0;
+    let addresses = 0;
+    for (let di = -1; di <= 1; di += 1) {
+      for (let dj = -1; dj <= 1; dj += 1) {
+        for (const site of grid.get(`${ci + di}:${cj + dj}`) || []) {
+          if (metresBetween(row.lat, row.lon, site.position.lat, site.position.lon) > HOSPITAL_MERGE_M) continue;
+          addresses += 1;
+          practitioners += site.people.size;
+        }
+      }
+    }
+    row.praticiensSurPlace = practitioners;
+    row.adressesSurPlace = addresses;
+    if (addresses > 0) colocated += 1;
+  }
+  // Sorted by position so the shipped file is byte-stable across builds: the
+  // Map above iterates in insertion order, which is FINESS's own row order, and
+  // that changes between editions for reasons that have nothing to do with the
+  // data.
+  rows.sort((a, b) => a.lat - b.lat || a.lon - b.lon);
+
+  return {
+    rows,
+    stats: {
+      lignes: read,
+      etablissements: rows.length,
+      refuses: refused,
+      // The number that justified `praticiensSurPlace` existing at all.
+      avecPraticiensSurPlace: colocated,
+      rayonFusionM: HOSPITAL_MERGE_M,
+    },
+  };
+}
+
 async function readRegister(file, delimiter = ';') {
   // The register ships a UTF-8 BOM; left in place it becomes part of the first
   // header name and `ps_activite_nom` is never found again.
@@ -1262,6 +1429,17 @@ async function main() {
 
   const rollup = rollDoctorsToDepartements(placed);
 
+  process.stderr.write('\nFINESS — établissements hospitaliers\n');
+  const hospitals = await readHospitals(placed, args);
+  process.stderr.write(
+    `  ${hospitals.stats.lignes} lignes retenues → ${hospitals.stats.etablissements} établissements distincts`
+    + `, dont ${hospitals.stats.avecPraticiensSurPlace} avec au moins une adresse de praticien `
+    + `à moins de ${hospitals.stats.rayonFusionM} m\n`,
+  );
+  for (const [reason, count] of Object.entries(hospitals.stats.refuses)) {
+    process.stderr.write(`  refusés — ${reason} : ${count}\n`);
+  }
+
   /** label → the distinct names practising it, for the CNAM cross-check. */
   const namesBySpecialty = new Map();
   for (const site of placed) {
@@ -1320,12 +1498,18 @@ async function main() {
       'CNAM — Annuaire santé Ameli, liste des professionnels de santé (Licence Ouverte 2.0)',
       'CNAM — Annuaire santé Ameli, liste des centres de santé (Licence Ouverte 2.0)',
       'BAN — Base Adresse Nationale, api-adresse.data.gouv.fr (Licence Ouverte 2.0)',
+      'FINESS — Fichier national des établissements sanitaires et sociaux, ARS/ANS (Licence Ouverte 2.0)',
       ...(apl ? [`DREES — Accessibilité potentielle localisée (APL) ${apl.millesime} aux médecins généralistes (Licence Ouverte 2.0)`] : []),
     ],
     // The register has no identifier, so this is a count of tuples and the name
     // of the field says which tuple. See the header.
     stats: {
       lignesMedecin: doctorRows,
+      // FINESS, and deliberately its own block rather than a column beside the
+      // CNAM numbers above: the two registers count different objects, and a
+      // reader adding `etablissements` to `adresses` would be adding buildings
+      // to consulting rooms.
+      hopitaux: hospitals.stats,
       lignesCentreDeSante: cdsRows,
       adresses: sites.length,
       adressesLocalisees: placed.length,
@@ -1396,6 +1580,32 @@ async function main() {
      * weighted by the STANDARDISED population as the DREES prescribes.
      * `null` when built with `--no-apl`.
      */
+    /**
+     * One tuple per hospital position:
+     *   [lat, lon, precisionIndex, noms, categories, finess, commune,
+     *    praticiensSurPlace, adressesSurPlace, majGeoloc]
+     *
+     * `noms` and `categories` are `+`-joined because a campus folds several
+     * FINESS rows onto one coordinate and a reader wants the CHU and its
+     * maternity on one card, not two plates on one roof.
+     *
+     * `praticiensSurPlace` is the count of liberal practitioners this build
+     * found within `stats.hopitaux.rayonFusionM` of the position. It is the
+     * reason the hospital plate may stand ALONE where a practice plate would
+     * otherwise be drawn underneath it — see `readHospitals`.
+     */
+    etablissements: hospitals.rows.map((row) => [
+      row.lat,
+      row.lon,
+      PRECISION.indexOf(row.precision),
+      row.names.join('+'),
+      row.kinds.join('+'),
+      row.finess.join('+'),
+      row.commune,
+      row.praticiensSurPlace,
+      row.adressesSurPlace,
+      row.updated || '',
+    ]),
     apl,
     /**
      * Per department: `[medecins, adresses, entrees]`.
@@ -1481,7 +1691,26 @@ async function main() {
   );
 }
 
-main().catch((error) => {
-  process.stderr.write(`\n✖ ${error.message}\n`);
-  process.exitCode = 1;
-});
+/**
+ * The hospital pass, exported so it can be run WITHOUT re-geocoding.
+ *
+ * `scripts/backfill-medecins-hopitaux.mjs` calls this against the addresses the
+ * shipped pack already holds: the register of practices has not changed, and
+ * re-asking BAN for 64 232 addresses to add a column that depends on none of
+ * them would be five minutes of somebody else's public API for nothing. Sharing
+ * the function rather than reimplementing it is what makes the backfilled pack
+ * byte-identical to the one the next full `--refresh` will write.
+ *
+ * @see readHospitals
+ */
+export { readHospitals as _readHospitalsForBackfill, HOSPITAL_MERGE_M };
+
+// Guarded so the export above is importable: a module that runs its own `main`
+// on import cannot be borrowed, and `import.meta.main` is exactly the question
+// "was I the entry point".
+if (import.meta.main) {
+  main().catch((error) => {
+    process.stderr.write(`\n✖ ${error.message}\n`);
+    process.exitCode = 1;
+  });
+}

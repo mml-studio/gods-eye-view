@@ -58,6 +58,15 @@ const option = (name, fallback) => {
 const APP_URL = option('--url', process.env.QA_BASE_URL || 'http://localhost:4173');
 const HEADFUL = args.includes('--headful');
 
+/**
+ * Families this layer draws: the six specialty groups plus « Hôpital ».
+ *
+ * Named rather than inlined because three checks below turn on it, and a
+ * seventh family arriving as three separate `6`s is how a harness starts
+ * disagreeing with itself.
+ */
+const FAMILY_COUNT = 7;
+
 const chromeCandidates = [
   process.env.PUPPETEER_EXECUTABLE_PATH,
   (() => { try { return puppeteer.executablePath(); } catch { return null; } })(),
@@ -433,18 +442,21 @@ async function main() {
     check('the marks are rasters, not bare dots',
       state.marks.length > 0 && state.marks.every((mark) => Number.isFinite(mark.image)),
       'a mark drew no image');
-    // Six families in the register, and a view this size holds most of them.
-    // The claim is the ceiling, not the floor: more distinct rasters than
-    // families would mean a per-mark texture, which is an atlas entry each.
+    // SEVEN since 2026-09-15: the six practice families plus « Hôpital », the
+    // 2 211 FINESS establishments that moved here from « Équipements du
+    // quotidien ». The claim is the CEILING, not the floor: more distinct
+    // rasters than families would mean a per-mark texture, which is an atlas
+    // entry each.
     check('and they share one raster per family, never one per mark',
-      drawnImages.size <= 6, `${drawnImages.size} distinct rasters`);
+      drawnImages.size <= FAMILY_COUNT, `${drawnImages.size} distinct rasters`);
     check('the key row carries the same mark as a swatch',
-      state.legendGlyphs.length === 6 && state.legendGlyphs.every((glyph) => (
+      state.legendGlyphs.length === FAMILY_COUNT && state.legendGlyphs.every((glyph) => (
         typeof glyph === 'string' && glyph.startsWith('data:image/svg+xml')
       )),
       state.legendGlyphs.map((glyph) => (glyph ? 'glyph' : 'none')).join(','));
     check('and no two families share a swatch',
-      new Set(state.legendGlyphs).size === 6, `${new Set(state.legendGlyphs).size} distinct`);
+      new Set(state.legendGlyphs).size === FAMILY_COUNT,
+      `${new Set(state.legendGlyphs).size} distinct`);
 
     console.log('\n[vi] an unchanged view costs nothing');
     const sitesBefore = siteRequests;

@@ -1,43 +1,90 @@
 /**
  * @module amenitiesFrance
  *
- * Où est le plus proche — the seven things a daily life in France actually
- * touches, drawn from the two registers that publish them and refusing the five
- * things another layer on this globe already draws better.
+ * Où est le plus proche — the things a daily life in France actually touches,
+ * drawn from the two registers that publish them and refusing the six things
+ * another layer on this globe already draws better.
  *
  * `amenitiesFeed.js` holds the reading of INSEE's Base permanente des
  * équipements and the FINESS register and every trap in both;
  * `amenitiesDepartements.js` holds the national fold; `amenitiesMesh.js` holds
- * the thinning. This file is the rendering.
+ * the thinning; `amenityFamilyIcons.js` holds the marks. This file is the
+ * rendering.
  *
  * ── What is on the map ─────────────────────────────────────────────────────
- * **445 380 dots**, folded from 521 672 register rows, in fourteen families:
+ * **443 169 marks**, folded from 521 672 register rows, in thirteen families:
  * 186 288 restaurants · 44 800 commerces de bouche · 44 598 boulangeries ·
  * 30 213 médecins généralistes · 22 838 salles de sport · 21 086 banques ·
  * 20 020 lieux culturels · 19 354 commerces alimentaires · 19 216 pharmacies ·
  * 16 832 points de contact La Poste · 10 346 stations-service · 3 953
- * gendarmeries et commissariats · 3 625 bassins de natation · 2 211 hôpitaux.
+ * gendarmeries et commissariats · 3 625 bassins de natation.
  *
- * Seven of those fourteen arrived on 2026-09-08 to cover Cityscan's own POI
- * taxonomy — see `amenitiesFeed.js` for the codes, the cost and the four types
- * that register simply cannot serve.
+ * Seven of them arrived on 2026-09-08 to cover Cityscan's own POI taxonomy —
+ * see `amenitiesFeed.js` for the codes, the cost and the four types that
+ * register simply cannot serve.
  *
- * ── The refusal is a feature of this layer, not an omission ─────────────────
+ * ── 2026-09-15: the marks became PLATES, and the reason is a measurement ────
+ * Until that day this layer drew fourteen families as bare dots of 5 to 12 px,
+ * separated by hue alone. Two numbers ended it:
+ *
+ *   - **four pairs of the palette sat under ΔE 20** and seven under ΔE 21, the
+ *     worst being `pharmacie`/`banque` at **15,9**;
+ *   - **all fourteen hues sat between L\* 32,8 and L\* 63,9** — a band with no
+ *     contrast against a forest, a field or a slate roof, which is most of
+ *     France from 30 km up.
+ *
+ * The load therefore moved off the hue: a punched silhouette on a tinted plate
+ * names the family, the plate makes it findable, and the palette was rebuilt to
+ * maximise its WORST pair rather than its average one — **min ΔE 39,3**, every
+ * L\* at or above 55,7. Both the marks and the numbers are argued where they
+ * live, in `amenityFamilyIcons.js` and in {@link AMENITY_COLORS}.
+ *
+ * ── And the key became the CONTROL ──────────────────────────────────────────
+ * Thirteen families over one street is a legible map only if the reader wanted
+ * thirteen. Usually they want one. So every row of the key is that family's own
+ * switch ({@link AMENITIES_WITHDRAWN_FAMILIES} is the only thing it cannot
+ * reach), and the selection goes into the QUESTION rather than being applied to
+ * the answer — `familles=` on the proxy, and a filtered budget in the thinner.
+ *
+ * That ordering is not tidiness. Measured over greater Paris (48.62-48.95 N,
+ * 2.16-2.45 E) on 2026-09-15: the box holds 46 422 marks, `/sites` answers
+ * 12 000 of them rarest-family-first, and **zero** of the 4 076 boulangeries
+ * survive that cap. Asked for as `familles=boulangerie`, all 4 076 arrive. A
+ * filter applied after the cap would have answered "there are no bakeries in
+ * Paris".
+ *
+ * ── Two refusals, and they are features of this layer rather than omissions ─
  * The brief's row opens with *écoles*, and this layer draws none. `schools-fr`
  * already draws 68 158 open, geolocated schools from the ministry's own
  * Annuaire keyed on the UAI, and `sup-fr` 6 914 higher-education sites. BPE's
  * enseignement domain is 79 743 rows over the same buildings from a source that
  * **carries no UAI column at all**, so the two could not even be reconciled.
  * Redrawing them would double every school in France from the worse of the two
- * registers. The legend therefore carries a row for écoles with a count and no
- * swatch, because a reader who does not find schools here should be told where
- * they are rather than left to conclude the data is missing.
+ * registers.
+ *
+ * The second is *hôpitaux*, and it is newer: the 2 211 FINESS establishments
+ * moved to « Santé & secours » on 2026-09-15, where they sit beside the 64 232
+ * practice addresses and the DREES accessibility indicator. A hospital is not
+ * an everyday errand. The pack still carries them — `AMENITY_FAMILIES` is the
+ * mesh's on-the-wire encoding and cannot lose a member — so the withdrawal is
+ * in the drawing, not in the data; see {@link AMENITIES_WITHDRAWN_FAMILIES}.
+ *
+ * The key carries a row for each refusal, with a count and no swatch, because a
+ * reader who does not find schools or hospitals here should be told where they
+ * are rather than left to conclude the data is missing.
  *
  * Four more refusals, each with the measurement behind it, are argued in
  * `amenitiesFeed.js`: BPE's 28 819 charge points (`irve-fr` has 39 579, live),
  * its 20 334 pharmacies (FINESS has a stable key and a monthly refresh), its
  * 695 urgences (547 of them within 200 m of a hospital already drawn), and its
  * 99 280 transport rows (96 253 of which are taxi operators' addresses).
+ *
+ * And one CONDITIONAL withdrawal, `medecin`, measured on 2026-09-15: 74.6 % of
+ * the 30 213 BPE dots have a conventioned practice address within 50 m and
+ * 91.5 % within 200 m, at a median distance of 10 m where they match. The two
+ * registers describe one population, so only one of them draws it — and the
+ * 8.5 % the CNAM does not carry is the stated price of that rule rather than an
+ * omission. Switch « Santé & secours » off and the family comes back.
  *
  * ── Three regimes, and what decides between them ───────────────────────────
  *   national — 96 painted départements, shaded by the SHARE of the
@@ -53,37 +100,45 @@
  *              Paris and its inner south-eastern suburbs — holds 53 121 dots,
  *              of which the proxy answers 12 000 and says so.
  *
- * ── What the colour means, and what the size does NOT mean ──────────────────
- * Colour is the FAMILY, and it is a categorical ladder, never a ramp — a
- * pharmacy is not "more" than a post office.
+ * ── What each channel means, and what the size does NOT mean ────────────────
+ * SHAPE is the family, and it is what a reader decodes without the key: a fork
+ * and knife is a restaurant, a trolley is a supermarket. COLOUR is the family
+ * too — the same fact on a second channel, which is what lets a reader find all
+ * of one kind at a glance rather than reading thirteen silhouettes. It is a
+ * categorical ladder, never a ramp: a pharmacy is not "more" than a post
+ * office.
  *
- * Size is where this layer differs from every French point layer beside it, and
+ * SIZE is where this layer differs from every French point layer beside it, and
  * the difference is deliberate. `schools-fr` sizes by roll, `sup-fr` by
  * enrolment, `irve-fr` by charging power. **This point set has no magnitude at
  * all.** A pharmacy is one pharmacy; neither register publishes a capacity, a
- * headcount or a turnover for any of the seven families. So size here is a
+ * headcount or a turnover for any of the thirteen families. So size here is a
  * LEGIBILITY rule and is stated as one: the rarer a family is nationally, the
- * larger its dot, so that 2 211 hospitals are not lost under 186 288
- * restaurants. It is
- * a property of the palette, not a property of the equipment, and no card ever
- * reads a size back as a quantity.
+ * larger its plate, so that 3 625 bassins are not lost under 186 288
+ * restaurants. It is a property of the palette, not a property of the
+ * equipment, and no card ever reads a size back as a quantity.
  *
  * What the card DOES read back is the multiplicity, because that is real:
  * 60 270 GP rows sit on 30 215 coordinates and the biggest single address holds
- * **146 médecins généralistes** (Paris 14e). The dot is the address; the card
+ * **146 médecins généralistes** (Paris 14e). The mark is the address; the card
  * says how many practitioners are at it.
  *
- * ── The second visual channel is honesty about position ─────────────────────
+ * ── The remaining channel is honesty about position ─────────────────────────
  * Both registers publish how well they know where a thing is, and this layer
- * draws that rather than hiding it. A dot whose position is a street number
- * (451 983 of the 521 672 drawn rows) is drawn solid with a warm halo; one the
+ * draws that rather than hiding it. A mark whose position is a street number
+ * (451 983 of the 521 672 drawn rows) is drawn at full opacity; one the
  * register only places in the street (36 763), or grades no better than "voie
  * probable" (4 933), or declines to grade at all (27 993, among them the 3 626
  * bassins de natation whose census publishes no precision anywhere) is drawn
- * softer, and
- * the two weakest bands lose the halo entirely. The halo is also this layer's signature against its neighbours:
- * `schools-fr` outlines in black, `sup-fr` in white, and these outline in sand,
- * so on a stacked address the ring says which register drew the dot.
+ * softer, and the card says so in words.
+ *
+ * It used to be a SAND HALO as well, and that halo went with the dots on
+ * 2026-09-15. Every plate now carries the same black ring, because the ring is
+ * what makes a mark findable on a photograph — and legibility is not something
+ * to spend on a data-quality flag. What the neighbours' rings used to say
+ * (`schools-fr` outlines in black, `sup-fr` in white) the silhouette now says
+ * better: on a stacked address the SHAPE tells a reader which register drew the
+ * mark, and it does so without a key.
  *
  * And where a register admits it drew the position rather than found it — BPE's
  * `QUALITE_GEOLOC = 33`, "position aléatoire dans la commune", and FINESS's
@@ -133,6 +188,7 @@ import {
   selectAmenitiesMesh,
 } from './amenitiesMesh.js';
 import { amenitiesDepartementBinLabels } from './amenitiesDepartements.js';
+import { AMENITY_GLYPH_RASTER_PX, amenityFamilyGlyph } from './amenityFamilyIcons.js';
 import { boxKey, validBox } from './viewportBox.js';
 
 export const AMENITIES_FR_LAYER_ID = 'amenities-fr';
@@ -199,83 +255,138 @@ const GROUND_WARM_LIMIT = 600;
 // --- Presentation -----------------------------------------------------------
 
 /**
- * The family hues.
+ * Fourteen keys, thirteen drawn — and a palette rebuilt on 2026-09-15 against
+ * a measurement rather than a mood.
  *
- * Seven distinct hues rather than seven steps of one, because this is a
- * category and not a quantity. They are chosen against what is already on this
- * globe: `schools-fr` is pastel (mint, sky, rose, apricot), `sup-fr` is deep
- * jewel (violet, amber, teal, crimson), `irve-fr` is a blue→red power ramp and
- * `anfr-fr` is grey-blue with one yellow. These are mid-dark and warm-leaning,
- * and each has an obvious mnemonic — the pharmacy's green cross, La Poste's
- * blue, the water of a pool — so a reader does not have to hold seven arbitrary
- * mappings in their head.
+ * ── WHAT THE OLD ONE WAS, AND WHAT WAS WRONG WITH IT ────────────────────────
+ *
+ * The first palette was chosen "mid-dark and warm-leaning" to sit under the
+ * layers around it. Two numbers say why that could not hold fourteen families
+ * on live imagery:
+ *
+ *   - **Four pairs sat under ΔE 20**, seven under ΔE 21. The worst was
+ *     `pharmacie`/`banque` at **15,9**, then `restaurant`/`commerce` 18,0,
+ *     `boulangerie`/`sport` 18,8, `courses`/`sport` 19,0. At the 5-8 px those
+ *     families were drawn at, that is the same dot in the same colour.
+ *   - **Every hue sat between L\* 32,8 and L\* 63,9.** A mid-dark dot has no
+ *     contrast against a forest, a field or a slate roof — which is most of
+ *     France from 30 km up. The layer had no legibility channel at all.
+ *
+ * ── WHAT REPLACED IT ────────────────────────────────────────────────────────
+ *
+ * The silhouette now names the family (`amenityFamilyIcons.js`), so the hue no
+ * longer has to carry recognition alone — but it still has to separate thirteen
+ * plates in one street, and a plate is 40 units of flat colour where a dot was
+ * 5 px. So the palette was rebuilt to maximise the WORST pair rather than to
+ * please the average one, searching OKLCH with each family's hue anchored to
+ * its mnemonic (±14-18°) and lightness free to move across five steps.
+ *
+ * Result, measured the same way as the numbers above: **min ΔE 39,3** over the
+ * thirteen drawn families — 2,5× the old worst case — with every L\* at or
+ * above **55,7** and the tightest pairs now `culture`/`gendarmerie` 39,3 and
+ * `restaurant`/`medecin` 39,3.
+ *
+ * ── ONE FAMILY IS DELIBERATELY QUIET ────────────────────────────────────────
+ *
+ * `restaurant` is 186 288 of the 445 380 points — 42 % of everything this layer
+ * draws — and it is the one family given LOW chroma (#c37b7f, a dusty rose)
+ * rather than a saturated hue of its own. At that share a bright colour is not
+ * an identity, it is a wash: the mêlée test showed every other family drowning
+ * in it. The fork and knife still name it, and it recedes so the twelve rarer
+ * families can be found.
+ *
+ * ── COLLISIONS WITH THE NEIGHBOURS, AND WHY THEY ARE ACCEPTABLE ─────────────
+ *
+ * Against `medecins-fr`'s six practice hues the closest pairs are
+ * `boulangerie`/`imagerie` at ΔE 10,2, `sport`/`femme-enfant` 11,2 and
+ * `poste`/`specialiste` 12,9. Those would have been fatal under the old
+ * regime and are not under this one: a croissant is not a trefoil, a dumbbell
+ * is not an adult-and-child, an envelope is not a doctor's bag. That is the
+ * whole point of moving recognition into the shape channel — the hue may
+ * repeat across layers as long as the silhouette does not.
  */
 export const AMENITY_COLORS = Object.freeze({
-  // The seven of the original brief, unchanged — a screenshot taken before the
-  // Cityscan catch-up must still read the same.
-  medecin: '#c92a2a',
-  courses: '#d9480f',
-  pharmacie: '#0f8a5f',
-  poste: '#1864ab',
-  piscine: '#15aabf',
-  gendarmerie: '#862e9c',
-  hopital: '#a61e4d',
-  // The seven added for the Cityscan grid. Each sits in the same mid-dark,
-  // warm-leaning register and keeps a mnemonic rather than an arbitrary hue:
-  // the wine of a table, the crust of a loaf, the awning of a butcher, the
-  // green of a bank note, the track orange of a gym, the ink of a library, the
-  // yellow of a forecourt.
-  restaurant: '#7a3b2e',
-  boulangerie: '#b9752b',
-  commerce: '#8f4a1f',
-  banque: '#2f6f4f',
-  sport: '#c25e00',
-  culture: '#4a4fa8',
-  carburant: '#8d7b12',
+  restaurant: '#c37b7f',
+  boulangerie: '#ffbd00',
+  commerce: '#ffa868',
+  medecin: '#f44f5f',
+  banque: '#00ad88',
+  sport: '#e652a5',
+  culture: '#6e85ff',
+  courses: '#f05c03',
+  pharmacie: '#329923',
+  poste: '#6fb9ff',
+  carburant: '#cfd263',
+  gendarmerie: '#edaeff',
+  piscine: '#00eaff',
+  // KEPT, AND NEVER DRAWN. `hopital` left this layer for « Santé & secours » on
+  // 2026-09-15 (see {@link AMENITIES_WITHDRAWN_FAMILIES}), but the key cannot be
+  // deleted: `AMENITY_FAMILIES` is the mesh's on-the-wire encoding and removing
+  // a member renumbers every cached tuple in every pack. The entry stays so a
+  // stray row can never fall through `amenityFamilyColor` into a null, and the
+  // hue is `medecins-fr`'s own so a screenshot taken mid-migration is not
+  // lying about which layer owns the subject.
+  hopital: '#f43f5e',
 });
 
 /**
- * Base pixel size per family — a LEGIBILITY rule, not a magnitude.
+ * Plate side per family, in CSS pixels, before the camera ramp.
  *
- * Rarer families are drawn larger so they survive being stacked on the dense
- * ones. The ladder is the inverse of the national counts (30 215 GPs down to
- * 2 211 hospitals) and it is the only thing size means anywhere in this layer.
+ * Still a LEGIBILITY rule and still not a magnitude — neither register
+ * publishes a capacity for any of these families — but the rule is now applied
+ * to a plate rather than a dot, so the numbers moved: a 5 px dot was a speck,
+ * and a 15 px plate is the floor at which a punched silhouette still reads
+ * (measured on the contact sheet in `amenityFamilyIcons.js`).
+ *
+ * The ladder is unchanged in SHAPE: the rarer a family is nationally, the
+ * larger its plate, so 3 625 bassins are not lost under 186 288 restaurants.
  */
 export const AMENITY_POINT_PX = Object.freeze({
-  // Still the inverse of the national counts, now over fourteen families
-  // rather than seven. The top of the ladder moved: a restaurant is the
-  // commonest thing in the register — 231 989 rows, more than the seven
-  // original families put together — so it is the smallest dot there is, and a
-  // hospital is still the largest.
-  restaurant: 5,
-  boulangerie: 6,
-  commerce: 6,
-  medecin: 6.5,
-  banque: 7,
-  sport: 7,
-  culture: 7.5,
-  courses: 8,
-  pharmacie: 8,
-  poste: 8.5,
-  carburant: 9,
-  gendarmerie: 10,
-  piscine: 10,
-  hopital: 12,
+  restaurant: 15,
+  boulangerie: 16,
+  commerce: 16,
+  medecin: 17,
+  banque: 17,
+  sport: 17,
+  culture: 18,
+  courses: 18,
+  pharmacie: 18,
+  poste: 19,
+  carburant: 19,
+  gendarmerie: 21,
+  piscine: 21,
+  // Never drawn here; kept so the table and the palette stay the same shape.
+  hopital: 22,
 });
 
 /**
  * Fill alpha per precision band.
  *
- * Not decoration: a dot the register places at a street number and one it
+ * Not decoration: a mark the register places at a street number and one it
  * places somewhere in the street are different claims, and 17 286 of the 95 406
- * are the second kind. The two best bands also carry the sand outline; the two
- * worst carry none, so the difference survives being read at a glance.
+ * are the second kind.
+ *
+ * It is now the ONLY channel that carries this, where it used to share the job
+ * with a sand halo the two best bands got and the two worst did not. The halo
+ * went with the dots on 2026-09-15: every plate carries the same black ring,
+ * because the ring is what makes a mark findable on a photograph. The spread
+ * below is therefore wider than it was, so the difference still survives being
+ * read at a glance.
  */
 export const AMENITY_PRECISION_ALPHA = Object.freeze({
   numero: 1,
-  voie: 0.88,
-  approchee: 0.6,
-  indeterminee: 0.5,
+  // WIDENED on 2026-09-15, from 0.88 / 0.60 / 0.50. The halo used to carry half
+  // of this distinction and no longer exists, so the alpha has to carry all of
+  // it: 0.88 against 1.00 is a difference nobody sees on a 15 px plate over
+  // imagery, where 0.80 against 1.00 reads as "this one is softer".
+  //
+  // The floor stays well clear of invisible. A mark at 0.42 is still a mark —
+  // a register that placed a thing in the right street is telling the truth
+  // about the street, and erasing it would be a worse answer than drawing it
+  // faintly.
+  voie: 0.8,
+  approchee: 0.55,
+  indeterminee: 0.42,
 });
 
 /**
@@ -305,14 +416,27 @@ const DEPARTEMENT_COLORS = Object.freeze([
 const DEPARTEMENT_ALPHA = CHOROPLETH_FILL_ALPHA;
 const SELECTED_COLOR = '#00ffff';
 /**
- * Sand, at 0.75 — where `schools-fr` outlines in black at 0.35 and `sup-fr` in
- * white at 0.55. The outline is the half of this layer's signature that
- * survives a stacked dot, and it is also the precision channel: a dot without
- * one is a dot whose position the register would not vouch for.
+ * Fade and shrink, so a wide box does not stack twelve thousand opaque plates
+ * into a mat.
+ *
+ * Shared instances rather than one per mark: a `Billboard` CLONES a
+ * `NearFarScalar` on assignment, and the densest box this layer draws is 12 000
+ * of them.
+ *
+ * Cesium does NOT interpolate a `NearFarScalar` linearly — `czm_nearFarScalar`
+ * works on SQUARED distance and then takes `pow(t, 0.2)`, so the falloff is
+ * violently front-loaded. Against that curve these four numbers give 100 % of
+ * the plate below 900 m, 84 % at 2 km, 68 % at 10 km, 50 % at 30 km and the
+ * floor at 60 km — where a 15 px restaurant lands back on 5 px, which is
+ * exactly the speck this layer used to draw at every distance.
  */
-const OUTLINE_COLOR = Cesium.Color.fromCssColorString('#ffd8a8').withAlpha(0.75);
-const SELECTED_POINT_PX = 18;
-/** Mesh dots are flatter than exact ones: a sample must not read as an inventory. */
+const MARK_SCALE_BY_DISTANCE = new Cesium.NearFarScalar(900, 1.0, 60_000, 0.34);
+const MARK_TRANSLUCENCY = new Cesium.NearFarScalar(900, 1.0, 90_000, 0.4);
+
+/** Plate side for the mark a reader has clicked. */
+const SELECTED_POINT_PX = 30;
+
+/** Mesh plates are flatter than exact ones: a sample must not read as an inventory. */
 const MESH_SIZE_FACTOR = 0.8;
 
 /** One line behind each légende swatch, from the feed's measured vocabulary. */
@@ -397,8 +521,17 @@ export function amenityPrecisionAlpha(precision) {
   return typeof alpha === 'number' ? alpha : AMENITY_PRECISION_ALPHA.indeterminee;
 }
 
-/** Whether a dot at this precision earns the sand halo. */
-export function amenityHasOutline(precision) {
+/**
+ * Whether the register vouches for this position, or merely offers it.
+ *
+ * It used to decide whether a dot earned a sand halo. The halo went with the
+ * dots on 2026-09-15 — every plate carries the same black ring now, because the
+ * ring is what makes a mark findable on a photograph and legibility is not
+ * something to spend on a data quality flag. The DISTINCTION survives, in the
+ * two places it belongs: the plate's alpha (`AMENITY_PRECISION_ALPHA`) and the
+ * warning this returns for the card.
+ */
+export function amenityPositionVouched(precision) {
   return amenityPrecisionRank(precision) >= 2;
 }
 
@@ -543,7 +676,7 @@ export function buildAmenitySelectionLabel(record) {
   const precision = site.precision;
   if (precision) {
     const label = AMENITY_PRECISION_LABELS[precision] || precision;
-    details.push(amenityHasOutline(precision)
+    details.push(amenityPositionVouched(precision)
       ? `Position : ${label}`
       : `⚠ Position : ${label}`);
   }
@@ -580,7 +713,7 @@ export function buildAmenitiesDepartementLabel(row) {
   return [row.name, ...details].join('\n');
 }
 
-function selectedOverlayEntry(id, position, copy) {
+function selectedOverlayEntry(id, position, copy, accent = SELECTED_COLOR) {
   const [title, ...details] = copy.split('\n');
   return {
     id: String(id),
@@ -593,7 +726,7 @@ function selectedOverlayEntry(id, position, copy) {
     priority: Number.MAX_SAFE_INTEGER,
     title,
     details,
-    accent: SELECTED_COLOR,
+    accent,
     interactive: false,
     anchorRadiusPx: 9,
     minAnchorGapPx: 11,
@@ -609,7 +742,17 @@ function selectedOverlayEntry(id, position, copy) {
 export function createAmenitySelectedOverlayEntry(record) {
   const position = record?.position;
   if (!record?.id || !position) return null;
-  return selectedOverlayEntry(record.id, position, buildAmenitySelectionLabel(record));
+  // THE FAMILY'S OWN COLOUR, not the selection cyan. The plate on the globe now
+  // goes WHITE when it is picked — Cesium multiplies a billboard's colour, so
+  // any other value would tint the artwork and lose the family — which leaves
+  // the card as the only surface that can still say which of the thirteen the
+  // reader just clicked. See `selectSite`.
+  return selectedOverlayEntry(
+    record.id,
+    position,
+    buildAmenitySelectionLabel(record),
+    amenityFamilyColor(record.site?.family) || SELECTED_COLOR,
+  );
 }
 
 /** Ambient label for one département at national altitude. */
@@ -644,13 +787,32 @@ export function selectAmenitiesLabelCohort(entries, limit = AMENITIES_FR_LABEL_C
     .slice(0, cap);
 }
 
+/**
+ * Thirteen colours and thirteen glyphs, parsed and built once.
+ *
+ * A `Billboard` CLONES its colour on assignment and Cesium keys its texture
+ * atlas on the image STRING, so thirteen data URIs are thirteen atlas entries
+ * however many marks share them — but re-deriving either per mark is twelve
+ * thousand throwaway parses on a dense Paris box.
+ */
+const _familyGlyphCache = new Map();
+function familyGlyph(family) {
+  let glyph = _familyGlyphCache.get(family);
+  if (!glyph) {
+    glyph = amenityFamilyGlyph(family, { px: AMENITY_GLYPH_RASTER_PX });
+    _familyGlyphCache.set(family, glyph);
+  }
+  return glyph;
+}
+
 // --- Selection --------------------------------------------------------------
 
 function restoreRecordStyle(record) {
   if (!record?.point) return;
   record.point.color = Cesium.Color.fromCssColorString(record.baseColor)
     .withAlpha(record.baseAlpha);
-  record.point.pixelSize = record.baseSize;
+  record.point.width = record.baseSize;
+  record.point.height = record.baseSize;
 }
 
 function highlightSelectedDepartement() {
@@ -687,8 +849,15 @@ function selectSite(id) {
   clearSelection();
   _selectedId = id;
   if (record.point) {
-    record.point.color = Cesium.Color.fromCssColorString(SELECTED_COLOR);
-    record.point.pixelSize = SELECTED_POINT_PX;
+    // WHITE, and no longer cyan. The mark is a tinted plate with a silhouette
+    // punched through it, and Cesium MULTIPLIES `billboard.color` — so painting
+    // the selection cyan would tint the plate cyan and lose the family the
+    // reader just clicked. White is the multiplicative identity: the plate goes
+    // to its brightest, the silhouette and the ring stay black, and the card's
+    // accent carries the family colour instead.
+    record.point.color = Cesium.Color.WHITE;
+    record.point.width = SELECTED_POINT_PX;
+    record.point.height = SELECTED_POINT_PX;
   }
   const entry = createAmenitySelectedOverlayEntry(record);
   if (entry) {
@@ -969,6 +1138,12 @@ function reconcileMesh(box) {
     // § 3.5 — see `profileCountBudget`. The per-family floor is a share of the
     // budget, so a thinner budget keeps the same protection against erasure.
     budget: profileCountBudget(amenitiesMeshBudget(box.north - box.south)),
+    // Passed to the THINNER and not applied after it: the allocator splits the
+    // budget across the families it is given, so filtering here is what hands
+    // the whole budget to the families the reader asked for. Filtering the
+    // result instead would draw one family at a thirteenth of the density the
+    // view can afford.
+    families: drawnFamilies(),
   });
   _meshPick = pick;
   _truncated = 0;
@@ -997,10 +1172,19 @@ function reconcileMesh(box) {
     const point = _points.add({
       id,
       position,
+      image: familyGlyph(family),
+      width: size,
+      height: size,
       color: Cesium.Color.fromCssColorString(color).withAlpha(alpha),
-      pixelSize: size,
-      outlineColor: OUTLINE_COLOR,
-      outlineWidth: amenityHasOutline(precision) ? 1 : 0,
+      scaleByDistance: MARK_SCALE_BY_DISTANCE,
+      translucencyByDistance: MARK_TRANSLUCENCY,
+      // The plate stands on the pavement and every building beside it is
+      // taller. With the depth test ON, a mark anchored at street level is
+      // eaten from below by the ground that is NEARER the camera at those
+      // screen pixels — the « parasol » that made these read as marks half
+      // sunk into the roofs. `Infinity` is this repository's value everywhere,
+      // and it is safe without a horizon curtain because every row drawn came
+      // out of the CURRENT view rectangle.
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
     });
     _records.set(id, {
@@ -1063,15 +1247,177 @@ async function loadMesh(box) {
  * nothing: the array is untouched, the packs are untouched, and a reader who
  * never opens the Médecins row keeps every doctor this layer ever drew.
  */
+/** Plate side in the key, where the swatch is masked rather than tinted. */
+const LEGEND_GLYPH_PX = 32;
+
+/**
+ * One chip above the key: « Tout ».
+ *
+ * THIRTEEN CHIPS WOULD HAVE BEEN THE OBVIOUS DESIGN AND IT IS THE WRONG ONE.
+ * The row is 300 px wide; thirteen buttons wrap to five lines of a panel that
+ * already carries 33 rows, and they would say exactly what the key below them
+ * says, twice. The key is the control — each family's own row toggles it — so
+ * what is left for a chip is the one thing a key of individual switches is bad
+ * at: undoing all of them at once.
+ *
+ * It is hidden while nothing is filtered, rather than shown disabled: a strip
+ * that is empty until it is useful costs no pixel, and this panel's own rule
+ * (2026-09-14) is that a dim button nobody can press is a button nobody reads.
+ */
+function amenityFilterChips() {
+  const chips = [];
+  if (_families) {
+    chips.push({
+      id: 'amenities-families-all',
+      label: 'Tout',
+      active: false,
+      state: 'idle',
+      title: `Redessiner les ${AMENITY_DRAWN_FAMILIES.length} familles`,
+      params: { familles: '' },
+    });
+  }
+  return chips;
+}
+
+/**
+ * The families this layer no longer draws, and why each one left.
+ *
+ * ── `hopital` — WITHDRAWN, 2026-09-15, PERMANENTLY ─────────────────────────
+ *
+ * 2 211 FINESS establishments, moved to « Santé & secours » (`medecins-fr`),
+ * which reads them from the same register and draws them with Maki's plain
+ * cross beside the 64 232 practice addresses and the DREES accessibility
+ * indicator. A hospital is not an everyday errand: a reader who wants one is
+ * asking a health question, and every other answer to that question already
+ * lives on the other row.
+ *
+ * NOTHING IS DELETED TO PAY FOR IT, and that is not timidity. `AMENITY_FAMILIES`
+ * is the mesh's on-the-wire encoding — a tuple carries its family as an INDEX
+ * into that array — so removing a member silently renumbers every row of every
+ * cached pack and every share link that ever named one. The family keeps its
+ * slot, its colour and its size; it simply is not drawn, exactly the mechanism
+ * `AMENITIES_DEFERRED_FAMILY` already uses for `medecin`. The difference is
+ * that this withdrawal is unconditional: there is no state in which this layer
+ * draws a hospital again.
+ *
+ * ── `medecin` — DEFERRED, and only while somebody better is drawing it ──────
+ *
+ * See {@link AMENITIES_DEFERRED_FAMILY} below. Measured on 2026-09-15 against
+ * the shipped registers: 74.6 % of the 30 213 BPE dots have a conventioned
+ * practice address within 50 m and 91.5 % within 200 m, at a median distance of
+ * 10 m where they match. So the two registers really are describing one
+ * population, and the 8.5 % the CNAM does not carry is the price of drawing one
+ * register per family rather than a blend of two — stated here so it is a
+ * decision on the record rather than an omission.
+ */
+export const AMENITIES_WITHDRAWN_FAMILIES = Object.freeze(['hopital']);
+
 const AMENITIES_DEFERRED_FAMILY = 'medecin';
+
+/**
+ * THE FAMILY FILTER — which of the thirteen are drawn right now.
+ *
+ * ── WHY IT EXISTS ───────────────────────────────────────────────────────────
+ *
+ * Thirteen families over one street is a legible map only if the reader wanted
+ * all thirteen. Most of the time they want one: where is the nearest pharmacy,
+ * which of these villages still has a bakery. The plates made the families
+ * distinguishable; this makes them ASKABLE, and the asking surface is the key
+ * itself — every row of the legend is the toggle for its own family, so the
+ * mark a reader points at is the control they press.
+ *
+ * ── WHY THE FILTER IS NOT PURELY A DRAW-TIME MASK ───────────────────────────
+ *
+ * Because it would be a lie in a city, and the numbers say so. The `/sites`
+ * route caps its answer at {@link MAX_RENDERED_SITES} rows and orders them
+ * RAREST FAMILY FIRST, so the cap eats the common families: over inner Paris
+ * the box holds 53 121 dots and the proxy answers 12 000. Ask that route for
+ * "boulangeries only" as a post-filter and you get the boulangeries that
+ * survived a cap computed over 53 121 restaurants — which is a sample of a
+ * sample, presented as an answer.
+ *
+ * So the selection goes to the SERVER as `familles=`, and the cap applies to
+ * what was asked for. Same reasoning in the maillage regime, one layer down:
+ * `selectAmenitiesMesh` allocates a per-family budget so no family can be
+ * squeezed off the map, and a filtered pick hands the whole budget to the
+ * families that are on. Both are the same rule — a filter must change what is
+ * COUNTED, not just what is painted.
+ *
+ * ── THE EMPTY SELECTION IS "ALL", NOT "NONE" ────────────────────────────────
+ *
+ * Turning off the last family restores every family instead of blanking the
+ * map. A layer that is on and draws nothing is indistinguishable from a broken
+ * one, and the reader's way of saying "nothing" is the row's own toggle.
+ */
+const AMENITY_DRAWN_FAMILIES = Object.freeze(
+  AMENITY_FAMILIES.filter((family) => !AMENITIES_WITHDRAWN_FAMILIES.includes(family)),
+);
+
+/** Selected families, or null for "all of them" — the default. */
+let _families = null;
+
+/** Is this family currently asked for? */
+function familySelected(family) {
+  return !_families || _families.has(family);
+}
+
+/**
+ * Normalise a `familles=` parameter into a Set, or null for "all".
+ *
+ * A closed enum: anything that is not a drawn family is dropped rather than
+ * carried, because this value arrives from a share link and an unknown key
+ * would otherwise become a filter that matches nothing. A selection that ends
+ * up empty — or that names every family there is — is `null`, so the two ways
+ * of saying "no filter" cannot drift apart in the share link.
+ */
+export function parseAmenityFamilies(raw) {
+  if (raw === null || raw === undefined || raw === '') return null;
+  const names = (Array.isArray(raw) ? raw : String(raw).split(','))
+    .map((name) => String(name).trim())
+    .filter((name) => AMENITY_DRAWN_FAMILIES.includes(name));
+  if (!names.length || names.length === AMENITY_DRAWN_FAMILIES.length) return null;
+  return new Set(names);
+}
+
+/** The selection as the share link and the proxy spell it, or '' for "all". */
+export function serialiseAmenityFamilies(families) {
+  if (!families) return '';
+  return AMENITY_DRAWN_FAMILIES.filter((family) => families.has(family)).join(',');
+}
 
 /** True while `medecins-fr` is drawing practice POSITIONS. */
 let _medecinsDrawing = false;
+/** Told when the key changes under the panel's feet — see `setRowControlsListener`. */
+let _rowControlsListener = null;
 /** Take-down for the watcher. Null while this layer is off. */
 let _unwatchMedecins = null;
 
-/** Should this family be left to the layer that publishes a better register? */
+/**
+ * The families a draw pass should consider, for the callers that need the LIST
+ * rather than a yes/no — the mesh thinner and the proxy query.
+ *
+ * `null` means "every family this layer draws", which is what both of those
+ * treat as "no filter" and is the state the layer boots in.
+ */
+function drawnFamilies() {
+  const selected = AMENITY_DRAWN_FAMILIES.filter((family) => (
+    familySelected(family)
+    && !(_medecinsDrawing && family === AMENITIES_DEFERRED_FAMILY)
+  ));
+  return selected.length === AMENITY_DRAWN_FAMILIES.length ? null : selected;
+}
+
+/**
+ * Should this family be left to the layer that publishes a better register?
+ *
+ * Two different answers folded into one question, deliberately: every caller
+ * wants "do I draw this", and none of them wants to know whether the reason is
+ * permanent. The legend is where the distinction is spelled out, because that
+ * is the only place it changes what a reader should do.
+ */
 function familyDeferred(family) {
+  if (AMENITIES_WITHDRAWN_FAMILIES.includes(family)) return true;
+  if (!familySelected(family)) return true;
   return _medecinsDrawing && family === AMENITIES_DEFERRED_FAMILY;
 }
 
@@ -1098,12 +1444,13 @@ function reconcile(payload) {
     const point = _points.add({
       id,
       position,
+      image: familyGlyph(site.family),
+      width: size,
+      height: size,
       color: Cesium.Color.fromCssColorString(color).withAlpha(alpha),
-      pixelSize: size,
-      outlineColor: OUTLINE_COLOR,
-      outlineWidth: amenityHasOutline(site.precision) ? 1 : 0,
+      scaleByDistance: MARK_SCALE_BY_DISTANCE,
+      translucencyByDistance: MARK_TRANSLUCENCY,
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
-      translucencyByDistance: new Cesium.NearFarScalar(500, 1.0, 60_000, 0.4),
     });
     _records.set(id, { id, site, point, position, baseColor: color, baseAlpha: alpha, baseSize: size });
     warm.push(site);
@@ -1153,6 +1500,12 @@ async function loadSites(box, { force = false } = {}) {
       south: String(box.south), west: String(box.west),
       north: String(box.north), east: String(box.east),
     });
+    // BEFORE THE CAP, NOT AFTER IT. See the note on `_families`: `/sites`
+    // answers at most 12 000 rows out of a box that can hold 53 121, so a
+    // post-filter would return the survivors of a cap computed over families
+    // the reader switched off.
+    const asked = serialiseAmenityFamilies(_families);
+    if (asked) params.set('familles', asked);
     const response = await fetch(`/api/amenities-fr/sites?${params}`, { signal: controller.signal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
@@ -1175,7 +1528,27 @@ async function loadSites(box, { force = false } = {}) {
   }
 }
 
+/**
+ * Read the viewport, in whichever regime the camera is in.
+ *
+ * The listener is fired at the END, and that is a fix rather than housekeeping:
+ * the key prints a per-family count tallied from `_records`, and `setParams`
+ * fires the listener when the reader presses a row — BEFORE the answer to the
+ * new question has arrived. Without this second call the panel repaints once
+ * with the old records and then waits for its own ~1 Hz poll, which showed
+ * « Boulangerie 0 » beside 233 bakeries on screen. Measured over Paris,
+ * 2026-09-15.
+ */
 async function loadViewport({ force = false } = {}) {
+  if (!_enabled || !_viewer) return;
+  try {
+    await loadViewportInner({ force });
+  } finally {
+    _rowControlsListener?.();
+  }
+}
+
+async function loadViewportInner({ force = false } = {}) {
   if (!_enabled || !_viewer) return;
   // Whatever this call concludes — records, a zoom-in verdict or a failure —
   // it concludes it about the view the camera is showing right now. See
@@ -1345,7 +1718,10 @@ const amenitiesFranceLayer = {
 
   init(viewer) {
     _viewer = viewer;
-    _points = new Cesium.PointPrimitiveCollection({ blendOption: Cesium.BlendOption.TRANSLUCENT });
+    _points = new Cesium.BillboardCollection({
+      scene: viewer.scene,
+      blendOption: Cesium.BlendOption.TRANSLUCENT,
+    });
     _points.show = false;
     viewer.scene.primitives.add(_points);
     registerSpriteCollection(AMENITIES_FR_LAYER_ID, _points);
@@ -1498,9 +1874,68 @@ const amenitiesFranceLayer = {
   },
 
   /**
-   * Colour legend for the control-panel row — whichever scale is actually on
-   * screen, never both, plus the one row that has no swatch because it has no
-   * dots.
+   * The family filter, as parameters — which is what makes it shareable.
+   *
+   * TWO KEYS, AND THEY ARE NOT INTERCHANGEABLE:
+   *
+   *   `familles`  — ASSIGNMENT. A comma-separated list, or `''` for "all". This
+   *                 is the one the share link carries and the « Tout » chip
+   *                 sends.
+   *   `basculer`  — TOGGLE. One family name, flipped against the current set.
+   *                 This is what a key row sends, because a row is a switch and
+   *                 a switch does not know what it is switching to.
+   *
+   * THEY WERE ONE KEY FOR ABOUT AN HOUR AND THAT WAS A BUG. Overloading
+   * `familles` on "does it contain a comma" reads `boulangerie` as a toggle —
+   * which is right when a reader presses the row, and catastrophic when a share
+   * link restores a selection of exactly one family: the link says « draw only
+   * bakeries », the layer starts from "all on", flips that one, and reopens
+   * showing the twelve families the sender had turned off. A parameter that
+   * means different things depending on how many items it happens to hold is
+   * not a parameter, it is a guess.
+   */
+  setParams(params = {}) {
+    const assigning = params.familles !== undefined;
+    const toggling = params.basculer !== undefined;
+    if (!assigning && !toggling) return false;
+    let next;
+    if (assigning) {
+      next = parseAmenityFamilies(String(params.familles ?? ''));
+    } else {
+      const family = String(params.basculer ?? '');
+      if (!AMENITY_DRAWN_FAMILIES.includes(family)) return false;
+      // Starting from "all on" means the first press turns that family OFF,
+      // which is what a reader expects from a key where everything is lit.
+      const current = new Set(_families || AMENITY_DRAWN_FAMILIES);
+      if (current.has(family)) current.delete(family); else current.add(family);
+      next = parseAmenityFamilies([...current]);
+    }
+    if (serialiseAmenityFamilies(next) === serialiseAmenityFamilies(_families)) return false;
+    _families = next;
+    // A REQUEST, not a repaint. Both close regimes take the selection into the
+    // question they ask — the proxy's `familles=` and the thinner's budget — so
+    // re-drawing what is already in memory would show a filtered subset of an
+    // unfiltered sample. See the note on `_families`.
+    if (_enabled) void loadViewport({ force: true });
+    _rowControlsListener?.();
+    governorRequestRender('amenities-fr-families');
+    return true;
+  },
+
+  getParams() { return { familles: serialiseAmenityFamilies(_families) }; },
+
+  /** Whether a fan-out from a fused row is about something this layer takes. */
+  acceptsParams(params = {}) {
+    return params?.familles !== undefined || params?.basculer !== undefined;
+  },
+
+  setRowControlsListener(listener) {
+    _rowControlsListener = typeof listener === 'function' ? listener : null;
+  },
+
+  /**
+   * The key for the control-panel row — whichever scale is actually on screen,
+   * never both, plus the rows that have no swatch because they have no marks.
    */
   getRowControls() {
     if (_regime === 'national') {
@@ -1522,6 +1957,10 @@ const amenitiesFranceLayer = {
           ? 'Le sixième le moins équipé. La part des communes du département où l’on trouve au moins un médecin, un commerce alimentaire, un bureau de poste, un bassin ou une gendarmerie.'
           : 'Un sixième des 96 départements. Bins par quantile. Pharmacies et hôpitaux ne sont PAS dans ce ratio : FINESS ne publie pas de code commune.',
       })).filter((row) => row.count > 0);
+      // No filter chips at national altitude: the choropleth paints a SHARE
+      // computed over five families in the pack, not the marks a filter selects.
+      // Offering a control that cannot change what is on screen is worse than
+      // offering none.
       return { chips: [], legend };
     }
 
@@ -1534,19 +1973,40 @@ const amenitiesFranceLayer = {
     const inView = new Map(
       (_meshPick?.perFamily || []).map((row) => [row.family, row.inBox]),
     );
-    const legend = AMENITY_FAMILIES
-      .filter((family) => tally.get(family) > 0)
-      .map((family) => ({
-        label: amenityFamilyLabel(family),
-        color: amenityFamilyColor(family),
-        count: tally.get(family),
-        blurb: meshRegime && inView.has(family)
-          // Naming the sample per family is the point: the mix on screen is NOT
-          // the mix in view, because the thinning deliberately floors the rare
-          // families. See `amenitiesMesh.js`.
-          ? `${FAMILY_BLURBS[family]} Échantillon : ${fr(tally.get(family))} tracé${tally.get(family) > 1 ? 's' : ''} sur ${fr(inView.get(family))} dans la vue.`
-          : FAMILY_BLURBS[family],
-      }));
+    // EVERY DRAWN FAMILY GETS A ROW, not just the ones with marks on screen —
+    // because each row is now the family's own switch, and a switch that
+    // vanishes when you use it cannot be used twice. A family that is on but
+    // absent from this view says so with a count of zero; one the reader turned
+    // off says so with `off`, and keeps its glyph so the thing they press is
+    // still the mark they are looking for.
+    const legend = AMENITY_DRAWN_FAMILIES
+      .filter((family) => !(_medecinsDrawing && family === AMENITIES_DEFERRED_FAMILY))
+      .map((family) => {
+        const drawn = tally.get(family) || 0;
+        const off = !familySelected(family);
+        return {
+          label: amenityFamilyLabel(family),
+          color: amenityFamilyColor(family),
+          // The swatch IS the map mark, at key size and minus its ring: the
+          // panel masks this raster and paints it with the row's own colour, so
+          // an opaque ring would flatten thirteen silhouettes into one disc.
+          glyph: amenityFamilyGlyph(family, { px: LEGEND_GLYPH_PX, key: true }),
+          count: drawn,
+          off,
+          // What makes the row a control rather than a caption. `manager.js`
+          // turns this into a click that calls `setLayerParams`, so the key and
+          // the filter are one surface and cannot disagree.
+          toggle: { param: 'basculer', value: family },
+          blurb: off
+            ? 'Éteinte. Cliquez pour la rallumer — la vue est alors redemandée avec cette famille.'
+            : (meshRegime && inView.has(family)
+              // Naming the sample per family is the point: the mix on screen is
+              // NOT the mix in view, because the thinning deliberately floors
+              // the rare families. See `amenitiesMesh.js`.
+              ? `${FAMILY_BLURBS[family]} Échantillon : ${fr(drawn)} tracé${drawn > 1 ? 's' : ''} sur ${fr(inView.get(family))} dans la vue.`
+              : FAMILY_BLURBS[family]),
+        };
+      });
     // The conditional withdrawal, given a row for the same reason as the
     // refusal below it: a reader who came looking for doctors is told where
     // they are rather than left to conclude they are missing.
@@ -1560,15 +2020,25 @@ const amenitiesFranceLayer = {
           + 'secteur. Éteignez cette couche-là et la famille revient ici.',
       });
     }
-    // The refusal, given a row of its own so a reader who came looking for
-    // schools is told where they are instead of concluding they are missing.
+    // The two refusals, each given a row of its own so a reader who came
+    // looking for one of them is told where it is instead of concluding the
+    // data is missing. Neither takes a swatch: an empty slot is how this panel
+    // says « counted, and not mapped here ».
+    legend.push({
+      label: 'Hôpitaux — dessinés par Santé & secours',
+      color: null,
+      count: 0,
+      blurb: 'Les 2 211 établissements FINESS ont quitté cette couche le 15/09/2026 : ils sont sur « Santé & secours », '
+        + 'avec les 64 232 adresses de praticiens, l’indicateur d’accès de la DREES et les défibrillateurs. '
+        + 'Un hôpital n’est pas une course du quotidien.',
+    });
     legend.push({
       label: 'Écoles — non dessinées ici',
       color: null,
       count: 0,
       blurb: 'Les 79 743 lignes « enseignement » de la BPE ne sont pas reprises : schools-fr dessine 68 158 établissements du registre du ministère (clé UAI, que la BPE n’a pas) et sup-fr 6 914 sites du supérieur.',
     });
-    return { chips: [], legend };
+    return { chips: amenityFilterChips(), legend };
   },
 
   destroy(viewer) {

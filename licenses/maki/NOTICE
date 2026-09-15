@@ -8,10 +8,11 @@ in the `LICENSE` file next to this notice, or at
 
 Source: https://github.com/mapbox/maki
         icons/<name>.svg
-        Retrieved 2026-09-02 (aerialway, harbor) and 2026-09-14 (bicycle,
+        Retrieved 2026-09-02 (aerialway, harbor), 2026-09-14 (bicycle,
         scooter, car, charging-station, communications-tower, doctor,
-        hospital) at commit 28e2a3602e4b — the same upstream HEAD on both
-        dates.
+        hospital) and 2026-09-15 (restaurant, bakery, bank, fitness-centre,
+        library, grocery, pharmacy, post, fuel, police, swimming) at commit
+        28e2a3602e4b — the same upstream HEAD on all three dates.
 
 CC0 IMPOSES NO CONDITIONS. There is no attribution requirement, no notice to
 propagate, and no obligation to state modifications. This file exists because
@@ -20,7 +21,7 @@ the same reason `DATA_SOURCES.md` records where every feed comes from — and
 because it lets a reader audit the claims below without cloning the upstream
 repository.
 
-WHAT WAS TAKEN. Ten glyphs, held in one module.
+WHAT WAS TAKEN. Twenty-one glyphs, held in one module.
 
 `src/data/mapIcons.js` holds the artwork:
 
@@ -52,7 +53,23 @@ WHAT WAS TAKEN. Ten glyphs, held in one module.
     hospital         — a plain cross, for the catch-all « Spécialité
                        médicale » family,
                        both drawn by `src/data/medecinFamilyIcons.js` for the
-                       French conventioned-doctors layer.
+                       French conventioned-doctors layer. Since 2026-09-15
+                       `hospital` is punched for « Hôpital » and no longer for
+                       the catch-all specialty family; see below.
+
+    restaurant       — « Restaurant » (BPE B301),
+    bakery           — « Boulangerie » (B207),
+    bank             — « Banque » (A203),
+    fitness-centre   — « Salle de sport » (F120 + F121),
+    library          — « Lieu culturel » (F303 + F307 + F312 + F315),
+    grocery          — « Supermarché, supérette » (B104 + B105 + B201),
+    pharmacy         — « Pharmacie » (FINESS, catégorie 620),
+    post             — « La Poste » (A206 + A207 + A208),
+    fuel             — « Station-service » (B316),
+    police           — « Gendarmerie, police » (A104 + A140),
+    swimming         — « Bassin de natation » (F101),
+                       all eleven drawn by `src/data/amenityFamilyIcons.js` for
+                       the French everyday-equipment layer.
 
 `aerialway` replaced Material Symbols' `cable_car`, which is an interface glyph:
 a boxed cabin on stubby legs that reads as a building at the 22 CSS px that
@@ -100,13 +117,29 @@ at the sizes the layer actually draws: Maki's heavier tube still reads as a
 stethoscope at 15 px, where Material's has already broken into two disconnected
 specks.
 
-`hospital` is a plain cross, and it is punched for the CATCH-ALL family: 24 of
-the register's 46 mapped specialty codes fall there, from cardiology to
-dermatology to ORL, and no single object pictures them. The mark therefore says
-"medicine, and nothing narrower" — the job the heater shield does for the
-`military_land` catch-all in `militarySiteIcons.js` — while the card names the actual
-specialty. It is also the only borrowed glyph in this project that survives a
-12 px plate intact.
+`hospital` is a plain cross, and it is the only borrowed glyph in this project
+that survives a 12 px plate intact.
+
+It was punched for the CATCH-ALL specialty family until 2026-09-15, and it is
+now punched for « Hôpital » — the 2 211 FINESS establishments that moved onto
+the same layer that day. The cross had to change hands: a bare cross is the
+international sign for a hospital, and once a hospital row and a
+"medicine, nothing narrower" row share one panel line, two crosses on that line
+separate by hue alone, which is the failure the plates exist to end. The
+catch-all family took Material's `medical_services` — a doctor's bag, an object
+that says practitioner rather than institution — and the contact sheet that
+decided it is described in `src/data/medecinFamilyIcons.js`.
+
+The eleven glyphs added on 2026-09-15 were chosen the same way: composed into
+this repository's real 96-unit plate, rendered at 30 / 24 / 19 / 15 / 12 px over
+a real capture of the application, with Cesium's colour multiply simulated by
+baking the family tint into the SVG. Three of them beat a Material Symbols
+candidate on that sheet and the reasons are recorded at each entry in
+`src/data/mapIcons.js`: `bakery` over `bakery_dining` (three loaves stay three
+masses at 12 px where a croissant's fan closes), `restaurant` over Material's
+(more ground between fork and knife), and `pharmacy` over `local_pharmacy`
+DESPITE reading worse at 12 px — Material draws a cross, and this globe had
+already spent its crosses.
 
 `harbor` replaced Material Symbols' `directions_boat`, a passenger ferry seen
 head-on. The OSM tag says arsenal, not boat, and the ferry's superstructure did
@@ -139,8 +172,9 @@ the coordinates reach the SVG renderer exactly as vendored, which is what
 `src/data/sharedMobilityIcons.test.mjs` asserts by looking for the path string
 itself in what the module draws.
 
-`militarySiteIcons.js` and `medecinFamilyIcons.js` compose `harbor`, `doctor` and
-`hospital` the same way, and their tests make the same assertion: each looks for
+`militarySiteIcons.js`, `medecinFamilyIcons.js` and `amenityFamilyIcons.js`
+compose `harbor`, `doctor`, `hospital` and the eleven everyday-equipment glyphs
+the same way, and their tests make the same assertion: each looks for
 `mapIconArtwork(...).geometry` — the vendored string itself — inside the SVG the
 module builds, so a rescale or a redraw would fail the suite rather than ship.
 

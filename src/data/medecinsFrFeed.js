@@ -52,6 +52,27 @@ export const SITE_KIND = 8;
 export const SITE_SPECIALTIES = 9;
 export const SITE_PRACTITIONERS = 10;
 
+/**
+ * Tuple layout of `etablissements[]`, as `build-medecins-fr.mjs` writes it.
+ *
+ * A SECOND register on one layer, and a second tuple shape because the two
+ * describe different objects: a practice address folds PEOPLE (specialties,
+ * sectors, tariffs), a hospital folds INSTITUTIONS (legal entities sharing one
+ * campus). Forcing FINESS into the practice tuple would have meant nine empty
+ * columns and a tenth that lied.
+ */
+export const ETAB_LAT = 0;
+export const ETAB_LON = 1;
+export const ETAB_PRECISION = 2;
+export const ETAB_NAMES = 3;
+export const ETAB_KINDS = 4;
+export const ETAB_FINESS = 5;
+export const ETAB_COMMUNE = 6;
+/** Liberal practitioners the build found within 50 m — see `readHospitals`. */
+export const ETAB_PRACTITIONERS = 7;
+export const ETAB_ADDRESSES = 8;
+export const ETAB_UPDATED = 9;
+
 /** Tuple layout of one entry in a `praticiens.jsonl` line. */
 export const PRACTITIONER_NAME = 0;
 export const PRACTITIONER_CIVILITE = 1;
@@ -102,6 +123,17 @@ export const MEDECIN_FAMILIES = Object.freeze([
   'specialiste',
   'chirurgie',
   'imagerie',
+  // A family of the LAYER, not of the nomenclature. `medecinFamily()` can never
+  // return it — no `specialite_code` maps here — and the mesh never encodes it,
+  // because the mesh is built from practice addresses. It is listed with the
+  // six because this array is what the key prints and what the palette and the
+  // glyph pack are keyed on, and a seventh thing on the map that is absent from
+  // the one vocabulary would be a seventh thing with no name.
+  //
+  // LAST, and that placement is load-bearing: `MEDECIN_FAMILY_INDEX` is the
+  // mesh's on-the-wire encoding, so inserting anywhere else would silently
+  // renumber every cached tuple.
+  'hopital',
 ]);
 
 export const MEDECIN_FAMILY_LABELS = Object.freeze({
@@ -111,7 +143,21 @@ export const MEDECIN_FAMILY_LABELS = Object.freeze({
   specialiste: 'Spécialité médicale',
   chirurgie: 'Chirurgie',
   imagerie: 'Imagerie et biologie',
+  hopital: 'Hôpital',
 });
+
+/**
+ * The families that come from the PRACTICE register, in the mesh's own order.
+ *
+ * `MEDECIN_FAMILIES` is what the layer draws; this is what `medecinFamily()`
+ * can return and what a mesh tuple's family index addresses. Every consumer
+ * that decodes a mesh row wants this one — reading a tuple against the longer
+ * array is how a seventh family silently becomes reachable by an index that can
+ * never be written.
+ */
+export const MEDECIN_PRACTICE_FAMILIES = Object.freeze(
+  MEDECIN_FAMILIES.filter((family) => family !== 'hopital'),
+);
 
 const FAMILY_BY_SPECIALTY = Object.freeze({
   '01': 'generaliste',

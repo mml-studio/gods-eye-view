@@ -231,3 +231,50 @@ test('a tuple with an out-of-range family index is dropped, not filed under fami
   assert.equal(pick.picked.length, 1);
   assert.equal(meshAmenityFamily(pick.picked[0]), AMENITY_FAMILIES[0]);
 });
+
+test('a family filter reaches the ALLOCATOR, not just the result', () => {
+  // The whole reason `selectAmenitiesMesh` takes `families` instead of the
+  // caller filtering its output: `allocateAmenityBudget` splits the budget
+  // across the families it is SHOWN, so a family switched off must be invisible
+  // to it or it keeps its share of the view for nothing. Filtering afterwards
+  // draws one family at a thirteenth of the density the view can afford.
+  const box = { south: 44, west: 2, north: 46, east: 4 };
+  const rows = [];
+  const piscine = AMENITY_FAMILIES.indexOf('piscine');
+  const restaurant = AMENITY_FAMILIES.indexOf('restaurant');
+  for (let i = 0; i < 400; i += 1) {
+    rows.push([44.1 + (i % 40) * 0.04, 2.1 + Math.floor(i / 40) * 0.18, 0, restaurant]);
+  }
+  for (let i = 0; i < 60; i += 1) {
+    rows.push([44.2 + (i % 20) * 0.08, 2.2 + Math.floor(i / 20) * 0.5, 0, piscine]);
+  }
+
+  const all = selectAmenitiesMesh(rows, { box, budget: 120 });
+  const only = selectAmenitiesMesh(rows, { box, budget: 120, families: ['piscine'] });
+
+  const keptPiscines = (pick) => pick.picked.filter((row) => row[MESH_FAMILY] === piscine).length;
+  assert.ok(keptPiscines(only) > keptPiscines(all),
+    `filtered kept ${keptPiscines(only)}, unfiltered kept ${keptPiscines(all)}`);
+  assert.equal(only.picked.every((row) => row[MESH_FAMILY] === piscine), true,
+    'a family nobody asked for was drawn');
+
+  // `inBox` counts only the wanted families, because it is what the key prints
+  // as "N in the view": answering with families nobody asked for would make the
+  // sample look smaller than it is.
+  assert.equal(only.inBox, 60);
+  assert.equal(all.inBox, 460);
+  assert.equal(only.perFamily.length, 1);
+});
+
+test('an empty or unknown family filter is "no filter", never "nothing"', () => {
+  const box = { south: 44, west: 2, north: 46, east: 4 };
+  const rows = [[45, 3, 0, AMENITY_FAMILIES.indexOf('piscine')]];
+  // `null` is the default and means all. An unknown NAME resolves to no index
+  // and is simply absent from the wanted set — which is a filter that matches
+  // nothing, and is the caller's own fault for asking; the layer normalises
+  // unknown names away before it gets here (`parseAmenityFamilies`).
+  assert.equal(selectAmenitiesMesh(rows, { box, budget: 10 }).picked.length, 1);
+  assert.equal(selectAmenitiesMesh(rows, { box, budget: 10, families: null }).picked.length, 1);
+  assert.equal(selectAmenitiesMesh(rows, { box, budget: 10, families: ['piscine'] }).picked.length, 1);
+  assert.equal(selectAmenitiesMesh(rows, { box, budget: 10, families: ['ecole'] }).picked.length, 0);
+});

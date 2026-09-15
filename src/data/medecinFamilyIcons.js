@@ -39,12 +39,28 @@
  *   - **generaliste** — Maki's `doctor`, a stethoscope. It is that set's own
  *     icon for `amenity=doctors`, which is literally this layer's subject.
  *
- *   - **specialiste** — Maki's `hospital`, a plain cross. The catch-all: 24 of
- *     the register's 46 mapped specialty codes fall here, from cardiology to
- *     dermatology to ORL, and no single object pictures them. So the mark says
- *     "medicine, and nothing narrower" — the job the heater shield does for
- *     `military_land` next door — and the card names the actual specialty. It
- *     is also the only borrowed glyph that survives a 12 px plate intact.
+ *   - **specialiste** — Material's `medical_services`, a doctor's bag. The
+ *     catch-all: 24 of the register's 46 mapped specialty codes fall here, from
+ *     cardiology to dermatology to ORL, and no single object pictures them. So
+ *     the mark says "medicine, and nothing narrower" — the job the heater shield
+ *     does for `military_land` next door — and the card names the actual
+ *     specialty.
+ *
+ *     **It wore Maki's plain cross until 2026-09-15 and gave it up that day**,
+ *     when the 2 211 FINESS hospitals arrived as a seventh family on this same
+ *     layer. A bare cross is the international sign for a HOSPITAL, and two
+ *     crosses on one panel row are separated by hue alone — the exact failure
+ *     these plates were built to end. The bag costs something real and it is
+ *     worth naming: the cross was the only borrowed glyph in this project that
+ *     survived a 12 px plate intact, and the bag goes muddy there. It holds to
+ *     15 px, which is where this layer spends most of its range, and it says
+ *     PRACTITIONER where a cross says institution — which is the truer word for
+ *     a family of consulting rooms.
+ *
+ *   - **hopital** — Maki's `hospital`, the plain cross it was always the sign
+ *     for. 2 211 FINESS establishments, moved here from « Équipements du
+ *     quotidien » on 2026-09-15 because a hospital is not an everyday errand.
+ *     See `amenitiesFrance.js` for what the move cost and what it left behind.
  *
  *   - **femme-enfant** — Material's `escalator_warning`, an adult holding a
  *     child's hand. The name is the context Google drew it for and says nothing
@@ -127,6 +143,10 @@ const MATERIAL_SYMBOL_PATHS = Object.freeze({
   // A head in profile with a cogged disc inside it. The cog is a counter-wound
   // subpath and stays one: filled in, the head is a featureless lozenge.
   psychology: 'm434-410 4 32q1 8 6.5 13t13.5 5h44q8 0 13.5-5t6.5-13l4-32q8-3 14.5-7t11.5-9l30 13q7 3 14 1t11-9l22-38q4-7 2.5-14t-7.5-12l-26-19q2-8 2-16t-2-16l26-19q6-5 7.5-12t-2.5-14l-22-38q-4-7-11-9t-14 1l-30 13q-5-5-11.5-9t-14.5-7l-4-32q-1-8-6.5-13t-13.5-5h-44q-8 0-13.5 5t-6.5 13l-4 32q-8 3-14.5 7t-11.5 9l-30-13q-7-3-14-1t-11 9l-22 38q-4 7-2.5 14t7.5 12l26 19q-2 8-2 16t2 16l-26 19q-6 5-7.5 12t2.5 14l22 38q4 7 11 9t14-1l30-13q5 5 11.5 9t14.5 7Zm46-50q-25 0-42.5-17.5T420-520q0-25 17.5-42.5T480-580q25 0 42.5 17.5T540-520q0 25-17.5 42.5T480-460ZM280-80q-17 0-28.5-11.5T240-120v-132q-57-52-88.5-121.5T120-520q0-150 105-255t255-105q125 0 221.5 73.5T827-615l52 205q5 19-7 34.5T840-360h-80v120q0 33-23.5 56.5T680-160h-80v40q0 17-11.5 28.5T560-80H280Z',
+  // A doctor's bag with a cross on its face and a handle over it. Three masses
+  // that stay three at 15 px — handle, body, cross — which is what a catch-all
+  // needs: it has to read as "medicine" without reading as any one specialty.
+  medical_services: 'M160-80q-33 0-56.5-23.5T80-160v-480q0-33 23.5-56.5T160-720h160v-80q0-33 23.5-56.5T400-880h160q33 0 56.5 23.5T640-800v80h160q33 0 56.5 23.5T880-640v480q0 33-23.5 56.5T800-80H160Zm240-640h160v-80H400v80Zm40 360v80q0 17 11.5 28.5T480-240q17 0 28.5-11.5T520-280v-80h80q17 0 28.5-11.5T640-400q0-17-11.5-28.5T600-440h-80v-80q0-17-11.5-28.5T480-560q-17 0-28.5 11.5T440-520v80h-80q-17 0-28.5 11.5T320-400q0 17 11.5 28.5T360-360h80Z',
   // A scalpel held at 45°, blade down-left, over the table rail its tip rests
   // on. One diagonal mass, which is the one thing that still resolves at 12 px.
   surgical: 'M840-120H500q-20 0-30-12.5T460-160q0-15 10.5-27.5T501-200h339q17 0 28.5 11.5T880-160q0 17-11.5 28.5T840-120Zm-450-68q-32 32-74.5 50T227-120h-24q-31 0-60-8t-55-23q-11-7-16.5-17.5T66-191q0-11 4-21t12-18l195-194q12-12 28-12t28 12l76 76q14 14 22 32t8 38q0 20-8 38.5T409-207l-19 19Zm134-186q-12 12-28 12t-28-12l-94-94q-12-12-12-28t12-28l290-290q9-9 20.5-13.5T707-832q11 0 22 4.5t20 13.5l65 65q9 9 13.5 20.5T832-706q0 11-4.5 22T814-664L524-374Z',
@@ -187,9 +207,13 @@ const PUNCH = Object.freeze({
   generaliste: Object.freeze({ borrow: Object.freeze(['maki', 'doctor']), fraction: 0.56 }),
   'femme-enfant': Object.freeze({ markup: MATERIAL_SYMBOL_PATHS.escalator_warning, material: true, fraction: 0.64 }),
   'sante-mentale': Object.freeze({ markup: MATERIAL_SYMBOL_PATHS.psychology, material: true, fraction: 0.62 }),
-  specialiste: Object.freeze({ borrow: Object.freeze(['maki', 'hospital']), fraction: 0.52 }),
+  specialiste: Object.freeze({ markup: MATERIAL_SYMBOL_PATHS.medical_services, material: true, fraction: 0.6 }),
   chirurgie: Object.freeze({ markup: MATERIAL_SYMBOL_PATHS.surgical, material: true, fraction: 0.62 }),
   imagerie: Object.freeze({ borrow: Object.freeze(['temaki', 'radiation']), fraction: 0.56 }),
+  // The seventh family, and the only one that is an INSTITUTION rather than a
+  // consulting room. It takes the plain cross, and `specialiste` above records
+  // why it could not keep it.
+  hopital: Object.freeze({ borrow: Object.freeze(['maki', 'hospital']), fraction: 0.52 }),
 });
 
 /** Every family that carries a silhouette — which is every family there is. */
@@ -243,12 +267,12 @@ function plate(punch, px, key) {
 /**
  * The bare pastille, for a family this module has no silhouette for.
  *
- * Not a seventh subject: it is the mark every place pack in this fleet falls
+ * Not an eighth subject: it is the mark every place pack in this fleet falls
  * back to, kept for the one case where drawing a shape would be a claim. The
  * register can gain a specialty code, `medecinFamily()` folds an unknown code
- * into `specialiste` rather than throwing, and if a seventh family is ever
+ * into `specialiste` rather than throwing, and if an eighth family is ever
  * added upstream it must arrive as "a practice, and we cannot tell you which
- * kind" rather than wearing whichever of the six looked closest.
+ * kind" rather than wearing whichever of the seven looked closest.
  *
  * @param {number} [px=MEDECIN_GLYPH_RASTER_PX] Raster size.
  * @param {Object} [options]

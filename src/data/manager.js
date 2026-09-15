@@ -3663,6 +3663,26 @@ export class DataLayerManager {
     return rows;
   }
 
+  /**
+   * One delegated click handler for every toggling key line, attached once.
+   *
+   * Delegated rather than per-entry because `_refreshMapLegend` replaces the
+   * whole list on every repaint — roughly once a second — and re-binding a
+   * hundred listeners at that rate is how a key becomes the most expensive
+   * thing on the screen.
+   */
+  _installLegendToggleListener(list) {
+    if (list.dataset.toggleListener === '1') return;
+    list.dataset.toggleListener = '1';
+    list.addEventListener('click', (event) => {
+      const button = event.target?.closest?.('.map-legend-entry.is-toggle');
+      if (!button) return;
+      const { toggleLayer, toggleParam, toggleValue } = button.dataset;
+      if (!toggleLayer || !toggleParam) return;
+      this.setLayerParams(toggleLayer, { [toggleParam]: toggleValue }, { origin: 'user' });
+    });
+  }
+
   _refreshMapLegend(groups) {
     // Tolerant of the partial `document` stubs the panel unit tests install:
     // a manager that cannot reach a real DOM simply has no on-map mount point.
@@ -3671,6 +3691,7 @@ export class DataLayerManager {
     if (!host) return;
     const list = document.getElementById('map-legend-items');
     if (!list) return;
+    this._installLegendToggleListener(list);
 
     if (!groups.length) {
       host.hidden = true;
@@ -3805,8 +3826,32 @@ export class DataLayerManager {
           continue;
         }
 
-        const entry = document.createElement('div');
+        // A KEY LINE THAT IS ALSO ITS OWN SWITCH.
+        //
+        // An entry carrying `toggle: {param, value}` becomes a button: pressing
+        // it sends that one parameter to the layer that published it. It is the
+        // shortest possible distance between "I can see which mark that is" and
+        // "show me only those", and it is why a layer with thirteen classes no
+        // longer needs thirteen chips on a 300 px row.
+        //
+        // A `<button>` and not a div with a handler, so it is reachable by
+        // keyboard and announced as pressable; `aria-pressed` carries the ON
+        // state, which is the one thing the dimming alone would not say to a
+        // screen reader.
+        const toggle = item.toggle && typeof item.toggle.param === 'string'
+          ? item.toggle
+          : null;
+        const entry = document.createElement(toggle ? 'button' : 'div');
         entry.className = 'map-legend-entry';
+        if (toggle) {
+          entry.type = 'button';
+          entry.classList.add('is-toggle');
+          entry.dataset.toggleParam = toggle.param;
+          entry.dataset.toggleValue = String(toggle.value ?? '');
+          entry.dataset.toggleLayer = String(layer.id);
+          entry.setAttribute('aria-pressed', item.off ? 'false' : 'true');
+          if (item.off) entry.classList.add('is-off');
+        }
 
         const swatch = document.createElement('span');
         // Same contract as the row legend: the swatch IS the datum, and a
