@@ -412,6 +412,24 @@ test('a weakly-sourced deviation says where it was read; the strong one does not
   );
 });
 
+test('a corrected deviation says the clock was corrected, in hours', () => {
+  // Rémi publishes every deviation two hours out (`transitDelayOffset.js`).
+  // The card prints the residual — the real punctuality — and names the
+  // correction, because the number is no longer the operator's own.
+  assert.equal(
+    transitScheduleReadout({ delaySec: 245, delayFrom: 'ahead', delayOffsetSec: -7200 }),
+    '🕘 4 min late · next predicted stop · feed clock corrected 2 h',
+  );
+  // The 149 feeds that need no correction say nothing extra, whether the
+  // field is absent, zero or junk.
+  for (const delayOffsetSec of [undefined, 0, null, NaN, 'x']) {
+    assert.equal(
+      transitScheduleReadout({ delaySec: 245, delayFrom: 'behind', delayOffsetSec }),
+      '🕘 4 min late · last measured stop',
+    );
+  }
+});
+
 test('a network that publishes no deviation says so, and silence stays silent', () => {
   // Joined to its run, but this operator publishes absolute times and never a
   // delay. Omitting the line would leave "on time" and "never said" identical.
