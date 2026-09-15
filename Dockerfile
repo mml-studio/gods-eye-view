@@ -1,4 +1,4 @@
-# Déclassifié — hosted image.
+# Surplomb — hosted image.
 #
 # The app is not a static bundle: vite.config.js carries ~35 middleware
 # proxies that broker keys, cache upstream responses on disk and hold the AIS

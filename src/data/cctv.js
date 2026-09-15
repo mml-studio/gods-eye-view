@@ -1,7 +1,7 @@
 /**
  * @module cctv
  *
- * CCTV camera data layer for Déclassifié.
+ * CCTV camera data layer for Surplomb.
  *
  * Architecture:
  * - Camera catalog: built from seed definitions (CAMERA_SEEDS) merged with live

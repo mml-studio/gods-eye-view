@@ -130,7 +130,7 @@ function sandbox({ heads, pulls, compare, deployed, target = 'auto', gate = true
         PATH: `${BIN}:${process.env.PATH}`,
         GEVTEST_DIR: dir,
         GEV_ROOT: root,
-        GEV_REPO: 'mml-studio/declassifie',
+        GEV_REPO: 'mml-studio/surplomb',
       },
     });
     const read = (name) => {

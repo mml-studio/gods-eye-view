@@ -1,5 +1,5 @@
 [Unit]
-Description=Poll GitHub for the branch Déclassifié staging should show
+Description=Poll GitHub for the branch Surplomb staging should show
 
 [Timer]
 OnBootSec=2min

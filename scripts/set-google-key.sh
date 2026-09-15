@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Déclassifié — paste a Google Maps API key, prove it, then install it.
+# Surplomb — paste a Google Maps API key, prove it, then install it.
 #
 # WHY THIS EXISTS. A Google key is needed in more than one place and none of
 # them announce that they are stale: a workspace with an old key does not fail,

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Déclassifié — VPS deploy agent.
+# Surplomb — VPS deploy agent.
 #
 # Runs on a timer, decides which ref should be on the staging URL, and
 # rebuilds only when that ref's commit changed. The default target is "auto":
@@ -38,7 +38,7 @@
 set -euo pipefail
 
 ROOT=${GEV_ROOT:-/opt/gev}
-REPO=${GEV_REPO:-mml-studio/declassifie}
+REPO=${GEV_REPO:-mml-studio/surplomb}
 SRC="$ROOT/src"
 STATE="$ROOT/state"
 LOG() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }

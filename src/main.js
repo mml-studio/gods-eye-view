@@ -609,7 +609,7 @@ async function init() {
     // first, this is where its three fields stop being null.
     publishVoiceStack();
   } catch (error) {
-    console.error("Déclassifié initialization failed:", error);
+    console.error("Surplomb initialization failed:", error);
     loaderStatus.textContent = `Error: ${describeError(error)}`;
     loaderStatus.style.color = '#ff4444';
   }

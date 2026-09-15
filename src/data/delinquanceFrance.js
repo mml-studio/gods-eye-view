@@ -647,7 +647,7 @@ export function delinquanceCaveat(slug, { state = null, methodo = _methodo } = {
   if (total) {
     // The total is the one indicator on this layer that the SSMSI does not
     // publish, so its first line is not about crime — it is about authorship.
-    lines.push('⚠ Total CALCULÉ par Déclassifié, pas publié par le SSMSI : somme des '
+    lines.push('⚠ Total CALCULÉ par Surplomb, pas publié par le SSMSI : somme des '
       + `${DELINQUANCE_TOTAL_COMMUNE_SLUGS.length} indicateurs communaux `
       + `(${DELINQUANCE_TOTAL_DEPARTEMENT_SLUGS.length} au niveau départemental).`);
     lines.push('Unités mélangées (victimes, infractions, véhicules, mis en cause), taux '
@@ -1657,7 +1657,7 @@ const delinquanceFranceLayer = {
       state: slug === _indicator ? 'active' : 'idle',
       title: slug === DELINQUANCE_TOTAL_SLUG
         ? `${DELINQUANCE_TOTAL_COMMUNE_SLUGS.length} indicateurs cumulés — total calculé par `
-          + 'Déclassifié, pas publié par le SSMSI ; unités mélangées ; minorant dès qu’une '
+          + 'Surplomb, pas publié par le SSMSI ; unités mélangées ; minorant dès qu’une '
           + 'cellule est non diffusée'
         : `${indicatorForSlug(slug)?.label || slug} — unité de compte : ${indicatorForSlug(slug)?.unite || '—'}`,
       params: { indicator: slug },

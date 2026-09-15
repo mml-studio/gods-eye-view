@@ -90,7 +90,7 @@ async function fetchRegion({ lat, lon }) {
     {
       headers: {
         Accept: 'application/json',
-        'User-Agent': 'declassifie-adsblol-regional-fallback/1.0',
+        'User-Agent': 'surplomb-adsblol-regional-fallback/1.0',
       },
       signal: AbortSignal.timeout(20_000),
     },
