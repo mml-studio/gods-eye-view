@@ -118,7 +118,7 @@ async function fetchRegion(region) {
   const res = await fetch(url, {
     headers: {
       Accept: 'application/json',
-      'User-Agent': 'gods-eye-view-adsblol-regional-fallback/1.0',
+      'User-Agent': 'declassifie-adsblol-regional-fallback/1.0',
     },
     signal: AbortSignal.timeout(15000),
   });

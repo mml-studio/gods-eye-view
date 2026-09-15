@@ -1,4 +1,4 @@
-# God's Eye View — staging on the Enerlens VPS.
+# Déclassifié — staging on the Enerlens VPS.
 #
 # Installed at /opt/gev/docker-compose.yml. The checkout it builds lives at
 # /opt/gev/src and is moved around by gev-deploy.sh; this file never changes.

@@ -1,4 +1,4 @@
-# Doctrine cartographique de God's Eye View
+# Doctrine cartographique de Déclassifié
 
 *D'après le corpus pédagogique de Boris Mericskay, confronté à ce qu'est réellement GEV : un globe 3D temps réel.*
 

@@ -609,7 +609,7 @@ async function init() {
     // first, this is where its three fields stop being null.
     publishVoiceStack();
   } catch (error) {
-    console.error("God's Eye View initialization failed:", error);
+    console.error("Déclassifié initialization failed:", error);
     loaderStatus.textContent = `Error: ${describeError(error)}`;
     loaderStatus.style.color = '#ff4444';
   }

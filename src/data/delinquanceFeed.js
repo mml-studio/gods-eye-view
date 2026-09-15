@@ -340,7 +340,7 @@ export const DELINQUANCE_DOCUMENTATION_SHORT = 'SSMSI, juillet 2026';
  * line of this whole file that may never be dropped for length: a reader who
  * loses it is reading GEV's arithmetic as the register's.
  */
-export const DELINQUANCE_TOTAL_AUTHORSHIP_SHORT = '⚠ Total CALCULÉ par God’s Eye View, non publié par le SSMSI';
+export const DELINQUANCE_TOTAL_AUTHORSHIP_SHORT = '⚠ Total CALCULÉ par Déclassifié, non publié par le SSMSI';
 /** Why the number cannot be called « faits », and what its rate sits on. */
 export const DELINQUANCE_TOTAL_UNITS_SHORT = 'Unités mélangées, taux recalculé sur la population';
 /** Why one indicator of the eighteen is not in it. */

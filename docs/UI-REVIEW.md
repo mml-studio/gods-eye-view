@@ -1,4 +1,4 @@
-# Revue UI de God's Eye View
+# Revue UI de Déclassifié
 
 *Revue conduite le 2026-09-03 sur `http://localhost:4290/?welcome=0`, branche
 `tests-5-sous-agents-fork`. Elle porte sur **l'interface** — chrome, HUD,

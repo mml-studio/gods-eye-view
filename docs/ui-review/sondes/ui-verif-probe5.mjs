@@ -1,5 +1,5 @@
 import puppeteer from 'puppeteer';
-import { newQaPage } from '/Users/memel/conductor/workspaces/gods-eye-view/manila-v1/scripts/lib/qa-first-run.mjs';
+import { newQaPage } from '../../../scripts/lib/qa-first-run.mjs';
 const browser = await puppeteer.launch({ headless:'new', protocolTimeout:120000,
   args:['--no-sandbox','--disable-setuid-sandbox','--use-gl=angle','--use-angle=swiftshader','--disable-dev-shm-usage','--disable-background-timer-throttling','--disable-renderer-backgrounding','--window-size=1600,1000'] });
 const page = await newQaPage(browser);

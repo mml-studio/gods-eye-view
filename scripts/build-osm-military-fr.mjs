@@ -72,7 +72,7 @@ import { MILITARY_TAG_FILTERS } from '../src/data/militaryInstallationData.js';
  * Node's `fetch` sends none by default; every other Overpass caller in this
  * repository sends one. See `scripts/build-osm-dams.mjs` for the measurement.
  */
-const OVERPASS_USER_AGENT = 'gods-eye-view-military-pack/1.0 (+https://github.com/mml-studio/gods-eye-view)';
+const OVERPASS_USER_AGENT = 'declassifie-military-pack/1.0 (+https://github.com/mml-studio/declassifie)';
 
 /** Same mirrors, same order, as the app's `/api/overpass` proxy. */
 const OVERPASS_UPSTREAMS = [

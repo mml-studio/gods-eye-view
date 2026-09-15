@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# God's Eye View — paste a Google Maps API key, prove it, then install it.
+# Déclassifié — paste a Google Maps API key, prove it, then install it.
 #
 # WHY THIS EXISTS. A Google key is needed in more than one place and none of
 # them announce that they are stale: a workspace with an old key does not fail,

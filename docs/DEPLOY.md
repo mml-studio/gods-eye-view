@@ -1,6 +1,6 @@
 # Deploying this fork
 
-God's Eye View is **not a static site**. `vite.config.js` carries ~35 middleware
+Déclassifié is **not a static site**. `vite.config.js` carries ~35 middleware
 proxies that broker API keys, cache upstream answers on disk and hold the AIS
 websocket open, so a deployment has to run a Node process — `vite preview`,
 which serves the built bundle *and* those proxies. Anything that only uploads
@@ -73,7 +73,7 @@ that predates the access gate.
 | --- | --- |
 | `/opt/gev/gev-deploy.sh` | the deploy agent (copy of `deploy/vps/gev-deploy.sh`) |
 | `/opt/gev/docker-compose.yml` | the stack (copy of `deploy/vps/docker-compose.yml`) |
-| `/opt/gev/.env` | keys + `GEV_ACCESS_PASSWORD`, `chmod 600`. **Do not `source` it from bash** — one value contains an apostrophe (`OPENROUTER_APP_NAME=God's Eye View`), and `. /opt/gev/.env` dies on it at line 152. Docker's `env_file` parser is not a shell and reads it correctly. |
+| `/opt/gev/.env` | keys + `GEV_ACCESS_PASSWORD`, `chmod 600`. **Do not `source` it from bash**. A `.env` is not shell: an unquoted value with an apostrophe or a space kills `. /opt/gev/.env`, which is how `OPENROUTER_APP_NAME` did it under the project's previous name at line 152. Docker's `env_file` parser is not a shell and reads it correctly. |
 | `/opt/gev/src` | the source tree the agent swaps out, unpacked from a tarball |
 | `/opt/gev/target` | `auto` (default), `main`, or a branch name to pin |
 | `/opt/gev/state/deployed` | `branch@sha` currently live |
