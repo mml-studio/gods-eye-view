@@ -8,7 +8,7 @@
 
 **56 des 59 ne demandent rien** : pas de clé, pas de compte, pas d'inscription. Ouvrez la page, la France est là.
 
-*Aucun endroit laissé de côté.*
+*Aucun angle mort.*
 
 ![Orbital HUD, a tracked live globe, FLIR terrain — then OPEN SOURCED](docs/media/hero-open-source-reveal.gif)
 
@@ -440,6 +440,6 @@ Le globe, le cockpit et l'agent vocal viennent de **[God's Eye View](https://git
 
 <div align="center">
 
-**🌐 Surplomb. Aucun endroit laissé de côté.**
+**🌐 Surplomb. Aucun angle mort.**
 
 </div>
