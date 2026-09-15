@@ -38,6 +38,13 @@
 set -euo pipefail
 
 ROOT=${GEV_ROOT:-/opt/gev}
+# EVERY call below follows redirects (`curl -L`), and that is load-bearing: a
+# renamed repository answers the REST API with 301 and a JSON OBJECT in the
+# body. `-fsS` does not fail on a 3xx, so without `-L` the object arrives where
+# an array was expected, `.[0].head.ref` reads empty, and the script concludes
+# "no open pull request" and pins staging to main — for good, silently. Measured
+# 2026-09-15, when this box still named the repo by a slug two renames old and
+# stopped showing pull requests without logging a single error.
 REPO=${GEV_REPO:-mml-studio/surplomb}
 SRC="$ROOT/src"
 STATE="$ROOT/state"
@@ -76,7 +83,7 @@ behind_main() {
       return 0
     fi
   fi
-  body=$(curl -fsS --max-time 20 \
+  body=$(curl -fsSL --max-time 20 \
     -H 'Accept: application/vnd.github+json' \
     "https://api.github.com/repos/$REPO/compare/$base...$head" 2>/dev/null || true)
   behind=$(printf '%s' "$body" | jq -r 'if type == "object" then (.behind_by // empty) else empty end' 2>/dev/null || true)
@@ -104,7 +111,7 @@ if [ "$target" = auto ]; then
   # Not knowing whether a pull request EXISTS is different from not knowing
   # whether one is fresh: an outage here says nothing about what is deployed,
   # so it holds, while an unmeasurable candidate resolves to main.
-  api=$(curl -fsS --max-time 20 \
+  api=$(curl -fsSL --max-time 20 \
     -H 'Accept: application/vnd.github+json' \
     "https://api.github.com/repos/$REPO/pulls?state=open&sort=updated&direction=desc&per_page=1" 2>/dev/null || true)
   if [ -z "$api" ]; then
