@@ -1,4 +1,4 @@
-# Doctrine cartographique de Déclassifié
+# Doctrine cartographique de Surplomb
 
 *D'après le corpus pédagogique de Boris Mericskay, confronté à ce qu'est réellement GEV : un globe 3D temps réel.*
 

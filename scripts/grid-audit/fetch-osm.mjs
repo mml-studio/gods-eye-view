@@ -112,7 +112,7 @@ export async function overpass(query, label) {
         method: 'POST',
         headers: {
           'content-type': 'application/x-www-form-urlencoded',
-          'user-agent': 'declassifie-grid-audit/1.0 (OSM coverage check vs RTE open data)',
+          'user-agent': 'surplomb-grid-audit/1.0 (OSM coverage check vs RTE open data)',
         },
         body: new URLSearchParams({ data: query }),
         signal: AbortSignal.timeout(300_000),

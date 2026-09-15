@@ -64,18 +64,28 @@ for arg in "$@"; do
 done
 exit 0
 `, 0o755);
+  // `follow` mirrors the one curl flag this script cannot do without: when the
+  // sandbox declares the repository renamed, a call that did not ask to follow
+  // redirects gets GitHub's real 301 body — a JSON OBJECT, served with a 0 exit
+  // status — instead of the fixture.
   write(path.join(bin, 'curl'), `#!/bin/sh
 out=""
 url=""
+follow=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -o) out=$2; shift 2 ;;
     -H|--max-time) shift 2 ;;
+    -*L*) follow=1; shift ;;
     -*) shift ;;
     *) url=$1; shift ;;
   esac
 done
 printf '%s\\n' "$url" >> "$GEVTEST_DIR/calls"
+if [ -f "$GEVTEST_DIR/renamed" ] && [ -z "$follow" ]; then
+  printf '{"message":"Moved Permanently","url":"%s","documentation_url":"https://docs.github.com/rest"}\\n' "$url"
+  exit 0
+fi
 case "$url" in
   *"/pulls?"*) file="$GEVTEST_DIR/pulls.json" ;;
   *"/compare/"*) file="$GEVTEST_DIR/compare.json" ;;
@@ -101,7 +111,7 @@ exit 0
 const BIN = fakeCommands();
 
 /** A sandboxed /opt/gev: fixtures for the fakes, and the state they write. */
-function sandbox({ heads, pulls, compare, deployed, target = 'auto', gate = true } = {}) {
+function sandbox({ heads, pulls, compare, deployed, target = 'auto', gate = true, renamed = false } = {}) {
   const dir = scratchDir('gev-deploy-');
   const root = path.join(dir, 'root');
   const state = path.join(root, 'state');
@@ -111,6 +121,7 @@ function sandbox({ heads, pulls, compare, deployed, target = 'auto', gate = true
   write(path.join(root, '.env'), 'GEV_ACCESS_PASSWORD=hunter2\n');
   if (deployed) write(path.join(state, 'deployed'), deployed);
 
+  if (renamed) write(path.join(dir, 'renamed'), '');
   write(path.join(dir, 'heads'), Object.entries(heads ?? {}).map(([k, v]) => `${k} ${v}\n`).join(''));
   if (pulls) write(path.join(dir, 'pulls.json'), JSON.stringify(pulls));
   if (compare) write(path.join(dir, 'compare.json'), JSON.stringify(compare));
@@ -130,7 +141,7 @@ function sandbox({ heads, pulls, compare, deployed, target = 'auto', gate = true
         PATH: `${BIN}:${process.env.PATH}`,
         GEVTEST_DIR: dir,
         GEV_ROOT: root,
-        GEV_REPO: 'mml-studio/declassifie',
+        GEV_REPO: 'mml-studio/surplomb',
       },
     });
     const read = (name) => {
@@ -173,6 +184,25 @@ test('a pull request that contains main is what staging shows', () => {
   // A first-ever tick has no cached verdict to read, which is a normal state
   // and not something a journal should carry a shell error about.
   assert.doesNotMatch(result.log, /No such file or directory/);
+});
+
+test('a renamed repository still shows its pull requests', () => {
+  // The repository was renamed twice on 2026-09-15 and this box kept naming it
+  // by the oldest slug. GitHub redirects, so `git ls-remote` and codeload — the
+  // two calls that already followed — never noticed. The REST API answers 301
+  // with a JSON object, which `-fsS` accepts, `jq` reads as "not an array", and
+  // the script reported "no open pull request" for hours without one error line.
+  const { run } = sandbox({
+    renamed: true,
+    heads: { main: MAIN_SHA, 'feature-x': PR_SHA },
+    pulls: openPullRequest('feature-x'),
+    compare: { status: 'ahead', ahead_by: 3, behind_by: 0 },
+  });
+  const result = run();
+
+  assert.equal(result.status, 0);
+  assert.equal(result.deployed, `feature-x@${PR_SHA}`, 'a 301 must not read as "no open pull request"');
+  assert.doesNotMatch(result.selection, /no open pull request/);
 });
 
 test('a pull request cut before a merge does NOT get the URL — main does', () => {

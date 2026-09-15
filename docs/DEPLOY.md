@@ -1,6 +1,6 @@
 # Deploying this fork
 
-Déclassifié is **not a static site**. `vite.config.js` carries ~35 middleware
+Surplomb is **not a static site**. `vite.config.js` carries ~35 middleware
 proxies that broker API keys, cache upstream answers on disk and hold the AIS
 websocket open, so a deployment has to run a Node process — `vite preview`,
 which serves the built bundle *and* those proxies. Anything that only uploads

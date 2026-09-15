@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🌐 Déclassifié
+# 🌐 Surplomb
 
 ### Un simulateur de satellite espion dans un navigateur — sauf que les sources sont publiques et que les données sont vraies.
 
@@ -413,7 +413,7 @@ By default nobody else can reach your server — it binds to localhost. To share
 
 ## 📋 Responsible & Open
 
-Déclassifié runs on **public data, clear sources, and local-first execution.** No secrets, no private datasets, no mystery scraping — anything involving a private key is brokered server-side. It has the visual grammar of a classified ops room, built entirely from open signals and inspectable code.
+Surplomb runs on **public data, clear sources, and local-first execution.** No secrets, no private datasets, no mystery scraping — anything involving a private key is brokered server-side. It has the visual grammar of a classified ops room, built entirely from open signals and inspectable code.
 
 **The line.** This project models **events, assets, infrastructure, and systems** — aircraft, vessels, satellites, fires, cameras, cities. It does not build features for named-person search, face recognition, or tracking individuals, and pull requests that cross that line won't be merged. People are not a query type here.
 
@@ -424,7 +424,7 @@ Déclassifié runs on **public data, clear sources, and local-first execution.**
 <sub>Media note: Bilawal Sidhu created and owns the capture GIFs on this page and authorized their inclusion here. Any appearance by Bilawal is included with his permission. These files are project documentation, not MIT-licensed standalone assets. Platform interfaces, trademarks, avatars, data, and third-party imagery visible within them remain subject to their respective owners' terms. See [media provenance](docs/media/README.md) and [source terms](DATA_SOURCES.md).</sub>
 
 > [!IMPORTANT]
-> Déclassifié is an exploratory visualization of public and third-party data.
+> Surplomb is an exploratory visualization of public and third-party data.
 > Data may be delayed, incomplete, modeled, inferred, or wrong. Do not use it
 > for flight or maritime navigation, emergency response, medical or health
 > decisions, investment decisions, or other safety-critical or operational
@@ -440,6 +440,6 @@ Le globe, le cockpit et l'agent vocal viennent de **[God's Eye View](https://git
 
 <div align="center">
 
-**🌐 Déclassifié. Aucun endroit laissé de côté.**
+**🌐 Surplomb. Aucun endroit laissé de côté.**
 
 </div>

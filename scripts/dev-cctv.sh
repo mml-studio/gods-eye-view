@@ -155,7 +155,7 @@ resolve_opensky_credentials() {
 
 resolve_opensky_credentials
 
-echo "Starting Déclassifié with CCTV source pack..."
+echo "Starting Surplomb with CCTV source pack..."
 echo "URL: http://localhost:${PORT}/"
 echo "Google Maps key source: ${GOOGLE_MAPS_API_KEY_SOURCE}"
 if [[ -f "${CCTV_SOURCES_FILE}" ]]; then

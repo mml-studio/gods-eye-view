@@ -1,5 +1,5 @@
 /**
- * Vite configuration for Déclassifié — a cinematic geospatial app.
+ * Vite configuration for Surplomb — a cinematic geospatial app.
  *
  * Registers the dev-server proxy middlewares that bypass CORS and add
  * caching/auth for upstream APIs:
@@ -979,7 +979,7 @@ function releaseOverpassSlot() {
  * what makes it rare, and it gives the operators someone to contact instead of
  * an anonymous robot to ban.
  */
-const OVERPASS_USER_AGENT = 'declassifie/1.0 (+https://github.com/mml-studio/declassifie)';
+const OVERPASS_USER_AGENT = 'surplomb/1.0 (+https://github.com/mml-studio/surplomb)';
 /**
  * TTL for FRESH cached Overpass responses (ms). Road geometry is static for
  * months — the original 45 s TTL forced a public-mirror round-trip on nearly
@@ -1662,7 +1662,7 @@ const RADIO_RESPONSE_MAX_BYTES = 4 * 1024 * 1024;
 const RADIO_DIRECTORY_LIMIT = 750;
 const RADIO_CATALOG_MIN_SUCCESSFUL_QUERIES = 5;
 const RADIO_CATALOG_HEALTHY_MIN_STATIONS = Math.ceil(RADIO_DIRECTORY_LIMIT / 2);
-const RADIO_USER_AGENT = 'Declassifie/1.0 (Radio Browser directory client)';
+const RADIO_USER_AGENT = 'Surplomb/1.0 (Radio Browser directory client)';
 const RADIO_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RADIO_FALLBACK_MIRRORS = Object.freeze([
   'https://de1.api.radio-browser.info',
@@ -2514,7 +2514,7 @@ function celestrakProxy() {
       signal: AbortSignal.timeout(20000),
       // CelesTrak 403s bulk groups (e.g. `active`) unless the request carries a
       // descriptive User-Agent with a contact point.
-      headers: { 'User-Agent': 'declassifie-celestrak-proxy/1.0 (+https://github.com/mml-studio/declassifie)' },
+      headers: { 'User-Agent': 'surplomb-celestrak-proxy/1.0 (+https://github.com/mml-studio/surplomb)' },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const body = await res.text();
@@ -4389,7 +4389,7 @@ const IRVE_PLACEMENTS_URL = `https://odre.opendatasoft.com/api/explore/v2.1/cata
 /** Widest box the live route answers — the viewport gate, not a new one. */
 const IRVE_LIVE_MAX_BOX_DEG = IRVE_MAX_BOX_DEG;
 /** Declared to the proxy, like every other outbound fetch in this file. */
-const IRVE_LIVE_USER_AGENT = 'Declassifie/1.0 (+https://github.com/mml-studio/declassifie)';
+const IRVE_LIVE_USER_AGENT = 'Surplomb/1.0 (+https://github.com/mml-studio/surplomb)';
 
 /** @type {?{at:number, placements:Map<string,string>, ambiguous:number, ids:number}} */
 let _irvePlacements = null;
@@ -12584,7 +12584,7 @@ function overpassProxy() {
           try {
             const upstreamRes = await fetch(upstream, {
               signal: controller.signal,
-              headers: { 'User-Agent': 'declassifie/dev (local)' },
+              headers: { 'User-Agent': 'surplomb/dev (local)' },
             });
             if (!upstreamRes.ok) return fail('no route found');
             const ctype = upstreamRes.headers.get('content-type') || '';
@@ -12646,7 +12646,7 @@ async function fetchAdsbLolPointFallback(req) {
         {
           headers: {
             Accept: 'application/json',
-            'User-Agent': 'declassifie-adsblol-regional-fallback/1.0',
+            'User-Agent': 'surplomb-adsblol-regional-fallback/1.0',
           },
           signal: controller.signal,
         },
@@ -13181,7 +13181,7 @@ function gbfsProxy() {
                 method: 'GET',
                 headers: {
                   Accept: 'application/json',
-                  'User-Agent': 'declassifie-gbfs-proxy/1.0',
+                  'User-Agent': 'surplomb-gbfs-proxy/1.0',
                 },
                 signal: controller.signal,
                 redirect: 'manual',
@@ -13311,7 +13311,7 @@ const PAN_COMPANION_MAX_BYTES = 32 * 1024 * 1024;
 const PAN_VIEWPORT_PAD_DEG = 0.06;
 /** How often learned footprints are flushed to disk. */
 const PAN_BOUNDS_FLUSH_MS = 30_000;
-const PAN_USER_AGENT = 'declassifie/0.1 (+https://github.com/mml-studio/declassifie; transport.data.gouv.fr GTFS-RT client)';
+const PAN_USER_AGENT = 'surplomb/0.1 (+https://github.com/mml-studio/surplomb; transport.data.gouv.fr GTFS-RT client)';
 
 /** @type {?{feeds: Array<Object>, generatedAt: string, source: string}} */
 let _panIndex = null;
@@ -14644,7 +14644,7 @@ const GBFS_FR_TIMEOUT_MS = 10_000;
 const GBFS_FR_MAX_BYTES = 24 * 1024 * 1024;
 const GBFS_FR_VIEWPORT_PAD_DEG = 0.03;
 const GBFS_FR_BOUNDS_FLUSH_MS = 60_000;
-const GBFS_FR_USER_AGENT = 'declassifie/0.1 (+https://github.com/mml-studio/declassifie; transport.data.gouv.fr GBFS client)';
+const GBFS_FR_USER_AGENT = 'surplomb/0.1 (+https://github.com/mml-studio/surplomb; transport.data.gouv.fr GBFS client)';
 const GBFS_FR_VIEWPORT_CACHE_MAX = 24;
 
 let _gbfsFrIndex = null;
@@ -16852,7 +16852,7 @@ export async function fetchCctvImageFromUpstream(url, {
   }, timeoutMs);
   try {
     const upstream = await fetchImpl(url, {
-      headers: { 'User-Agent': 'declassifie-cctv-proxy/1.0' },
+      headers: { 'User-Agent': 'surplomb-cctv-proxy/1.0' },
       signal: controller.signal,
     });
     const contentType = upstream.headers.get('content-type') || '';
@@ -16942,7 +16942,7 @@ function cctvProxy() {
       sv.searchParams.set('key', streetViewKey);
 
       const svResp = await fetch(sv.toString(), {
-        headers: { 'User-Agent': 'declassifie-cctv-proxy/1.0' },
+        headers: { 'User-Agent': 'surplomb-cctv-proxy/1.0' },
         signal: AbortSignal.timeout(CCTV_FRAME_FETCH_TIMEOUT_MS),
       });
       const svType = svResp.headers.get('content-type') || '';
@@ -17030,7 +17030,7 @@ function cctvProxy() {
             }
 
             try {
-              const upstreamHeaders = { 'User-Agent': 'declassifie-cctv-proxy/1.0' };
+              const upstreamHeaders = { 'User-Agent': 'surplomb-cctv-proxy/1.0' };
               const requestRange = req.headers?.range;
               if (requestRange) upstreamHeaders.Range = requestRange;
               const upstream = await fetch(mediaUrl, {
@@ -17212,7 +17212,7 @@ function adsbLolProxy() {
             return;
           }
           const upstream = await fetch('https://api.adsb.lol/v2/mil', {
-            headers: { 'User-Agent': 'declassifie-adsblol-proxy/1.0' },
+            headers: { 'User-Agent': 'surplomb-adsblol-proxy/1.0' },
           });
           const body = await upstream.text();
           if (upstream.ok) {
@@ -17783,7 +17783,7 @@ function voiceBrainProxy() {
             // the dashboard and MUST stay optional: a fork with neither set is
             // a normal, working install, not a degraded one.
             ...(process.env.OPENROUTER_SITE_URL ? { 'HTTP-Referer': process.env.OPENROUTER_SITE_URL } : {}),
-            'X-Title': process.env.OPENROUTER_APP_NAME || 'Déclassifié',
+            'X-Title': process.env.OPENROUTER_APP_NAME || 'Surplomb',
           },
           body: JSON.stringify(upstreamBody),
         });
@@ -20512,8 +20512,8 @@ const NOMINATIM_MIN_INTERVAL_MS = 1100;
 
 /** The identification the policy asks for; a browser cannot set either header itself. */
 const NOMINATIM_HEADERS = Object.freeze({
-  'User-Agent': 'Declassifie/0.1 (+https://github.com/mml-studio/declassifie)',
-  Referer: 'https://github.com/mml-studio/declassifie',
+  'User-Agent': 'Surplomb/0.1 (+https://github.com/mml-studio/surplomb)',
+  Referer: 'https://github.com/mml-studio/surplomb',
 });
 
 /**
@@ -20561,7 +20561,7 @@ async function fetchRegionalNews(place) {
   });
   try {
     const xml = await fetchRegionalText(`https://news.google.com/rss/search?${rssParams}`, {
-      headers: { 'User-Agent': 'Declassifie/0.1' },
+      headers: { 'User-Agent': 'Surplomb/0.1' },
       timeoutMs: 12_000,
     });
     const articles = normalizeRssArticles(xml, 5);
@@ -20577,7 +20577,7 @@ async function fetchRegionalNews(place) {
   });
   try {
     const payload = await fetchRegionalJson(`https://api.gdeltproject.org/api/v2/doc/doc?${params}`, {
-      headers: { 'User-Agent': 'Declassifie/0.1' },
+      headers: { 'User-Agent': 'Surplomb/0.1' },
       timeoutMs: 12_000,
     });
     const articles = normalizeRegionalArticles(payload, 5);
@@ -21284,7 +21284,7 @@ const ROAD_STATUS_MAX_BYTES = 24 * 1024 * 1024;
 const ROAD_STATUS_CONCURRENCY = 6;
 const ROAD_STATUS_CACHE_DIR = path.join(process.cwd(), '.gev-cache', 'road-status-fr');
 const ROAD_STATUS_CACHE_PATH = path.join(ROAD_STATUS_CACHE_DIR, 'snapshot.json');
-const ROAD_STATUS_USER_AGENT = 'Declassifie/1.0 (+https://github.com/mml-studio/declassifie)';
+const ROAD_STATUS_USER_AGENT = 'Surplomb/1.0 (+https://github.com/mml-studio/surplomb)';
 const _roadStatusRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 90, globalMax: 240 });
 
 /** @type {?object} Parsed `config/datex_traficolor_sites.json`. */
@@ -22628,7 +22628,7 @@ async function fetchAddressSourceOnce(url, options) {
   try {
     const response = await fetch(url, {
       signal: controller.signal,
-      headers: { 'User-Agent': 'Declassifie/1.0 (address scan; +https://github.com/mml-studio/declassifie)' },
+      headers: { 'User-Agent': 'Surplomb/1.0 (address scan; +https://github.com/mml-studio/surplomb)' },
     });
     if (!response.ok) {
       console.warn(`[address-proxy] ${response.status} from ${new URL(url).host}`);
@@ -23808,7 +23808,7 @@ async function fetchCommunePackBytes(url) {
   try {
     const response = await fetch(url, {
       signal: controller.signal,
-      headers: { 'User-Agent': 'Declassifie/1.0 (commune pack; +https://github.com/mml-studio/declassifie)' },
+      headers: { 'User-Agent': 'Surplomb/1.0 (commune pack; +https://github.com/mml-studio/surplomb)' },
     });
     if (!response.ok) {
       console.warn(`[commune-pack] ${response.status} from ${new URL(url).host}`);
@@ -24676,7 +24676,7 @@ function adsFranceProxy() {
         method: 'POST',
         body,
         signal: AbortSignal.timeout(ADS_GEOCODE_TIMEOUT_MS),
-        headers: { 'User-Agent': 'Declassifie/1.0 (ads scan; +https://github.com/mml-studio/declassifie)' },
+        headers: { 'User-Agent': 'Surplomb/1.0 (ads scan; +https://github.com/mml-studio/surplomb)' },
       });
       if (!response.ok) {
         console.warn(`[ADS Proxy] BAN ${response.status}`);
@@ -26505,11 +26505,11 @@ function accessGatePlugin() {
       }
 
       res.writeHead(401, {
-        'WWW-Authenticate': 'Basic realm="Déclassifié", charset="UTF-8"',
+        'WWW-Authenticate': 'Basic realm="Surplomb", charset="UTF-8"',
         'Content-Type': 'text/plain; charset=utf-8',
         'Cache-Control': 'no-store',
       });
-      res.end('401 — Déclassifié is private.\n');
+      res.end('401 — Surplomb is private.\n');
     });
   };
 
@@ -27048,7 +27048,7 @@ async function fetchPlugUpstream(target) {
       redirect: 'manual',
       signal: AbortSignal.timeout(PLUG_TIMEOUT_MS),
       headers: {
-        'User-Agent': 'declassifie/0.1 (+https://github.com/mml-studio/declassifie; dataset relay)',
+        'User-Agent': 'surplomb/0.1 (+https://github.com/mml-studio/surplomb; dataset relay)',
         Accept: 'application/json, text/csv, text/plain;q=0.9, */*;q=0.5',
       },
     });

@@ -634,7 +634,7 @@ const SHARPEN_SHADER = /* glsl */ `
 `;
 
 /**
- * Central UI orchestrator for the Déclassifié application.
+ * Central UI orchestrator for the Surplomb application.
  *
  * Responsibilities:
  * - CesiumJS PostProcessStage pipeline: registers per-style GLSL stages

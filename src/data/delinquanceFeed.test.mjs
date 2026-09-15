@@ -434,7 +434,7 @@ test('THE COMPACT REGISTER SAYS THE SAME THING IN ONE LINE', () => {
   // The computed total's own three claims: authorship first, because it is the
   // one number here the SSMSI does not publish.
   assert.match(DELINQUANCE_TOTAL_AUTHORSHIP_SHORT, /CALCULÉ/);
-  assert.match(DELINQUANCE_TOTAL_AUTHORSHIP_SHORT, /Déclassifié/);
+  assert.match(DELINQUANCE_TOTAL_AUTHORSHIP_SHORT, /Surplomb/);
   assert.match(DELINQUANCE_TOTAL_AUTHORSHIP_SHORT, /SSMSI/);
   assert.match(DELINQUANCE_TOTAL_UNITS_SHORT, /Unités mélangées/);
   assert.match(DELINQUANCE_TOTAL_AFD_SHORT, /AFD/);

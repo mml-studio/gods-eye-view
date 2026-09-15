@@ -75,7 +75,7 @@ import {
  * `/api/overpass` proxy, the hydro registry, the RTE unit registry, the grid
  * audit. This script was the only one that did not.
  */
-const OVERPASS_USER_AGENT = 'declassifie-dams-pack/1.0 (+https://github.com/mml-studio/declassifie)';
+const OVERPASS_USER_AGENT = 'surplomb-dams-pack/1.0 (+https://github.com/mml-studio/surplomb)';
 
 /** Same mirrors, same order, as the app's `/api/overpass` proxy. */
 const OVERPASS_UPSTREAMS = [

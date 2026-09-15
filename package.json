@@ -1,15 +1,15 @@
 {
-  "name": "declassifie",
+  "name": "surplomb",
   "private": true,
   "version": "0.1.0",
   "description": "59 couches de donn\u00e9es publiques fran\u00e7aises sur un globe 3D photor\u00e9aliste \u2014 dont 44 \u00e9crites ici : ventes DVF et parcelle, permis de construire, DPE, \u00e9coles, m\u00e9decins, d\u00e9linquance, bruit des avions, production \u00e9lectrique, transports en temps r\u00e9el. 56 des 59 ne demandent aucune cl\u00e9.",
   "type": "module",
   "license": "MIT",
   "author": "Melvyn Raymond (https://melvynraymond.com/)",
-  "homepage": "https://github.com/mml-studio/declassifie#readme",
+  "homepage": "https://github.com/mml-studio/surplomb#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mml-studio/declassifie.git"
+    "url": "https://github.com/mml-studio/surplomb.git"
   },
   "bugs": {
     "url": "https://github.com/bilawalsidhu/gods-eye-view/issues"

@@ -1,4 +1,4 @@
-# Déclassifié Current State
+# Surplomb Current State
 
 Updated: September 8, 2026
 
@@ -1853,7 +1853,7 @@ Historical planning documents may not match runtime behavior.
 
 ## Current Baseline
 
-- The project is **Déclassifié** (`mml-studio/declassifie`), a French fork of
+- The project is **Surplomb** (`mml-studio/surplomb`), a French fork of
   `bilawalsidhu/gods-eye-view`. Repository metadata, public URLs and the
   User-Agent strings sent to data operators carry that identity. The
   `godsEyeView.*` localStorage namespace does NOT: renaming it would wipe every

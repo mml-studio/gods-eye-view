@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Déclassifié — does the edge still rate-limit ALL of /api?
+# Surplomb — does the edge still rate-limit ALL of /api?
 #
 # The rule in front of gev.enerlens.com is 30 requests per 10 seconds per
 # address on `/api`, blocking for 10 s (measured 2026-09-09). A GEV page makes

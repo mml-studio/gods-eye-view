@@ -2,7 +2,7 @@
 
 Mis à jour : 8 septembre 2026.
 
-Ce document dit comment un jeu de données entre dans Déclassifié sans
+Ce document dit comment un jeu de données entre dans Surplomb sans
 écrire de couche, ce qu'il reçoit en entrant, et ce qu'il ne reçoit pas.
 Il est le contrat ; le code est dans `src/data/dataset*.js`.
 
