@@ -578,3 +578,169 @@ test('union coverage is exact on shapes the French coastline does not make', () 
   assert.equal(isRectangleCoveredByBoxes(rect(0, 0, 1, 1), []), false);
   assert.equal(isRectangleCoveredByBoxes(rect(1, 0, 0, 1), pair), false);
 });
+
+// ── the 3D globe is bought on demand ──────────────────────────────────────
+// ion meters Google Photorealistic 3D Tiles by "root tile", and one root tile
+// is one successful request for the tileset — so the FETCH is the charge.
+// Loading it at boot meant a `#map=osm` share link bought a globe it then hid,
+// and 113 QA harnesses bought one each; that is how a 1 000-a-month tier ran
+// out on the fifteenth of September 2026. These pins are what keeps the cost
+// following the reader instead of the page load.
+
+/** A viewer stub that also records primitives, which the lazy load adds to. */
+function lazyViewer() {
+  const primitives = [];
+  return {
+    primitives,
+    scene: { globe: { show: true }, primitives: { add: (p) => primitives.push(p) } },
+    imageryLayers: { add() {}, remove() {} },
+  };
+}
+
+/** A controller whose photoreal door is a counted, scriptable loader. */
+function lazyController(result, options = {}) {
+  const viewer = lazyViewer();
+  const calls = [];
+  const controller = new MapStackController(viewer, {
+    googleKeyConfigured: true,
+    cesiumToken: 'ion-token',
+    loadPhotoreal: async () => {
+      calls.push(Date.now());
+      return typeof result === 'function' ? result() : result;
+    },
+    ...options,
+  });
+  // Imagery construction is pinned by its own tests above; this stands in for
+  // it, mirroring only the two scene effects the real one has on the tileset.
+  controller._activateGlobeStack = async (stack) => {
+    viewer.lastGlobeStack = stack.id;
+    if (controller.googleTileset) controller.googleTileset.show = false;
+    viewer.scene.globe.show = true;
+  };
+  return { controller, viewer, calls };
+}
+
+test('the 3D chip is offered before anything has been bought', () => {
+  const { controller, calls } = lazyController({ tileset: { name: 'tiles' }, source: 'ion' });
+  // Nothing fetched at construction — that is the entire saving.
+  assert.equal(calls.length, 0);
+  assert.equal(controller.getPhotorealTileset(), null);
+  // …and the chip is live anyway, so the reader can still ask for it.
+  assert.equal(controller.isStackAvailable('photoreal'), true);
+  assert.equal(controller.getActiveId(), 'photoreal', 'a keyed build still OPENS on the 3D globe');
+});
+
+test('a share link on another basemap never buys the 3D globe', async () => {
+  // The case that made this worth doing: boot used to fetch the tileset and
+  // then `#map=osm` hid it, so the reader paid for a globe they never saw.
+  const { controller, calls } = lazyController({ tileset: { name: 'tiles' }, source: 'ion' });
+  await controller.setStack('osm', { silent: true });
+  assert.equal(controller.getActiveId(), 'osm');
+  assert.equal(calls.length, 0);
+});
+
+test('activating the 3D globe buys it once, and only once', async () => {
+  const tiles = { name: 'tiles', show: true };
+  const { controller, viewer, calls } = lazyController({ tileset: tiles, source: 'ion' });
+
+  await controller.setStack('photoreal', { silent: true });
+  assert.equal(calls.length, 1);
+  assert.equal(controller.getPhotorealTileset(), tiles);
+  assert.equal(controller.photorealSource, 'ion');
+  assert.deepEqual(viewer.primitives, [tiles], 'the tileset is added to the scene by the controller');
+  assert.equal(tiles.show, true);
+  assert.equal(viewer.scene.globe.show, false);
+
+  // Away and back: the reader pays for the globe, not for each look at it.
+  await controller.setStack('osm');
+  assert.equal(tiles.show, false);
+  await controller.setStack('photoreal');
+  assert.equal(calls.length, 1, 'a second activation must not re-bill the root tile');
+  assert.equal(tiles.show, true);
+});
+
+test('two activations racing each other make one request', async () => {
+  // A share restore landing on top of the boot activation is the real case.
+  // Two requests would be two root tiles for one globe.
+  let release = null;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const { controller, calls } = lazyController(async () => {
+    await gate;
+    return { tileset: { name: 'tiles' }, source: 'ion' };
+  });
+  const first = controller.setStack('photoreal', { silent: true });
+  const second = controller.setStack('photoreal', { silent: true });
+  release();
+  await Promise.all([first, second]);
+  assert.equal(calls.length, 1);
+});
+
+test('a refused purchase keeps the reader on the basemap they had', async () => {
+  const { controller, viewer, calls } = lazyController({ tileset: null, error: '403 PERMISSION_DENIED' });
+  await controller.setStack('osm', { silent: true });
+  assert.equal(controller.getActiveId(), 'osm');
+
+  const errors = [];
+  controller._onError = (message) => errors.push(message);
+  const state = await controller.setStack('photoreal');
+
+  // The scene was never touched: `_ensurePhotorealTileset` runs before any of
+  // it, so a refusal costs the reader nothing they were already looking at.
+  assert.equal(controller.getActiveId(), 'osm');
+  assert.equal(viewer.scene.globe.show, true);
+  assert.deepEqual(viewer.primitives, []);
+  assert.match(state.lastError, /403 PERMISSION_DENIED/);
+  assert.equal(errors.length, 1);
+
+  // And the door closes: a retry would re-bill a root tile to re-learn the
+  // same refusal, so the chip goes grey with the provider's own words.
+  assert.equal(controller.isStackAvailable('photoreal'), false);
+  assert.match(
+    controller.getStacks().find((s) => s.id === 'photoreal').unavailableReason,
+    /Google 3D Tiles failed to load: 403 PERMISSION_DENIED/,
+  );
+  await controller.setStack('photoreal');
+  assert.equal(calls.length, 1, 'the failed door is not knocked on twice');
+});
+
+test('a purchase refused at BOOT lands on the ladder, not on an empty viewer', async () => {
+  // The EEA case, which is staging: a keyed build whose 3D tiles are withheld.
+  // Boot has nothing on the scene yet, so unlike the switch above it cannot
+  // simply stay put — it has to walk down to Google's 2D cartography.
+  const { controller, viewer } = lazyController({ tileset: null, error: '403 PERMISSION_DENIED' });
+  assert.equal(controller.getActiveId(), 'photoreal');
+  await controller.setStack('photoreal', { silent: true });
+  assert.equal(controller.getActiveId(), 'google-roadmap');
+  assert.equal(viewer.lastGlobeStack, 'google-roadmap');
+  // The status chip says what happened, once, until the reader picks something.
+  assert.match(controller.getState().notice, /Google 3D Tiles failed to load/);
+});
+
+test('a build with no door does not pretend it has one', () => {
+  // Keyless and no ion token: `main.js` hands over no loader at all, so the
+  // chip must read as a missing credential rather than a failed load — and
+  // nothing must be attempted to find that out.
+  const controller = new MapStackController(stubViewer(), {
+    googleKeyConfigured: false,
+    loadPhotoreal: null,
+  });
+  assert.equal(controller.canLoadPhotoreal(), false);
+  assert.equal(controller.getActiveId(), 'osm');
+  assert.equal(
+    controller.getStacks().find((s) => s.id === 'photoreal').unavailableReason,
+    'Google Maps API key or Cesium ion token required for Google 3D',
+  );
+});
+
+test('the session switch beats the loader', async () => {
+  // `?photoreal=0` must close the door even on a build that has one, and
+  // without spending anything to prove it.
+  const { controller, calls } = lazyController(
+    { tileset: { name: 'tiles' }, source: 'ion' },
+    { photorealDisabled: true },
+  );
+  assert.equal(controller.canLoadPhotoreal(), false);
+  assert.equal(controller.getActiveId(), 'google-roadmap');
+  await controller.setStack('photoreal');
+  assert.equal(calls.length, 0);
+});

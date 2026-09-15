@@ -402,6 +402,7 @@ export class MapStackController {
     googleKeyConfigured = null,
     googleTilesetError = '',
     photorealDisabled = false,
+    loadPhotoreal = null,
     ignTerrainSpike = false,
     initialStack = 'photoreal',
     onChange = null,
@@ -433,6 +434,31 @@ export class MapStackController {
     // the reader's own switch: an ion root tile is billed per boot, so a
     // harness that will never look at the 3D globe should not buy one.
     this.photorealDisabled = !!photorealDisabled;
+    // HOW THE 3D GLOBE IS PAID FOR, and why it is not fetched here.
+    //
+    // Cesium ion meters Google Photorealistic 3D Tiles by "root tile", and one
+    // root tile is one successful request for the tileset — so the fetch is
+    // the charge, and boot used to make it before anything knew whether the
+    // reader would ever see the result. A `#map=osm` share link bought a
+    // photoreal globe it then hid; so did every harness, and the free tier's
+    // 1 000 a month ran out on the fifteenth.
+    //
+    // So the tileset is fetched on the first activation of the photoreal stack
+    // and cached here, which makes the cost follow the reader instead of the
+    // page load: a share link that names another basemap never pays, a reader
+    // who switches away and back pays once, and a build with no door does not
+    // spend a doomed round-trip finding that out.
+    //
+    // `googleTileset` may still be handed in directly — tests and tools do —
+    // in which case there is nothing to load and the door is already open.
+    this._loadPhotoreal = typeof loadPhotoreal === 'function' ? loadPhotoreal : null;
+    // One attempt, ever. A second would re-bill the root tile to re-learn the
+    // same refusal, and the chip has a reason to show by then.
+    this._photorealAttempted = !!googleTileset;
+    // In-flight load, so two clicks on the chip make one request.
+    this._photorealLoad = null;
+    // 'google-key' | 'ion' | null — which door opened, once one has.
+    this.photorealSource = null;
     // DEV-ONLY SPIKE (`?ign_terrain=1`). Replaces the keyless terrain provider
     // with IGN RGE ALTI over France, and FORCES the keyless branch even when an
     // ion token is present — the point of the spike is to look at IGN terrain,
@@ -506,7 +532,10 @@ export class MapStackController {
       // else OSM. A `null` key flag — the caller never said — deliberately
       // stays on OSM rather than landing on a stack whose session call would
       // answer 503 for want of a key.
-      if (googleTileset) this._activeId = 'photoreal';
+      // `isStackAvailable` rather than `googleTileset`: with the lazy loader
+      // the tileset does not exist yet at construction, and asking for the
+      // object would send every keyed build to the 2D ladder on boot.
+      if (this.isStackAvailable('photoreal')) this._activeId = 'photoreal';
       else if (this.googleKeyConfigured === true) this._activeId = 'google-roadmap';
       else this._activeId = 'osm';
     }
@@ -591,7 +620,7 @@ export class MapStackController {
   isStackAvailable(id) {
     const stack = this.getStack(id);
     if (!stack) return false;
-    if (stack.kind === 'photoreal') return !!this.googleTileset;
+    if (stack.kind === 'photoreal') return this.canLoadPhotoreal();
     // `google-2d` needs the Google key but NOT a loaded 3D tileset: these are
     // exactly the stacks that work when photoreal does not. Only an explicit
     // `false` (the keyless build said so) makes them unavailable — `null`
@@ -600,6 +629,35 @@ export class MapStackController {
     if (stack.kind === 'google-2d') return this.googleKeyConfigured !== false;
     if (stack.requiresIon) return !!this.cesiumToken;
     return true;
+  }
+
+  /**
+   * Whether the 3D globe can be shown — already loaded, or still worth asking.
+   *
+   * "Worth asking" is the part that is not obvious: an unattempted loader
+   * counts as available, so the chip is offered BEFORE anything has been
+   * bought. That is the whole point of loading late. Once an attempt has been
+   * made and failed, the door closes for this session — a retry would re-bill
+   * a root tile to re-learn the same refusal — and `_unavailableReason` has
+   * the provider's own words to show instead.
+   * @returns {boolean}
+   */
+  canLoadPhotoreal() {
+    if (this.photorealDisabled) return false;
+    if (this.googleTileset) return true;
+    return !!this._loadPhotoreal && !this._photorealAttempted;
+  }
+
+  /**
+   * The photoreal tileset, if this session has actually loaded one.
+   *
+   * Null is the normal state on a page that never left the 2D stacks, so
+   * callers must treat it as "not yet" rather than "broken" — which is why
+   * `main.js` publishes it as a live getter rather than a boot-time value.
+   * @returns {object|null}
+   */
+  getPhotorealTileset() {
+    return this.googleTileset;
   }
 
   /**
@@ -678,7 +736,22 @@ export class MapStackController {
       const message = error?.message || String(error);
       this._lastError = message;
       this._onError?.(message, stack);
-      if (this.googleTileset) {
+      if (stack.kind === 'photoreal' && !this.googleTileset) {
+        // The 3D globe is what failed, so it cannot also be the safety net.
+        // Nothing has touched the scene — `_ensurePhotorealTileset` runs before
+        // any of it — but a BOOT activation has nothing on the scene either,
+        // so land on the best stack left rather than on an empty viewer. A
+        // reader who was already looking at a basemap keeps it, because
+        // `_activated` and `_activeId` still point at it.
+        const fallback = this._activated ? null : this._fallbackStack();
+        if (fallback && fallback.id !== stack.id) {
+          await this._activateGlobeStack(fallback, gen);
+          if (gen !== this._switchGen) return this.getState();
+          this._activeId = fallback.id;
+          this._activated = true;
+          governorRequestRender('map-stack');
+        }
+      } else if (this.googleTileset) {
         await this._activatePhotoreal(gen);
         if (gen !== this._switchGen) return this.getState();
         this._activeId = 'photoreal';
@@ -735,7 +808,54 @@ export class MapStackController {
     };
   }
 
+  /**
+   * Buy the tileset, at most once, and only when something is about to show it.
+   *
+   * Throws on failure so `setStack()`'s existing error path owns the outcome —
+   * and it runs BEFORE any scene mutation, so a refusal leaves the reader on
+   * the basemap they already had instead of on an empty viewer.
+   * @param {number|null} gen - The switch generation, for supersession.
+   * @returns {Promise<void>}
+   */
+  async _ensurePhotorealTileset(gen) {
+    if (this.googleTileset || !this._loadPhotoreal) return;
+    if (this._photorealAttempted && !this._photorealLoad) {
+      throw new Error(this.googleTilesetError || 'Google 3D Tiles failed to load');
+    }
+    // Shared, not re-entered: a double click on the chip, or a share restore
+    // racing the boot activation, must make ONE request. Two would be two root
+    // tiles for one globe.
+    if (!this._photorealLoad) this._photorealLoad = this._loadPhotoreal();
+    let result = null;
+    try {
+      result = await this._photorealLoad;
+    } finally {
+      this._photorealAttempted = true;
+      this._photorealLoad = null;
+    }
+    // A newer switch won while the network was out — it owns the scene now, but
+    // the tileset we paid for is still worth keeping for the next activation.
+    const superseded = gen != null && gen !== this._switchGen;
+    if (result?.tileset) {
+      this.googleTileset = result.tileset;
+      this.photorealSource = result.source || null;
+      this.viewer.scene.primitives.add(result.tileset);
+      // Hidden until the activation below says otherwise: a tileset added
+      // while a superseded switch was in flight must not paint over the stack
+      // that won. The purchase is still kept — the next activation is free.
+      this.googleTileset.show = false;
+      return;
+    }
+    this.googleTilesetError = summarizeProviderError(result?.error || 'Google 3D Tiles failed to load');
+    if (superseded) return;
+    throw new Error(this.googleTilesetError);
+  }
+
   async _activatePhotoreal(gen) {
+    // Before `_removeImageryLayers()`, so a failed purchase costs the reader
+    // nothing they were already looking at.
+    await this._ensurePhotorealTileset(gen);
+    if (gen != null && gen !== this._switchGen) return;
     this._removeImageryLayers();
     if (this.googleTileset) this.googleTileset.show = true;
     this.viewer.scene.globe.show = false;

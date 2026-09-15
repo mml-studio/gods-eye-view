@@ -241,30 +241,34 @@ async function init() {
       viewer.scene.globe.tileCacheSize = LITE_TILE_CACHE_SIZE;
     }
 
-    let tileset = null;
-    // Kept out of the catch so the controller can NAME the failure on the map
-    // source chip. A basemap that is not the one the app asked for has to say
-    // so; the old code's `console.warn` was a message to nobody.
-    let tilesetError = '';
-    // Which door the 3D globe came through, or null. An ion-served tileset is
-    // the SAME Google tileset, but on Cesium's contract and quota, so QA and
-    // anyone driving the app from the console needs to be able to tell them
-    // apart without reading the network panel.
-    let tilesetSource = null;
-    // `?photoreal=0`, or the flag the QA fleet installs. Read BEFORE the
-    // credential check because the whole point is to not make the call: ion
-    // bills one "root tile" per successful endpoint request, so a boot that
-    // never reaches `loadPhotorealTileset()` is a boot that costs nothing.
+    // `?photoreal=0`, or the flag the QA fleet installs. Read first, because
+    // the whole point is to not make the call: ion bills one "root tile" per
+    // successful request for the tileset, so a session that never asks for it
+    // is a session that costs nothing.
     const photorealOff = photorealDisabled();
+    // Whether this build has a door to the 3D globe at all. Deliberately NOT
+    // "try it and catch": with neither credential there is nothing to attempt,
+    // and an attempt would spend a doomed round-trip and then report a network
+    // error as if something had gone wrong. Nothing has — that is the keyless
+    // build.
+    const canLoadPhotoreal = !photorealOff && !!(googleApiKey || cesiumToken);
     if (photorealOff) {
       loaderStatus.textContent = 'Google 3D Tiles off for this session — starting on the globe...';
-    } else if (!googleApiKey && !cesiumToken) {
-      // Deliberately NOT "call it and catch": with neither credential there is
-      // nothing to try, and an attempt would spend a doomed round-trip and then
-      // report a network error the loader would print as if something had gone
-      // wrong. Nothing has — this is the configured build.
+    } else if (!canLoadPhotoreal) {
       loaderStatus.textContent = 'No Google key or ion token — starting keyless...';
-    } else {
+    }
+
+    // THE PURCHASE, DEFERRED. Handed to the controller rather than called here,
+    // so the fetch happens on the first activation of the photoreal stack and
+    // not on every page load. What that changes, concretely: a `#map=osm`
+    // share link used to buy a photoreal globe and then hide it, and so did
+    // every one of the 113 QA harnesses — which is how a 1 000-a-month tier
+    // ran out on the fifteenth of September 2026. The cost now follows the
+    // reader instead of the page load.
+    //
+    // Returns the controller's contract — `{tileset, source, error}` — so the
+    // controller never has to know the shape of a photoreal failure list.
+    const loadPhotoreal = canLoadPhotoreal ? async () => {
       const photoreal = await loadPhotorealTileset(Cesium, {
         googleApiKey,
         // The token already in the build for Bing and world terrain. It also
@@ -277,9 +281,7 @@ async function init() {
             : 'Loading Google 3D Tiles...';
         },
       });
-      tileset = photoreal.tileset;
-      tilesetSource = photoreal.source;
-      if (tileset) {
+      if (photoreal.tileset) {
         if (photoreal.source === 'ion') {
           console.info(
             '[Init] Google 3D Tiles served through Cesium ion (asset 2275207) — '
@@ -287,18 +289,15 @@ async function init() {
             + 'Cesium ion credits, including the free tier\'s "Upgrade for commercial use.", are required on screen.',
           );
         }
-        viewer.scene.primitives.add(tileset);
-        // NOTE: Cesium World Terrain intentionally disabled — conflicts with Google 3D Tiles at high zoom.
-        // Google Photorealistic 3D Tiles provide their own terrain/elevation.
-        viewer.scene.globe.show = false;
       } else {
         console.warn('[Init] Google 3D Tiles unavailable, falling back to Cesium globe:', photoreal.errors);
-        tilesetError = describePhotorealFailure(photoreal.errors);
-        loaderStatus.textContent = `Google 3D Tiles unavailable (${tilesetError}). Continuing in fallback mode...`;
-        // Keep Cesium globe visible as fallback instead of aborting the app.
-        viewer.scene.globe.show = true;
       }
-    }
+      return {
+        tileset: photoreal.tileset,
+        source: photoreal.source,
+        error: describePhotorealFailure(photoreal.errors),
+      };
+    } : null;
 
     loaderStatus.textContent = 'Initializing systems...';
 
@@ -331,12 +330,21 @@ async function init() {
     // tiles a month, ~90 to a view) and needs the server session broker. OSM
     // is the only stack that costs the account nothing, which also makes it
     // the deterministic one for a harness.
+    //
+    // The ladder no longer asks whether the tileset LOADED, because nothing has
+    // been bought yet at this point — it asks whether there is a door. A keyed
+    // build whose tiles turn out to be withheld (the EEA case) still lands on
+    // Google's 2D cartography, one layer down: the boot activation fails and
+    // `setStack`'s fallback walks the same ladder.
     const startupStack = photorealOff
       ? 'osm'
-      : (tileset ? 'photoreal' : (keylessMode ? 'osm' : 'google-roadmap'));
+      : (canLoadPhotoreal ? 'photoreal' : (keylessMode ? 'osm' : 'google-roadmap'));
 
     const mapStackController = new MapStackController(viewer, {
-      googleTileset: tileset,
+      // Deferred rather than loaded: see `loadPhotoreal` above. The controller
+      // owns the one attempt, the cache and the error, because it is the thing
+      // that knows when the globe is about to be shown.
+      loadPhotoreal,
       cesiumToken,
       // Not a failure and not a missing credential — nobody asked for the
       // tileset. Without this the chip would blame the key or the network for
@@ -346,7 +354,6 @@ async function init() {
       // (keyless build) reads differently from a keyed build whose tiles
       // failed, and both arrive here as `googleTileset: null`.
       googleKeyConfigured: !keylessMode,
-      googleTilesetError: tilesetError,
       ignTerrainSpike,
       initialStack: startupStack,
       // Task 5 (height-datum fix): rebroadcast stack changes as a window
@@ -473,7 +480,10 @@ async function init() {
       viewer,
       styleManager,
       dataManager,
-      tileset,
+      // Asked for at voice-load time, not captured here: the 3D globe is
+      // bought on first activation now, so at this line it usually does not
+      // exist yet — and by the time somebody speaks, it often does.
+      getTileset: () => mapStackController.getPhotorealTileset(),
       onReady: (stack) => { voiceStack = stack; publishVoiceStack(); },
     });
 
@@ -579,9 +589,14 @@ async function init() {
     window.__godsEyeView = {
       viewer,
       styleManager,
-      tileset,
-      // 'google-key' | 'ion' | null — see the load block above.
-      tilesetSource,
+      // GETTERS, not values. The photoreal tileset is bought on the first
+      // activation of its stack, so a boot-time snapshot would pin `null` on
+      // the console and on every harness for the rest of the session — and
+      // read `undefined` as "the 3D globe is broken" when it only means
+      // "nobody has asked for it yet".
+      get tileset() { return mapStackController.getPhotorealTileset(); },
+      // 'google-key' | 'ion' | null — which door opened, once one has.
+      get tilesetSource() { return mapStackController.photorealSource; },
       dataManager,
       // Null until the voice stack lands — `voiceReady` is how a caller waits
       // for it without polling, and `loadVoice()` how it asks for it early.

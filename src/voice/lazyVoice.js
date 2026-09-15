@@ -54,8 +54,11 @@ const VOICE_IDLE_TIMEOUT_MS = 4_000;
  * @param {object} options.viewer Cesium viewer.
  * @param {object} options.styleManager
  * @param {object} options.dataManager Sealed layer manager.
- * @param {object|null} [options.tileset] Google photoreal tileset, for clamped
- *   annotation placement.
+ * @param {(() => object|null)|null} [options.getTileset] Reads the Google
+ *   photoreal tileset for clamped annotation placement. A FUNCTION rather than
+ *   a value because the tileset is bought on the first activation of the 3D
+ *   stack — at install time it is usually null, and by the time somebody
+ *   speaks it often is not.
  * @param {(loaded: {controller: object, annotations: object, sceneDirector: object}) => void} [options.onReady]
  *   Called once, when the stack is up — this is where `main.js` republishes it
  *   on `window.__godsEyeView`.
@@ -66,7 +69,7 @@ export function installLazyVoice({
   viewer,
   styleManager,
   dataManager,
-  tileset = null,
+  getTileset = null,
   onReady = null,
   idleTimeoutMs = VOICE_IDLE_TIMEOUT_MS,
 } = {}) {
@@ -93,7 +96,7 @@ export function installLazyVoice({
       .then(([realtime, annotationsModule, directorModule]) => {
         // Same order as the eager build: the director and the annotation
         // engine are constructor arguments of the voice runner, not siblings.
-        const annotations = annotationsModule.initAnnotations({ viewer, tileset });
+        const annotations = annotationsModule.initAnnotations({ viewer, tileset: getTileset?.() || null });
         const sceneDirector = new directorModule.SceneDirector(viewer, styleManager, dataManager);
         const controller = realtime.initGevVoiceCommands({
           viewer, styleManager, dataManager, sceneDirector, annotations,
