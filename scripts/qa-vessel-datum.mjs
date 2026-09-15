@@ -176,7 +176,7 @@ async function main() {
       }
       console.log(`  ▸ ${key}`);
 
-      const page = await newQaPage(browser);
+      const page = await newQaPage(browser, { photoreal: true });
       await page.setViewport({ width: 1600, height: 900 });
       page.on('pageerror', (err) => console.error(`    [page-error] ${err.message}`));
 

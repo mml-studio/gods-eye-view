@@ -123,7 +123,7 @@ async function main() {
 
   const consoleErrors = [];
   try {
-    const page = await newQaPage(browser);
+    const page = await newQaPage(browser, { photoreal: true });
     await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
     page.on('console', (message) => {
       if (message.type() === 'error') consoleErrors.push(message.text().slice(0, 300));

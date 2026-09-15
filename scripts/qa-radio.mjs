@@ -95,7 +95,7 @@ async function main() {
   });
 
   try {
-    const page = await newQaPage(browser);
+    const page = await newQaPage(browser, { photoreal: true });
     await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
     await page.evaluateOnNewDocument(() => {
       window.__qaRadioPlayCalls = [];

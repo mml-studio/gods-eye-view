@@ -54,7 +54,7 @@ const browser = await puppeteer.launch({
 });
 // The first-run mission card returns for every fresh session, and a headless
 // run is always one — `newQaPage()` is the repo's single answer to that.
-const page = await newQaPage(browser);
+const page = await newQaPage(browser, { photoreal: true });
 const consoleErrors = [];
 page.on('console', (message) => {
   if (message.type() === 'error') consoleErrors.push(message.text().slice(0, 240));

@@ -32,7 +32,7 @@ const browser = await puppeteer.launch({
   executablePath,
   args: ['--use-angle=metal', '--enable-gpu', '--no-sandbox'],
 });
-const page = await newQaPage(browser);
+const page = await newQaPage(browser, { photoreal: true });
 const failures = [];
 const consoleErrors = [];
 

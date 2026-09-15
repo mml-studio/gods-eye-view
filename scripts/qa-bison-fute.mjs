@@ -276,7 +276,7 @@ async function main() {
   });
 
   try {
-    const page = await newQaPage(browser);
+    const page = await newQaPage(browser, { photoreal: true });
     const consoleErrors = [];
     page.on('console', (message) => {
       if (message.type() === 'error') consoleErrors.push(message.text());

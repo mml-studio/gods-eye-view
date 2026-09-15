@@ -459,7 +459,7 @@ async function main() {
 
   let exitCode = 0;
   try {
-    const page = await newQaPage(browser);
+    const page = await newQaPage(browser, { photoreal: true });
     await page.setViewport({ width: 1440, height: 900 });
     page.on('console', (message) => {
       const text = message.text();

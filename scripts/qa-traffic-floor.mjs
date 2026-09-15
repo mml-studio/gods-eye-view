@@ -288,7 +288,7 @@ async function main() {
 
   let exitCode = 0;
   try {
-    const page = await newQaPage(browser);
+    const page = await newQaPage(browser, { photoreal: true });
     await page.setViewport({ width: 1440, height: 900 });
 
     // Refuse the DEM proxy for the whole run — see the header.

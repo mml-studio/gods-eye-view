@@ -1227,7 +1227,7 @@ async function runBrowserGroup(record) {
       '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
   });
   env.browserVersion = await browser.version();
-  const page = await newQaPage(browser);
+  const page = await newQaPage(browser, { photoreal: true });
   await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
 
   const pageErrors = [];

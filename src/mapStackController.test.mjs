@@ -252,6 +252,47 @@ test('an unavailable stack says which credential it is missing, not a generic on
   );
 });
 
+test('a session that switched photoreal off is told so, not blamed for it', () => {
+  // ion bills a "root tile" per boot, so `?photoreal=0` — and the flag the QA
+  // fleet installs — skip the call entirely. Every other branch of
+  // `_unavailableReason` would then invent a fault: a keyed build would read
+  // "failed to load", a keyless one would demand a credential that was never
+  // the problem. Both would send a reader to fix something that is not broken.
+  const keyedOff = new MapStackController(stubViewer(), {
+    googleKeyConfigured: true,
+    cesiumToken: 'ion-token',
+    photorealDisabled: true,
+  });
+  assert.equal(
+    keyedOff.getStacks().find((stack) => stack.id === 'photoreal').unavailableReason,
+    'Google 3D Tiles off for this session (photoreal=0)',
+  );
+
+  const keylessOff = new MapStackController(stubViewer(), {
+    googleKeyConfigured: false,
+    photorealDisabled: true,
+  });
+  assert.equal(
+    keylessOff.getStacks().find((stack) => stack.id === 'photoreal').unavailableReason,
+    'Google 3D Tiles off for this session (photoreal=0)',
+  );
+
+  // The switch is narrow: it explains the 3D globe and nothing else.
+  assert.equal(
+    keyedOff.getStacks().find((stack) => stack.id === 'bing-aerial').unavailableReason,
+    null,
+    'an ion token still opens the Bing stacks',
+  );
+  assert.equal(
+    keylessOff.getStacks().find((stack) => stack.id === 'bing-aerial').unavailableReason,
+    'Cesium ion token required for Bing stacks',
+  );
+
+  // And it never fires a boot notice: nothing failed, so the status chip has
+  // no fallback to announce.
+  assert.equal(keyedOff._bootNotice(), null);
+});
+
 test('the keyless build can select every keyless stack, and only those', () => {
   const keyless = new MapStackController(stubViewer(), { googleKeyConfigured: false });
   assert.deepEqual(

@@ -65,7 +65,7 @@ const browser = await puppeteer.launch({
 });
 
 try {
-  const page = await newQaPage(browser);
+  const page = await newQaPage(browser, { photoreal: true });
   await page.setViewport({ width: 1440, height: 860 });
   await page.goto(`${baseUrl}/${SHARE_HASH}`, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => !!window.__godsEyeView?.viewer, { timeout: 90_000 });

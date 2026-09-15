@@ -80,7 +80,7 @@ const browser = await puppeteer.launch({
   args: ['--no-sandbox', '--enable-unsafe-swiftshader', '--window-size=1400,900'],
   defaultViewport: { width: 1400, height: 900 },
 });
-const page = await newQaPage(browser);
+const page = await newQaPage(browser, { photoreal: true });
 page.on('pageerror', (error) => console.log('  [pageerror]', String(error).slice(0, 200)));
 
 await page.goto(`${BASE}/?welcome=0`, { waitUntil: 'domcontentloaded', timeout: 90_000 });

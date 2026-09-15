@@ -19,9 +19,11 @@ import {
   FIRST_RUN_SUPPRESSION_EXEMPT,
   QA_WAIT_POLLING_MS,
   auditFirstRunSuppression,
+  disablePhotoreal,
   newQaPage,
   suppressFirstRun,
 } from '../scripts/lib/qa-first-run.mjs';
+import { PHOTOREAL_DISABLE_GLOBAL, photorealDisabled } from './photorealTileset.js';
 import { FIRST_RUN_SESSION_KEY, FIRST_RUN_STORAGE_KEY } from './firstRunExperience.js';
 
 /** A directory of throwaway harnesses, so the audit is tested on its own terms. */
@@ -48,14 +50,17 @@ function fakePage() {
         getItem: (k) => (map.has(k) ? map.get(k) : null),
       });
       const previous = globalThis.window;
-      globalThis.window = { sessionStorage: store(session), localStorage: store(local) };
+      const win = { sessionStorage: store(session), localStorage: store(local) };
+      globalThis.window = win;
       try {
         for (const { fn, arg } of installed) fn(arg);
       } finally {
         if (previous === undefined) delete globalThis.window;
         else globalThis.window = previous;
       }
-      return { session, local };
+      // `win` as well as the stores: the photoreal switch is a property on the
+      // window itself, not something written to storage.
+      return { session, local, win };
     },
   };
 }
@@ -195,4 +200,53 @@ test('a page double without waitForFunction is handed back, not thrown on', asyn
 
 test('the launcher probe targets the node index.html actually ships', () => {
   assert.equal(FIRST_RUN_LAUNCHER_SELECTOR, '#first-run-launcher');
+});
+
+// ── the photoreal switch ──────────────────────────────────────────────────
+// ion bills Google Photorealistic 3D Tiles by "root tile", and one root tile
+// is one successful endpoint request — so one harness run is one billed
+// session even when the run never looks at the ground. 113 harnesses across a
+// dozen workspaces share one token; on 2026-09-15 they reached 1 001 of the
+// free tier's 1 000 monthly sessions by the fifteenth, while Bing imagery —
+// which only loads on a click — stood at 15. That gap is the whole diagnosis,
+// and these pins are the fix.
+
+/** A browser double that hands out one {@link fakePage}. */
+function fakeBrowser(page) {
+  return { async newPage() { return page; } };
+}
+
+test('newQaPage closes the photoreal door by default', async () => {
+  const page = fakePage();
+  await newQaPage(fakeBrowser(page));
+  const { win } = page.run();
+  assert.equal(win[PHOTOREAL_DISABLE_GLOBAL], true);
+  // Installed the same way as the card suppression — before any page script,
+  // so the app reads it during boot rather than after the request is spent.
+  assert.equal(page.installed.length, 2);
+  // And the app's own reader agrees, so the two sides cannot drift apart.
+  assert.equal(photorealDisabled(win), true);
+});
+
+test('a harness that needs the 3D surface opts back in', async () => {
+  // Ground clamping, seating, mesh floors and the map-source tray itself are
+  // measured AGAINST Google's photoreal surface. Those runs buy the root tile
+  // on purpose.
+  const page = fakePage();
+  await newQaPage(fakeBrowser(page), { photoreal: true });
+  const { win } = page.run();
+  assert.equal(win[PHOTOREAL_DISABLE_GLOBAL], undefined);
+  assert.equal(photorealDisabled(win), false);
+  assert.equal(page.installed.length, 1, 'only the first-run suppression is installed');
+});
+
+test('the switch survives navigation, because it is not in the URL', async () => {
+  // Harnesses compose their own URLs mid-run (share links, ?map=, deep links),
+  // so a query param falls off exactly when a run navigates — and that would
+  // flip the surface regime under a height assertion rather than merely losing
+  // the saving. `evaluateOnNewDocument` re-runs on every navigation.
+  const page = fakePage();
+  await disablePhotoreal(page);
+  assert.equal(page.installed.length, 1);
+  assert.equal(page.installed[0].arg, PHOTOREAL_DISABLE_GLOBAL);
 });

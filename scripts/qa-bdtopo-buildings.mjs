@@ -93,7 +93,7 @@ const browser = await puppeteer.launch({
 });
 
 try {
-  const page = await newQaPage(browser);
+  const page = await newQaPage(browser, { photoreal: true });
   // Device scale 1 on purpose: at 2 this is a 3200x1900 WebGL surface, which a
   // software renderer takes minutes to boot.
   await page.setViewport({ width: 1440, height: 860 });

@@ -401,6 +401,7 @@ export class MapStackController {
     cesiumToken = '',
     googleKeyConfigured = null,
     googleTilesetError = '',
+    photorealDisabled = false,
     ignTerrainSpike = false,
     initialStack = 'photoreal',
     onChange = null,
@@ -425,6 +426,13 @@ export class MapStackController {
     // it. Empty means photoreal was never attempted (keyless build, or a
     // caller that did not say).
     this.googleTilesetError = summarizeProviderError(googleTilesetError);
+    // Set when the session deliberately did not ask for the tileset
+    // (`?photoreal=0`, or the flag the QA fleet installs — see
+    // `PHOTOREAL_DISABLE_GLOBAL`). Distinct from every other reason the chip
+    // can be grey, because those are all things going wrong and this one is
+    // the reader's own switch: an ion root tile is billed per boot, so a
+    // harness that will never look at the 3D globe should not buy one.
+    this.photorealDisabled = !!photorealDisabled;
     // DEV-ONLY SPIKE (`?ign_terrain=1`). Replaces the keyless terrain provider
     // with IGN RGE ALTI over France, and FORCES the keyless branch even when an
     // ion token is present — the point of the spike is to look at IGN terrain,
@@ -526,6 +534,12 @@ export class MapStackController {
    * @returns {string}
    */
   _unavailableReason(stack) {
+    // FIRST among the photoreal reasons, and before the ion-token line, because
+    // a session that switched the tileset off has no other fault to report and
+    // every other branch here would invent one.
+    if (stack?.kind === 'photoreal' && this.photorealDisabled) {
+      return 'Google 3D Tiles off for this session (photoreal=0)';
+    }
     if (stack?.requiresIon) return 'Cesium ion token required for Bing stacks';
     // Two credentials open the photoreal globe, not one: the Google key, and
     // an ion token (ion serves the same tileset as asset 2275207, under

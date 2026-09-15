@@ -48,7 +48,7 @@ const browser = await puppeteer.launch({
 });
 
 try {
-  const page = await newQaPage(browser);
+  const page = await newQaPage(browser, { photoreal: true });
   await page.setViewport({ width: 1366, height: 768 });
   const skyRequests = [];
   page.on('request', (req) => { if (SKYBOX_RE.test(req.url())) skyRequests.push(req.url()); });
