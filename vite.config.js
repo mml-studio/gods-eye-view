@@ -26956,6 +26956,103 @@ function stripCesiumFromDocumentPages() {
 }
 
 // ---------------------------------------------------------------------------
+// The social card's one absolute URL
+// ---------------------------------------------------------------------------
+//
+// `index.html` writes `og:image` and `twitter:image` root-relative, because a
+// relative path is what stays true in dev and in a checkout. The Open Graph
+// protocol asks for an absolute one, and the crawlers split on it: X and Slack
+// resolve a relative `og:image` against the page URL, Facebook and LinkedIn
+// drop it and render a card with no image at all. So the build rewrites those
+// two — and only those two — against one origin.
+//
+// There is deliberately no `og:url` to rewrite. A canonical URL baked into the
+// bundle would make every self-hosted instance advertise ours; with the tag
+// absent, every crawler keeps the URL it actually fetched.
+
+/** Default origin for the social card, overridden by GEV_PUBLIC_ORIGIN. */
+export const SOCIAL_ORIGIN_DEFAULT = 'https://gev.enerlens.com';
+
+/** The social meta tags whose `content` is made absolute. */
+const SOCIAL_URL_TAGS = Object.freeze(['og:image', 'twitter:image']);
+
+/**
+ * Normalise a configured origin, or fall back to the public one.
+ *
+ * A trailing slash is stripped so the join below never produces `//og.png`,
+ * and anything that is not an http(s) origin is refused rather than
+ * concatenated: a typo'd value would otherwise ship a card pointing at
+ * `undefined/og.png`, which renders as a blank card and nothing fails.
+ *
+ * @param {?string} configured
+ * @returns {string}
+ */
+export function resolveSocialOrigin(configured) {
+  const raw = String(configured ?? '').trim();
+  if (!raw) return SOCIAL_ORIGIN_DEFAULT;
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    return SOCIAL_ORIGIN_DEFAULT;
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return SOCIAL_ORIGIN_DEFAULT;
+  return url.origin;
+}
+
+/**
+ * Make the social card's root-relative URLs absolute.
+ *
+ * Only `content="/..."` is touched: a value that is already absolute is left
+ * alone, so a page that hardcodes a CDN keeps it.
+ *
+ * @param {string} html
+ * @param {string} origin
+ * @returns {{html: string, changed: boolean}}
+ */
+export function absolutizeSocialUrls(html, origin) {
+  const source = String(html || '');
+  const base = resolveSocialOrigin(origin);
+  let out = source;
+  for (const tag of SOCIAL_URL_TAGS) {
+    const re = new RegExp(
+      `(<meta\\s+(?:property|name)="${tag}"\\s+content=")(/[^"]*)(")`,
+      'g',
+    );
+    out = out.replace(re, (_m, head, path, tail) => `${head}${base}${path}${tail}`);
+  }
+  return { html: out, changed: out !== source };
+}
+
+/**
+ * Rewrite the social card's URLs at build time.
+ *
+ * Build only. In dev the relative form is the correct one — there is no
+ * public origin to speak of, and a crawler is not reading localhost.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function absolutizeSocialCardUrls() {
+  return {
+    name: 'gev-absolutize-social-card',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, ctx) {
+        const origin = resolveSocialOrigin(process.env.GEV_PUBLIC_ORIGIN);
+        const { html: out, changed } = absolutizeSocialUrls(html, origin);
+        // Silence here would mean a page shipped with a relative `og:image`
+        // and a blank LinkedIn card, which nothing downstream can detect.
+        if (!changed && /og:image/.test(html)) {
+          console.warn(`[gev-absolutize-social-card] ${ctx?.path}: og:image was already absolute`);
+        }
+        return out;
+      },
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Dataset relay — the one pass-through the dataset box may use
 // ---------------------------------------------------------------------------
 //
@@ -27477,6 +27574,7 @@ export default defineConfig(({ mode, command }) => {
       // `stripCesiumFromDocumentPages` for what it bought and what it removed.
       cesium({ cesiumBaseUrl: `${CESIUM_BASE_DIR}/`, rebuildCesium: true }),
       stripCesiumFromDocumentPages(),
+      absolutizeSocialCardUrls(),
       ...[
       openSkyProxy(),
       celestrakProxy(),

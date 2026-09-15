@@ -3,7 +3,41 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Surplomb</title>
+  <title>Surplomb — La France au rayon X</title>
+  <meta name="description" content="Tout ce que vous n’auriez jamais pensé à chercher : 59 couches de données publiques françaises sur un globe 3D en direct. 56 ne demandent aucune clé." />
+  <!--
+    LA CARTE DE PARTAGE.
+
+    `og:image` est écrite RACINE-RELATIVE ici et rendue ABSOLUE à la
+    construction par `absolutizeSocialUrls()` dans `vite.config.js`. Le
+    protocole Open Graph exige une URL absolue : mesuré sur les crawlers,
+    Facebook et LinkedIn ignorent purement et simplement un `og:image`
+    relatif, là où X et Slack le résolvent contre l'URL de la page. Écrire la
+    source en relatif garde le fichier lisible en développement ; la sortie de
+    build, elle, est conforme. L'origine par défaut est le site public, et
+    `GEV_PUBLIC_ORIGIN=https://exemple.fr npm run build` la remplace pour qui
+    auto-héberge (`ARG GEV_PUBLIC_ORIGIN` dans le Dockerfile pour l'image).
+
+    IL N'Y A VOLONTAIREMENT PAS DE `og:url`. Une URL canonique codée en dur
+    ferait pointer la carte de partage de CHAQUE instance auto-hébergée vers
+    notre domaine. En son absence, tous les crawlers retiennent l'URL qu'ils
+    ont demandée, ce qui est le comportement juste partout.
+
+    `public/og.png` se regénère par `npm run og:build` (scripts/og-image.mjs).
+  -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Surplomb" />
+  <meta property="og:locale" content="fr_FR" />
+  <meta property="og:title" content="Surplomb — La France au rayon X" />
+  <meta property="og:description" content="Tout ce que vous n’auriez jamais pensé à chercher : 59 couches de données publiques françaises sur un globe 3D en direct. 56 ne demandent aucune clé." />
+  <meta property="og:image" content="/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Carte sombre : SURPLOMB, « La France au rayon X », et la mention 59 couches publiques, 56 sans clé, open source." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Surplomb — La France au rayon X" />
+  <meta name="twitter:description" content="Tout ce que vous n’auriez jamais pensé à chercher : 59 couches de données publiques françaises sur un globe 3D en direct. 56 ne demandent aucune clé." />
+  <meta name="twitter:image" content="/og.png" />
   <link rel="icon" type="image/svg+xml" href="/logo.svg" />
   <link rel="stylesheet" href="/style.css" />
   <!--
