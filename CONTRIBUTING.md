@@ -96,10 +96,11 @@ looks at the ground. The free tier allows 1 000 a month, `scripts/` holds 113
 harnesses that boot the app, and they share one token across every workspace:
 in September 2026 they passed 1 000 by the fifteenth.
 
-The app itself now buys the tileset on the **first activation of the photoreal
-stack** rather than at boot, so a `#map=osm` share link costs nothing. But the
-default startup stack is still the 3D globe, so a plain harness boot would
-still buy one — and `newQaPage()` therefore boots **without** the 3D globe. The app lands on OSM and
+The app itself opens on the keyless satellite stack and buys the tileset on the
+reader's first rest under 25 km (`src/photorealAdoption.js`), so a boot nobody
+touches costs nothing. A harness touches the camera constantly, though, so it
+would buy one on almost every run — and `newQaPage()` therefore closes the door
+outright. The app lands on OSM and
 the `photoreal` chip reads *"off for this session"* — which is a switch, not a
 failure, and the tray says so.
 

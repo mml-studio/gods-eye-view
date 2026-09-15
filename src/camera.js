@@ -67,7 +67,7 @@ export const DEFAULT_CITY_VIEW = Object.freeze({
  * @param {Cesium.Viewer} viewer
  * @param {object} [view] Override target, same shape as DEFAULT_CITY_VIEW.
  */
-export function flyToDefaultCity(viewer, view = DEFAULT_CITY_VIEW) {
+export function flyToDefaultCity(viewer, view = DEFAULT_CITY_VIEW, { onSettled = null } = {}) {
   // Start from a high altitude, then fly down
   viewer.camera.setView({
     destination: Cesium.Cartesian3.fromDegrees(view.lon, view.lat, view.approachAltitudeM),
@@ -89,6 +89,13 @@ export function flyToDefaultCity(viewer, view = DEFAULT_CITY_VIEW) {
       },
       duration: 4.0,
       easingFunction: Cesium.EasingFunction.CUBIC_IN_OUT,
+      // The app's opening move is finished. Callers use this to tell the
+      // reader's own navigation apart from the descent performed FOR them —
+      // `src/photorealAdoption.js` buys the 3D globe on the former only.
+      // `cancel` fires it too: a reader who interrupted the flight is
+      // navigating, which is exactly the case this must not miss.
+      complete: () => onSettled?.(),
+      cancel: () => onSettled?.(),
     });
   }, 500);
 }
