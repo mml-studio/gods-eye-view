@@ -22,6 +22,7 @@ import { modelAssetUrl } from './data/modelAssets.js';
 import { installLazyVoice } from './voice/lazyVoice.js';
 import { MapStackController } from './mapStackController.js';
 import { describePhotorealFailure, loadPhotorealTileset, photorealDisabled } from './photorealTileset.js';
+import { PHOTOREAL_ADOPTION_STACK, installPhotorealAdoption } from './photorealAdoption.js';
 import { ignTerrainFlagEnabled } from './data/ignBilTerrain.js';
 import { initLogoGaze } from './logoGaze.js';
 import { installStarfield } from './starfield.js';
@@ -336,9 +337,19 @@ async function init() {
     // build whose tiles turn out to be withheld (the EEA case) still lands on
     // Google's 2D cartography, one layer down: the boot activation fails and
     // `setStack`'s fallback walks the same ladder.
+    //
+    // AND THE APP NO LONGER OPENS ON THE 3D GLOBE, even when it can. ion bills
+    // that globe per reader — one "root tile" each — so opening on it makes a
+    // visitor cost money before they have asked for anything. It opens on the
+    // keyless satellite stack instead, which is the same picture from orbit
+    // (IGN's 20 cm orthophoto over France, a world satellite base beyond), and
+    // `installPhotorealAdoption` swaps in the real thing on the reader's first
+    // rest under 25 km. See that file for why the boot flight itself does not
+    // count as a reason to buy.
+    const defaultStack = canLoadPhotoreal ? PHOTOREAL_ADOPTION_STACK : null;
     const startupStack = photorealOff
       ? 'osm'
-      : (canLoadPhotoreal ? 'photoreal' : (keylessMode ? 'osm' : 'google-roadmap'));
+      : (defaultStack || (keylessMode ? 'osm' : 'google-roadmap'));
 
     const mapStackController = new MapStackController(viewer, {
       // Deferred rather than loaded: see `loadPhotoreal` above. The controller
@@ -406,12 +417,29 @@ async function init() {
     const weatherEffects = null;
     const cockpitCloudEffects = initCockpitCloudEffects(viewer);
 
+    // The 3D globe, bought on the reader's first close rest rather than on
+    // arrival. Installed here because it needs the boot flight: that flight
+    // descends to 600 m by itself, so it ARMS the watch instead of tripping it
+    // — otherwise every page load would buy a root tile five seconds in and
+    // the keyless opening above would save nothing. See src/photorealAdoption.js.
+    const photorealAdoption = defaultStack
+      ? installPhotorealAdoption(viewer, mapStackController, {
+        fromStackId: defaultStack,
+        onAdopt: ({ altitudeM }) => console.info(
+          `[MapStack] Adopting Google 3D Tiles — the reader came to rest at ${Math.round(altitudeM)} m.`,
+        ),
+      })
+      : null;
+
     // If no share link state, do the default fly-to (Paris)
     if (!styleManager.hasShareState) {
       loaderStatus.textContent = `Flying to ${DEFAULT_CITY_VIEW.label}...`;
-      flyToDefaultCity(viewer);
+      flyToDefaultCity(viewer, DEFAULT_CITY_VIEW, { onSettled: () => photorealAdoption?.arm() });
     } else {
       loaderStatus.textContent = 'Restoring shared view...';
+      // A shared view IS the reader's choice of where to be, so their own
+      // arrival counts: a link to a rooftop gets the 3D globe on landing.
+      photorealAdoption?.arm();
     }
 
     // Initialize data layer manager
@@ -597,6 +625,9 @@ async function init() {
       get tileset() { return mapStackController.getPhotorealTileset(); },
       // 'google-key' | 'ion' | null — which door opened, once one has.
       get tilesetSource() { return mapStackController.photorealSource; },
+      // Null on a build with no photoreal door. QA reads `isArmed()`/`isSpent()`
+      // to tell "waiting for the reader" from "already decided".
+      photorealAdoption,
       dataManager,
       // Null until the voice stack lands — `voiceReady` is how a caller waits
       // for it without polling, and `loadVoice()` how it asks for it early.
