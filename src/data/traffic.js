@@ -34,6 +34,7 @@ import {
   STOP_LINE_M,
 } from './trafficSignals.js';
 import { countNodeUses, junctionFlags } from './roadJunctions.js';
+import { photorealSurface, renderedSurfaceM, surfaceSamplingArmed } from './renderedSurface.js';
 import { registerDynamicCredit, TOMTOM_CREDIT } from './dataCredits.js';
 import { holdContinuousRender, releaseContinuousRender } from '../renderGovernor.js';
 import { claimCameraSensitivity, releaseCameraSensitivity } from './cameraSensitivity.js';
@@ -83,6 +84,52 @@ const ACTIVATION_ALTITUDE = ROAD_ACTIVATION_ALTITUDE_M;
 const FETCH_DEBOUNCE = 320;
 /** @const {number} Meters — vertical offset to keep dots above clamped terrain surface */
 const DOT_HEIGHT_OFFSET = 3.0;
+/**
+ * @const {number} `sampleHeight` calls one road-seating pass may spend.
+ *
+ * Measured on this view (Biarritz, 1 744 dots in the scene, headless
+ * SwiftShader, 2026-09-14): **24.0 ms per call** — four times the 6.28 ms
+ * `renderedSurface.js` measured, because a probe is a synchronous offscreen
+ * pick and this layer fills the scene with pickable points. 12 × 24 ms is
+ * ~290 ms, spent on a settle or a retry tick, never on a frame. The rest of
+ * the network borrows from the nearest road that already has its own reading,
+ * and the backoff below converges the box in a handful of passes.
+ */
+const FLOOR_SAMPLE_BUDGET = 12;
+/**
+ * @const {number} Ms between passes that are MAKING PROGRESS.
+ *
+ * Two cadences, because there are two different waits. Once the mesh is armed
+ * every pass converts budget into seated roads, so it should run back-to-back
+ * until the box is done — 421 roads at 12 a pass is ~9 s at this tick.
+ */
+const FLOOR_TICK_MS = 250;
+/** @const {number} Ms — first delay while WAITING for the mesh to drain. */
+const FLOOR_RETRY_MIN_MS = 250;
+/**
+ * @const {number} Ms — drain-wait ceiling (the delay doubles, ~16 s horizon).
+ *
+ * A FIXED interval is the trap here: the photorealistic globe is hidden, so
+ * `globe.tileLoadProgressEvent` never fires and nothing else comes back to
+ * re-seat. Measured on this view, the Google tileset answers −6 311.7 m for
+ * the first ~10 s of a session and +54.0 m once drained — a 6 × 250 ms loop
+ * expires before that flip and leaves the bug whole.
+ */
+const FLOOR_RETRY_MAX_MS = 8000;
+/**
+ * @const {number} Degrees — grain at which a surface reading is shared.
+ *
+ * `provisionalFloor.js`'s ~111 m cell, for the same reason: neighbouring roads
+ * stand on the same ground and one probe can answer for all of them. What is
+ * NOT borrowed from it is where the probe lands — a cell CENTRE falls on a roof
+ * as readily as on the street, so the reading is taken at the first road's own
+ * coordinate and then shared. Measured over Biarritz: 421 roads collapse to a
+ * few dozen cells, which is the difference between converging in seconds and
+ * never converging.
+ */
+const FLOOR_CELL_DEG = 0.001;
+/** @const {number} Cells kept before the oldest are dropped (session cache). */
+const FLOOR_CELL_MAX = 4000;
 /** @const {number} Hard cap on total rendered dot primitives for GPU/CPU performance */
 const MAX_DOTS = 6000;
 /** @const {number} Polylines longer than this are simplified by sub-sampling */
@@ -227,6 +274,45 @@ let _preRenderRemover = null;
 let _cameraRemover = null;
 /** @type {ReturnType<typeof setTimeout>|null} Debounce timer for camera-change fetch */
 let _fetchTimeout = null;
+/** @type {ReturnType<typeof setTimeout>|null} Doubling-backoff timer for road seating. */
+let _floorRetryTimer = null;
+/** @type {number} Current backoff delay for the seating retry. */
+let _floorRetryDelay = FLOOR_RETRY_MIN_MS;
+/**
+ * Tier-1 floor: one reading at the fetch-box centre, lent to every road that
+ * has not yet bought its own. Kept with the box it was read in so a Paris
+ * reading is never lent to a Biarritz road.
+ * @type {{lat:number, lon:number, m:number}|null}
+ */
+let _boxFloor = null;
+/**
+ * Surface readings shared by ~111 m cell, for the session. Every entry came
+ * through `renderedSurfaceM`, so a mid-stream or out-of-band answer was refused
+ * rather than stored — nothing in here can be a latched −6 311 m.
+ * @type {Map<string, number>}
+ */
+const _floorCells = new Map();
+/**
+ * What the last seating pass found — surfaced in `getStats` so the panel and
+ * the harness can tell "seated" from "still standing on a lent reading".
+ * @type {{done:boolean, armed:boolean, probes:number, seated:number, waiting:number}}
+ */
+let _floorSeatState = { done: true, armed: true, probes: 0, seated: 0, waiting: 0 };
+/**
+ * Which surface the readings in hand were taken from, `'globe'` or
+ * `'photoreal'`.
+ *
+ * A reading is only a measurement of the surface that is being DRAWN, and this
+ * app changes that surface underneath the layer. Measured over Biarritz: the
+ * boot cinematic runs with the globe visible on the default flat
+ * `EllipsoidTerrainProvider`, where `globe.getHeight` answers a perfectly
+ * valid **0 m** — which latched as a road's own reading and then survived the
+ * switch to the photorealistic stack, leaving those roads 90 m under a mesh
+ * they were never measured against. `tilesLoaded` cannot see that: the tileset
+ * was not the surface when the number was taken.
+ * @type {'globe'|'photoreal'|null}
+ */
+let _floorSurface = null;
 /** @type {{south:number,west:number,north:number,east:number}|null} Last fetched clamped bounds */
 let _lastBounds = null;
 /** @type {boolean} True while an Overpass fetch is in flight */
@@ -673,14 +759,13 @@ function parseRoads(overpassData) {
       ? 1
       : (onewayTag === '-1' ? -1 : 0);
 
-    // Sample terrain height once at the road start to avoid per-vertex cost
-    let baseHeight = 0;
-    const firstCoord = coords[0];
-    if (_viewer?.scene?.sampleHeightSupported && firstCoord) {
-      const carto = Cesium.Cartographic.fromDegrees(firstCoord[0], firstCoord[1]);
-      const sampled = _viewer.scene.sampleHeight(carto);
-      if (Number.isFinite(sampled)) baseHeight = sampled;
-    }
+    // Seat the road on the floor already known for this box, and let
+    // `seatRoadFloors` buy it a reading of its own. Parse time is the one
+    // moment that must NOT probe: a road is parsed the instant its Overpass
+    // response lands, which on every camera move is while the photorealistic
+    // mesh is still streaming — and a mid-stream probe returns a real, finite,
+    // catastrophically wrong number that nothing here ever revisited.
+    const baseHeight = borrowedFloorM(coords[0]);
 
     // Pre-compute Cartesian3 waypoints (lon, lat, height) for fast lerp animation
     const waypoints = coords.map(([lng, lat]) => {
@@ -710,6 +795,11 @@ function parseRoads(overpassData) {
       signalPhase: roadSignalPhase(type, coords, el.tags),
       // Which vertices are shared with another way, i.e. where the dots stop.
       junctions: junctionFlags(coords, nodeUses),
+      // Ellipsoidal metres this road is drawn at, and whether that number is
+      // its own reading or one lent by `seatRoadFloors`. See that function.
+      floorM: null,
+      floorOwn: false,
+      floorSurface: null,
       // Per-half-cycle queue counters (see joinQueue).
       queueHalf: -1,
       queueFwd: 0,
@@ -718,6 +808,310 @@ function parseRoads(overpassData) {
   }
 
   return roads;
+}
+
+// ─── Ground Seating ────────────────────────────────────────
+
+/**
+ * Seat one road on a surface height, in place.
+ *
+ * The waypoint `Cartesian3`s are MUTATED rather than replaced, because
+ * `_dots[].waypoints` holds the same array and `animate()` lerps a dot's
+ * position out of it on every frame. Rewriting them therefore re-seats every
+ * dot on that road at the next frame, with no respawn and no bookkeeping —
+ * which is the whole reason the height lives on the road and not on the dot.
+ *
+ * @param {{coords:number[][], waypoints:Cesium.Cartesian3[], segmentDist:number[]}} road
+ * @param {number} heightM  Ellipsoidal metres of the drawn surface.
+ * @param {boolean} own     True when this is the road's OWN reading, false for
+ *   a borrowed one (which a later pass is still allowed to replace).
+ * @param {'globe'|'photoreal'} surface Which surface answered.
+ * @returns {boolean} True when the waypoints were rewritten.
+ */
+function applyRoadFloor(road, heightM, own, surface) {
+  if (road.floorM === heightM && road.floorOwn === own && road.floorSurface === surface) return false;
+  const h = heightM + DOT_HEIGHT_OFFSET;
+  for (let i = 0; i < road.waypoints.length; i++) {
+    const coord = road.coords[i];
+    if (!coord) continue;
+    Cesium.Cartesian3.fromDegrees(coord[0], coord[1], h, Cesium.Ellipsoid.WGS84, road.waypoints[i]);
+  }
+  for (let i = 0; i < road.waypoints.length - 1; i++) {
+    road.segmentDist[i] = Cesium.Cartesian3.distance(road.waypoints[i], road.waypoints[i + 1]);
+  }
+  road.floorM = heightM;
+  road.floorOwn = own;
+  road.floorSurface = surface;
+  return true;
+}
+
+/**
+ * Re-project every dot onto the waypoints it now stands on.
+ *
+ * `animate()` writes a dot's position by lerping its road's waypoints — but it
+ * `continue`s past that write for a dot held at a red light or stopped between
+ * creeps, so a dot that is NOT MOVING keeps the position it had before the road
+ * under it was re-seated. Measured over Biarritz after a converged pass:
+ * 421 of 421 roads seated between 56.1 m and 109.4 m, and **161 of 1 743 dots
+ * still drawn below 25 m** — one red phase's worth of traffic left behind at
+ * the old floor. Every other dot corrects itself on the next frame; these need
+ * the write made for them.
+ */
+function reseatDotPositions() {
+  for (const dot of _dots) {
+    const a = dot.waypoints[dot.segIdx];
+    const b = dot.waypoints[dot.segIdx + 1];
+    if (!a || !b) continue;
+    Cesium.Cartesian3.lerp(a, b, dot.t, _scratchLerp);
+    dot.point.position = _scratchLerp;
+  }
+}
+
+/**
+ * The best floor currently known for a coordinate, without buying a probe.
+ *
+ * Preference order: the nearest road that already owns a reading, then the
+ * box-centre reading, then the ellipsoid. Never a mid-stream sample — that is
+ * the defect this whole section exists to remove.
+ *
+ * Both lenders are gated on the CURRENT fetch box. `_roads` still holds the
+ * previous view's network while the new one is being parsed, and an ungated
+ * nearest-first search hands a Paris height to a Biarritz street — the same
+ * "one bad reading lent to a whole commune" failure `provisionalFloor.js`
+ * measured, just over a longer distance.
+ *
+ * @param {number[]|undefined} coord `[lon, lat]`.
+ * @returns {number} Ellipsoidal metres.
+ */
+function borrowedFloorM(coord) {
+  const box = _lastBounds;
+  const inBox = (lon, lat) => !box
+    || (lat >= box.south && lat <= box.north && lon >= box.west && lon <= box.east);
+  let best = (_boxFloor && inBox(_boxFloor.lon, _boxFloor.lat)) ? _boxFloor.m : 0;
+  if (!coord) return best;
+  let bestD2 = Infinity;
+  for (const road of _roads) {
+    if (!roadFloorIsCurrent(road, _floorSurface)) continue;
+    const other = road.coords[0];
+    if (!other || !inBox(other[0], other[1])) continue;
+    const dLon = other[0] - coord[0];
+    const dLat = other[1] - coord[1];
+    const d2 = dLon * dLon + dLat * dLat;
+    if (d2 < bestD2) { bestD2 = d2; best = road.floorM; }
+  }
+  return best;
+}
+
+/**
+ * Buy surface readings for the roads on screen, a budget at a time, and lend
+ * what has been read to the roads still waiting.
+ *
+ * ── Why this is a pass and not a line in `parseRoads` ───────────────────────
+ * MEASURED in the running app over Biarritz, camera 900 m at −35°, 2026-09-14:
+ * `scene.sampleHeight` answers **−6 311.7 m** for the first ~10 s of a session
+ * — the planetary root tile — and **+54.0 m** once the tileset has drained.
+ * Roads are parsed the moment their Overpass response lands, which on every
+ * camera move is inside that window, and the old code took whatever came back
+ * as long as it was finite. The whole network was therefore baked 6 365 m under
+ * the street: 1 761 of 1 761 dots out of any plausible band, a median 1 564 px
+ * from the road they belong to, worst 4 234 px. With depth testing punched
+ * through at 2 km they are painted anyway, so the symptom is not a hole in the
+ * map — it is dots sliding across the sky as the camera turns.
+ *
+ * ── The two tiers ──────────────────────────────────────────────────────────
+ * TIER 1 — one probe at the fetch-box centre, lent to every road at once. It
+ * converts 6 365 m of error into the box's own relief (70 m across this box)
+ * for a single call, and it is what a road gets to stand on while it waits.
+ *
+ * TIER 2 — the road's OWN probe at its first vertex, {@link FLOOR_SAMPLE_BUDGET}
+ * per pass, nearest road first so the street under the reader is corrected
+ * before the edge of the box. Roads still waiting borrow from the nearest road
+ * that has finished rather than from the box centre.
+ *
+ * Every reading goes through `renderedSurfaceM`, so the drain test, the
+ * plausibility band and the 25 km camera ceiling are enforced in one place and
+ * a refusal is a refusal — never a latched −6 311 m.
+ *
+ * @returns {{done:boolean, armed:boolean, probes:number, seated:number,
+ *   waiting:number}} What the pass found and what it spent.
+ */
+function seatRoadFloors() {
+  const scene = _viewer?.scene;
+  if (!scene || !_roads.length) return { done: true, armed: true, probes: 0, seated: 0, waiting: 0 };
+  // The globe stack answers from resident terrain tiles for free; the
+  // photorealistic stack has to be armed (drained, under the camera ceiling)
+  // before a probe means anything.
+  const armed = !photorealSurface(scene) || surfaceSamplingArmed(scene);
+  if (!armed) return { done: false, armed: false, probes: 0, seated: 0, waiting: _roads.length };
+
+  // A reading only measures the surface that answered it. When the stack
+  // switches, the shared caches are worthless and every road needs asking
+  // again — including the road sets sitting in `_tileCache`, which is why the
+  // surface is stamped on the ROAD and not held in one module flag.
+  const surface = photorealSurface(scene) ? 'photoreal' : 'globe';
+  if (_floorSurface !== surface) {
+    _floorSurface = surface;
+    _floorCells.clear();
+    _boxFloor = null;
+  }
+
+  const visible = visibleRoadsForAltitude(_roads, _lastRenderAltitude);
+  if (!visible.length) return { done: true, armed, probes: 0, seated: 0, waiting: 0 };
+
+  let budget = FLOOR_SAMPLE_BUDGET;
+  let probes = 0;
+
+  // Tier 1 — the box reading, bought once and re-bought when the box moves.
+  const center = _lastBounds ? getBoundsCenter(_lastBounds) : null;
+  if (center && (!_boxFloor || _boxFloor.lat !== center.lat || _boxFloor.lon !== center.lon)) {
+    const m = renderedSurfaceM(scene, Cesium.Math.toRadians(center.lon), Cesium.Math.toRadians(center.lat));
+    budget -= 1;
+    probes += 1;
+    if (m === null) return { done: false, armed, probes, seated: 0, waiting: visible.length };
+    _boxFloor = { lat: center.lat, lon: center.lon, m };
+  }
+
+  // Tier 2 — nearest first, so the correction lands where it is being looked at.
+  const cameraPos = _viewer.camera.positionWC;
+  const pending = visible.filter((road) => !roadFloorIsCurrent(road, surface));
+  let seated = 0;
+  let moved = false;
+  if (pending.length) {
+    pending.sort((a, b) => (
+      Cesium.Cartesian3.distanceSquared(cameraPos, a.waypoints[0])
+      - Cesium.Cartesian3.distanceSquared(cameraPos, b.waypoints[0])
+    ));
+    for (const road of pending) {
+      const coord = road.coords[0];
+      if (!coord) continue;
+      const key = floorCellKey(coord[0], coord[1]);
+      let m = _floorCells.get(key);
+      if (m === undefined) {
+        // Only a probe costs budget — a cell already read is free, which is
+        // what lets a dense box finish at all.
+        if (budget <= 0) break;
+        m = renderedSurfaceM(scene, Cesium.Math.toRadians(coord[0]), Cesium.Math.toRadians(coord[1]));
+        budget -= 1;
+        probes += 1;
+        if (m === null) continue;
+        rememberFloorCell(key, m);
+      }
+      if (applyRoadFloor(road, m, true, surface)) moved = true;
+      seated += 1;
+    }
+  }
+
+  // Everyone still waiting stands on the best reading now available — the
+  // nearest finished road, or the box centre.
+  let waiting = 0;
+  for (const road of visible) {
+    if (roadFloorIsCurrent(road, surface)) continue;
+    waiting += 1;
+    if (applyRoadFloor(road, borrowedFloorM(road.coords[0]), false, surface)) moved = true;
+  }
+  // Dots held at a red light never re-read their waypoints on their own.
+  if (moved) reseatDotPositions();
+  return { done: waiting === 0, armed, probes, seated, waiting };
+}
+
+/**
+ * True when a road already owns a reading of the surface currently drawn.
+ * @param {{floorOwn?:boolean, floorSurface?:?string}} road
+ * @param {?string} surface
+ */
+function roadFloorIsCurrent(road, surface) {
+  return Boolean(road.floorOwn) && road.floorSurface === surface;
+}
+
+/** Cell key for a coordinate, at {@link FLOOR_CELL_DEG}. */
+function floorCellKey(lon, lat) {
+  return `${Math.round(lat / FLOOR_CELL_DEG)},${Math.round(lon / FLOOR_CELL_DEG)}`;
+}
+
+/** Store a cell reading, dropping the oldest once the cache is full. */
+function rememberFloorCell(key, m) {
+  if (_floorCells.size >= FLOOR_CELL_MAX) {
+    const oldest = _floorCells.keys().next().value;
+    _floorCells.delete(oldest);
+  }
+  _floorCells.set(key, m);
+}
+
+/**
+ * Book a seating pass. NEVER runs one.
+ *
+ * `scene.sampleHeight` forces a synchronous offscreen pick render, and the two
+ * callers here — the camera-change handler and the road render — are both
+ * inside Cesium's own event and update path. Running a budget of probes there
+ * blocks that path for as long as the budget costs (12 × 24 ms measured
+ * headless) and re-enters the renderer from inside itself. It also moved the
+ * fetch debounce far enough to break `qa-traffic`'s C4 control, which is the
+ * cheap version of the same complaint. So every probe this layer spends is
+ * spent on a timer tick, never on an event.
+ *
+ * @param {number} [delayMs] Delay for this booking; defaults to the tick.
+ */
+function armRoadFloorSeating(delayMs = FLOOR_TICK_MS) {
+  if (!_enabled || _floorRetryTimer) return;
+  _floorRetryTimer = setTimeout(runRoadFloorSeatingPass, delayMs);
+}
+
+/**
+ * Book a pass for a NETWORK THAT JUST CHANGED, cancelling whatever was booked.
+ *
+ * The plain arm above keeps an existing booking, which is right while one
+ * network converges and wrong the moment a new one lands: a loop parked in an
+ * 8 s drain backoff would leave a freshly parsed box standing on lent readings
+ * for the rest of that delay.
+ */
+function restartRoadFloorSeating() {
+  clearTimeout(_floorRetryTimer);
+  _floorRetryTimer = null;
+  _floorRetryDelay = FLOOR_RETRY_MIN_MS;
+  armRoadFloorSeating();
+}
+
+/**
+ * Run one seating pass and book the next one.
+ *
+ * Two cadences, because there are two different waits. A pass that CANNOT
+ * sample — the mesh has not drained — backs off by doubling: see
+ * {@link FLOOR_RETRY_MAX_MS} for why a fixed interval loses that race. A pass
+ * that seated something and still has roads waiting is making steady progress,
+ * so it comes straight back at {@link FLOOR_TICK_MS}. Finishing stops the loop
+ * and resets the backoff, so the next camera move starts responsive again.
+ */
+function runRoadFloorSeatingPass() {
+  _floorRetryTimer = null;
+  if (!_enabled) return;
+  const pass = seatRoadFloors();
+  _floorSeatState = pass;
+  if (pass.done) {
+    _floorRetryDelay = FLOOR_RETRY_MIN_MS;
+    return;
+  }
+  if (pass.armed && pass.seated > 0) {
+    _floorRetryDelay = FLOOR_RETRY_MIN_MS;
+    armRoadFloorSeating(FLOOR_TICK_MS);
+    return;
+  }
+  // Armed but seating nothing is not progress, whatever the reason — a globe
+  // whose terrain tiles are not resident answers `undefined` forever, and a
+  // fast tick there is a timer that never stops and never helps. Back off
+  // exactly like an undrained mesh.
+  const delay = _floorRetryDelay;
+  _floorRetryDelay = Math.min(_floorRetryDelay * 2, FLOOR_RETRY_MAX_MS);
+  armRoadFloorSeating(delay);
+}
+
+/** Drop every seating timer and cached reading (disable/destroy). */
+function resetRoadFloors() {
+  clearTimeout(_floorRetryTimer);
+  _floorRetryTimer = null;
+  _floorRetryDelay = FLOOR_RETRY_MIN_MS;
+  _boxFloor = null;
+  _floorSurface = null;
+  _floorSeatState = { done: true, armed: true, probes: 0, seated: 0, waiting: 0 };
 }
 
 // ─── Road Length Estimation ────────────────────────────────
@@ -1516,6 +1910,11 @@ function onCameraChanged() {
   // See `cameraSettle.js`: an arrival on any other view has to be re-decided.
   markViewportRead(_viewer, 'traffic');
 
+  // Arriving somewhere is the moment the mesh under the held roads changes,
+  // whether or not this pass decides to re-fetch. The skip paths below return
+  // early, so this cannot wait until the end.
+  if (_roads.length) armRoadFloorSeating();
+
   const alt = getCameraAltitude();
 
   // Above activation altitude — remove all traffic and stop.
@@ -2108,6 +2507,10 @@ function renderRoadsForAltitude(roads, altitude, label, trace = null) {
   // At high altitude, drop minor roads to reduce visual noise
   const filteredRoads = visibleRoadsForAltitude(roads, altitude);
 
+  // Book the seating loop for the new network. Booked, not run: see
+  // `armRoadFloorSeating`.
+  restartRoadFloorSeating();
+
   // Closed roads spawn zero dots (computeDotCount/spawnDotsForRoad) — count
   // them here so the closure signal is visible in stats even at zero dots.
   _closedRoads = _liveMode
@@ -2385,23 +2788,10 @@ function parseRoadsTimed(overpassData, trace) {
       ? 1
       : (onewayTag === '-1' ? -1 : 0);
 
-    let baseHeight = 0;
-    const firstCoord = coords[0];
-    if (_viewer?.scene?.sampleHeightSupported && firstCoord) {
-      /* TRACE_ONLY_BEGIN */
-      _trafficTimingSampleHeightCalls += 1;
-      _trafficTimingSampledCells.add(`${firstCoord[1].toFixed(3)},${firstCoord[0].toFixed(3)}`);
-      /* TRACE_ONLY_END */
-      const carto = Cesium.Cartographic.fromDegrees(firstCoord[0], firstCoord[1]);
-      /* TRACE_ONLY_BEGIN */
-      const _trafficTimingSampleStart = performance.now();
-      /* TRACE_ONLY_END */
-      const sampled = _viewer.scene.sampleHeight(carto);
-      /* TRACE_ONLY_BEGIN */
-      _trafficTimingSampleHeightMs += performance.now() - _trafficTimingSampleStart;
-      /* TRACE_ONLY_END */
-      if (Number.isFinite(sampled)) baseHeight = sampled;
-    }
+    // No probe here — see `parseRoads`. The `sample-height-*` counters below
+    // therefore read zero from the parse: that cost moved to `seatRoadFloors`,
+    // which spends it on a settle instead of on a response.
+    const baseHeight = borrowedFloorM(coords[0]);
 
     /* TRACE_ONLY_BEGIN */
     const _trafficTimingMaterializeStart = performance.now();
@@ -2434,6 +2824,11 @@ function parseRoadsTimed(overpassData, trace) {
       signalPhase: roadSignalPhase(type, coords, el.tags),
       // Which vertices are shared with another way, i.e. where the dots stop.
       junctions: junctionFlags(coords, nodeUses),
+      // Ellipsoidal metres this road is drawn at, and whether that number is
+      // its own reading or one lent by `seatRoadFloors`.
+      floorM: null,
+      floorOwn: false,
+      floorSurface: null,
       // Per-half-cycle queue counters (see joinQueue).
       queueHalf: -1,
       queueFwd: 0,
@@ -2854,6 +3249,7 @@ const trafficLayer = {
     clearInterval(_enableKickTimer);
     _enableKickTimer = null;
     cancelActiveFetch();
+    resetRoadFloors();
     _loadGeneration++;
     clearDots();
     clearFlowRibbon();
@@ -3018,6 +3414,7 @@ const trafficLayer = {
     removeHeatLines();
     clearFlowRibbon();
     _tileCache.clear();
+    _floorCells.clear();
     resetFlowTileCache();
     _count = 0;
     _lastUpdate = null;
@@ -3076,6 +3473,16 @@ const trafficLayer = {
       // qa-traffic color assertions and the sync-chip mode label below.
       flowBuckets: { ..._bucketCounts },
       closedRoads: _closedRoads,
+      // Ground-seating diagnostics (additive). `floorWaiting` counts roads
+      // still standing on a LENT surface reading rather than one of their own;
+      // `floorArmed` is false while the photorealistic mesh has yet to drain,
+      // which is the only state in which a probe would lie. A harness can tell
+      // "converged" from "gave up" without reading a pixel.
+      floorArmed: _floorSeatState.armed,
+      floorSeated: _roads.reduce((n, r) => n + (roadFloorIsCurrent(r, _floorSurface) ? 1 : 0), 0),
+      floorWaiting: _floorSeatState.waiting,
+      floorCells: _floorCells.size,
+      floorBoxM: _boxFloor ? +_boxFloor.m.toFixed(1) : null,
       // Signal-clock diagnostics (additive). `signalGreenPhase` is the axis
       // holding the green right now (0 = bearings 0-90 deg, 1 = 90-180), so a
       // harness can assert the alternation the clock exists for without ever
